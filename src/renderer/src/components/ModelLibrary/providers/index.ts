@@ -21,6 +21,7 @@ export * from './OpenAiParameters';
 export * from './OpenAiCompatibleParameters';
 export * from './OpenCodeParameters';
 export * from './OpenCodeGoParameters';
+export * from './OpenLlmParameters';
 export * from './OpenRouterParameters';
 export * from './RequestyParameters';
 export * from './SyntheticParameters';

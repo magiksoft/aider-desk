@@ -24,6 +24,7 @@
 - added Smart Checkout to carry uncommitted changes across branches with conflict resolution and recovery backups
 - added support for file links in messages with desktop opening and browser downloads or path copying
 - added project-level Aider settings overrides and Main, Weak, and Architect model defaults with automatic selection and inheritance
+- added OpenLLM provider
 
 ## [0.90.0]
 

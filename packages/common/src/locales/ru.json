@@ -555,6 +555,12 @@
     "getApiKeyLink": "Получить API-ключ LLM API",
     "apiKey": "API-ключ"
   },
+  "openLlm": {
+    "docsLink": "Руководство по настройке OpenLLM",
+    "baseUrl": "Базовый URL",
+    "apiKey": "API-ключ",
+    "apiKeyHint": "Оставьте API-ключ пустым, чтобы использовать локальный демон с выполненным входом. Для облака используйте https://www.openllm.sh/v1 с API-ключом."
+  },
   "zaiPlan": {
     "getApiKeyLink": "Получить API-ключ Z.AI",
     "apiKey": "API-ключ",
@@ -615,6 +621,7 @@
     "openai": "OpenAI",
     "opencode": "OpenCode ZEN",
     "opencode-go": "OpenCode Go",
+    "openllm": "OpenLLM",
     "openai-compatible": "Совместимый с OpenAI",
     "openrouter": "OpenRouter",
     "requesty": "Requesty",

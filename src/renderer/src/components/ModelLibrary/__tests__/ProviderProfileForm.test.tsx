@@ -58,6 +58,7 @@ vi.mock('@/components/ModelLibrary/providers', () => ({
   SyntheticParameters: () => <div>Synthetic Parameters</div>,
   OpenCodeParameters: () => <div>OpenCode Parameters</div>,
   OpenCodeGoParameters: () => <div>OpenCode Go Parameters</div>,
+  OpenLlmParameters: () => <div>OpenLlm Parameters</div>,
 }));
 
 describe('ProviderProfileForm', () => {
