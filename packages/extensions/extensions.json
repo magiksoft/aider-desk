@@ -10,7 +10,7 @@
       "capabilities": [
         "providers"
       ],
-      "installCount": 9
+      "installCount": 10
     },
     {
       "id": "jev",
@@ -83,7 +83,7 @@
         "commands",
         "ui"
       ],
-      "installCount": 53
+      "installCount": 54
     },
     {
       "id": "theme",
@@ -105,7 +105,7 @@
       "capabilities": [
         "modes"
       ],
-      "installCount": 126
+      "installCount": 128
     },
     {
       "id": "protected-paths",
@@ -117,7 +117,7 @@
       "capabilities": [
         "security"
       ],
-      "installCount": 58
+      "installCount": 59
     },
     {
       "id": "permission-gate",
@@ -163,7 +163,7 @@
       "capabilities": [
         "context"
       ],
-      "installCount": 82
+      "installCount": 83
     },
     {
       "id": "learn",
@@ -176,7 +176,7 @@
         "commands",
         "tools"
       ],
-      "installCount": 110
+      "installCount": 111
     },
     {
       "id": "legacy-system-prompt",
@@ -200,7 +200,7 @@
       "capabilities": [
         "notifications"
       ],
-      "installCount": 38
+      "installCount": 39
     },
     {
       "id": "sandbox",
@@ -245,7 +245,7 @@
       "capabilities": [
         "security"
       ],
-      "installCount": 33
+      "installCount": 35
     },
     {
       "id": "chunkhound-search",
@@ -282,7 +282,7 @@
         "context",
         "commands"
       ],
-      "installCount": 89
+      "installCount": 90
     },
     {
       "id": "context-autocompletion-words",
@@ -307,7 +307,7 @@
         "tools",
         "code-intelligence"
       ],
-      "installCount": 98
+      "installCount": 99
     },
     {
       "id": "plannotator",
@@ -322,7 +322,7 @@
         "commands",
         "workflows"
       ],
-      "installCount": 30
+      "installCount": 31
     },
     {
       "id": "programmatic-tool-calls",
@@ -334,7 +334,7 @@
       "capabilities": [
         "tools"
       ],
-      "installCount": 45
+      "installCount": 46
     },
     {
       "id": "ui-placement-demo",
@@ -442,7 +442,7 @@
       "capabilities": [
         "metrics"
       ],
-      "installCount": 119
+      "installCount": 120
     },
     {
       "id": "verifier",
@@ -455,7 +455,7 @@
         "workflows",
         "ui"
       ],
-      "installCount": 67
+      "installCount": 68
     },
     {
       "id": "bmad",
@@ -544,7 +544,7 @@
         "events",
         "ui"
       ],
-      "installCount": 45
+      "installCount": 46
     },
     {
       "id": "codegraph",
@@ -644,7 +644,7 @@
       "capabilities": [
         "ui"
       ],
-      "installCount": 179
+      "installCount": 181
     },
     {
       "id": "task-scheduler",
@@ -670,7 +670,7 @@
       "capabilities": [
         "ui"
       ],
-      "installCount": 155
+      "installCount": 156
     },
     {
       "id": "dbx",
@@ -695,7 +695,7 @@
         "ui",
         "commands"
       ],
-      "installCount": 23
+      "installCount": 25
     }
   ]
 }
