@@ -54,4 +54,16 @@ describe('Langfuse span processor configuration', () => {
 
     expect(LangfuseSpanProcessor).toHaveBeenCalledWith(expect.objectContaining({ baseUrl: 'https://langfuse.example.com' }));
   });
+
+  it.each([
+    ['https://cloud.langfuse.com/', 'https://cloud.langfuse.com'],
+    ['https://langfuse.example.com//', 'https://langfuse.example.com'],
+    ['https://example.com/langfuse/', 'https://example.com/langfuse'],
+  ])('removes trailing slashes from LANGFUSE_HOST %s', (host, baseUrl) => {
+    Object.assign(variables, { LANGFUSE_PUBLIC_KEY: 'public-key', LANGFUSE_SECRET_KEY: 'secret-key', LANGFUSE_HOST: host });
+
+    initializeLangfuseSpanProcessor();
+
+    expect(LangfuseSpanProcessor).toHaveBeenCalledWith(expect.objectContaining({ baseUrl }));
+  });
 });

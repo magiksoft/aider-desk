@@ -16,7 +16,9 @@ export const initializeLangfuseSpanProcessor = (): SpanProcessor | undefined => 
     return new LangfuseSpanProcessor({
       publicKey: langfusePublicKey.value,
       secretKey: langfuseSecretKey.value,
-      baseUrl: langfuseHost?.value || 'https://cloud.langfuse.com',
+      // @langfuse/otel appends /api/public/otel/v1/traces as-is; a trailing slash in LANGFUSE_HOST would give
+      // a "//" path that Langfuse Cloud redirects (308) and the OTLP exporter does not follow.
+      baseUrl: langfuseHost?.value.replace(/\/+$/, '') || 'https://cloud.langfuse.com',
     });
   }
 
