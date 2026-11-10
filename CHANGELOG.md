@@ -6,6 +6,7 @@
 - fixed amend commits including unselected staged changes instead of respecting the selected files
 - fixed misleading Git warnings when worktree directories were removed during file refresh
 - improved responsiveness when returning to the app by limiting Git refreshes to the active task and avoiding redundant requests
+- fixed task sidebar date grouping ignoring the year and merging older tasks into current-year day groups
 
 ## [0.91.0]
 

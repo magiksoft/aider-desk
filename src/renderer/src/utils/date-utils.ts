@@ -20,7 +20,9 @@ export const formatDateShort = (dateString: string): string => {
   const date = new Date(dateString);
   const month = shortMonthFormatter.format(date);
   const day = date.getDate();
-  return `${month} ${day}`;
+  const year = date.getFullYear();
+  const currentYear = new Date().getFullYear();
+  return year === currentYear ? `${month} ${day}` : `${month} ${day}, ${year}`;
 };
 
 export const getTaskDateGroup = (task: TaskData): string => {

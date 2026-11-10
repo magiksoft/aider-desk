@@ -213,5 +213,35 @@ describe('task-utils', () => {
       expect(taskItems.length).toBe(1);
       expect(taskItems[0].id).toBe('1');
     });
+
+    it('should separate tasks with the same month and day from different years into distinct groups in order', () => {
+      const currentYear = new Date().getFullYear();
+      const previousYear = currentYear - 1;
+      // Pick Jan 15 (or Feb 15 if today/yesterday happens to be around Jan 15)
+      const now = new Date();
+      const targetMonth = now.getMonth() === 0 && (now.getDate() === 15 || now.getDate() === 16) ? 1 : 0;
+
+      const thisYearSameDay = new Date(currentYear, targetMonth, 15, 12, 0, 0).toISOString();
+      const thisYearEarlier = new Date(currentYear, targetMonth, 10, 12, 0, 0).toISOString();
+      const lastYearSameDay = new Date(previousYear, targetMonth, 15, 12, 0, 0).toISOString();
+
+      const tasks: Partial<TaskData>[] = [
+        { id: 'this-year', name: 'This Year Task', updatedAt: thisYearSameDay, pinned: false, parentId: null },
+        { id: 'this-year-earlier', name: 'Earlier This Year Task', updatedAt: thisYearEarlier, pinned: false, parentId: null },
+        { id: 'last-year', name: 'Last Year Task', updatedAt: lastYearSameDay, pinned: false, parentId: null },
+      ];
+
+      const flattened = flattenTasksForVirtualization(tasks as TaskData[], new Set(), defaultStates, false, '');
+      const monthLabel = new Intl.DateTimeFormat(undefined, { month: 'short' }).format(new Date(currentYear, targetMonth, 15));
+
+      expect(flattened).toEqual([
+        { type: 'header', id: `date-${monthLabel} 15`, title: `${monthLabel} 15` },
+        { type: 'task', id: 'this-year', task: expect.any(Object), level: 0 },
+        { type: 'header', id: `date-${monthLabel} 10`, title: `${monthLabel} 10` },
+        { type: 'task', id: 'this-year-earlier', task: expect.any(Object), level: 0 },
+        { type: 'header', id: `date-${monthLabel} 15, ${previousYear}`, title: `${monthLabel} 15, ${previousYear}` },
+        { type: 'task', id: 'last-year', task: expect.any(Object), level: 0 },
+      ]);
+    });
   });
 });

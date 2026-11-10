@@ -36,11 +36,11 @@ const createMostRecentUpdatedAtResolver = (allTasks: TaskData[]): ((task: TaskDa
       return cache.get(task.id);
     }
     if (visiting.has(task.id)) {
-      return task.updatedAt;
+      return task.updatedAt || task.createdAt;
     }
 
     visiting.add(task.id);
-    let mostRecent = task.updatedAt;
+    let mostRecent = task.updatedAt || task.createdAt;
     for (const subtask of childrenByParentId.get(task.id) ?? []) {
       const subtaskMostRecent = resolve(subtask);
       if (subtaskMostRecent && (!mostRecent || subtaskMostRecent > mostRecent)) {
