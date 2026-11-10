@@ -35,7 +35,7 @@
         "tools",
         "ui"
       ],
-      "installCount": 48
+      "installCount": 49
     },
     {
       "id": "wakatime",
@@ -105,7 +105,7 @@
       "capabilities": [
         "modes"
       ],
-      "installCount": 128
+      "installCount": 129
     },
     {
       "id": "protected-paths",
@@ -176,7 +176,7 @@
         "commands",
         "tools"
       ],
-      "installCount": 111
+      "installCount": 113
     },
     {
       "id": "legacy-system-prompt",
@@ -233,7 +233,7 @@
         "linux",
         "macos"
       ],
-      "installCount": 37
+      "installCount": 38
     },
     {
       "id": "redact-secrets",
@@ -282,7 +282,7 @@
         "context",
         "commands"
       ],
-      "installCount": 90
+      "installCount": 91
     },
     {
       "id": "context-autocompletion-words",
@@ -400,7 +400,7 @@
         "linux",
         "macos"
       ],
-      "installCount": 47
+      "installCount": 48
     },
     {
       "id": "searxng-search",
@@ -413,7 +413,7 @@
         "tools",
         "search"
       ],
-      "installCount": 35
+      "installCount": 36
     },
     {
       "id": "seek",
@@ -442,7 +442,7 @@
       "capabilities": [
         "metrics"
       ],
-      "installCount": 120
+      "installCount": 122
     },
     {
       "id": "verifier",
@@ -557,7 +557,7 @@
         "tools",
         "search"
       ],
-      "installCount": 93
+      "installCount": 94
     },
     {
       "id": "kanban",
@@ -569,7 +569,7 @@
       "capabilities": [
         "ui"
       ],
-      "installCount": 55
+      "installCount": 56
     },
     {
       "id": "doom",
@@ -594,7 +594,7 @@
         "agents",
         "example"
       ],
-      "installCount": 77
+      "installCount": 79
     },
     {
       "id": "wigolo",
