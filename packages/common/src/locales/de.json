@@ -2354,6 +2354,7 @@
     "behindCommits_other": "{{count}} Commits zurück",
     "recentBranches": "Zuletzt",
     "checkoutBranch": "'{{branch}}' auschecken",
+    "copyBranchName": "Branch-Namen kopieren",
     "newBranchFrom": "Neuer Zweig von '{{branch}}'...",
     "createWorktreeFrom": "Worktree von '{{branch}}' erstellen",
     "mergeBranchInto": "'{{branch}}' in '{{current}}' zusammenführen",

@@ -2375,6 +2375,7 @@
     "behindCommits_other": "{{count}} commit in ritardo",
     "recentBranches": "Recenti",
     "checkoutBranch": "Checkout '{{branch}}'",
+    "copyBranchName": "Copia nome del ramo",
     "newBranchFrom": "Nuovo ramo da '{{branch}}'...",
     "createWorktreeFrom": "Crea una copia di lavoro da '{{branch}}'",
     "mergeBranchInto": "Unisci '{{branch}}' in '{{current}}'",

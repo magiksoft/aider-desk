@@ -4,6 +4,13 @@ import { BranchInfo } from '@common/types';
 
 import { GitBranchesPopup } from '../GitBranchesPopup';
 
+import { useApi } from '@/contexts/ApiContext';
+import { createMockApi } from '@/__tests__/mocks/api';
+
+vi.mock('@/contexts/ApiContext', () => ({
+  useApi: vi.fn(),
+}));
+
 vi.mock('react-i18next', () => ({
   useTranslation: () => ({ t: (key: string) => key }),
 }));
@@ -45,11 +52,25 @@ const pressKey = (key: string, target?: Node | null) => {
 const getSearchInput = () => screen.getByPlaceholderText('git.searchBranches');
 
 describe('GitBranchesPopup', () => {
+  const api = createMockApi();
+
   beforeEach(() => {
     vi.clearAllMocks();
+    vi.mocked(useApi).mockReturnValue(api);
   });
 
   const renderPopup = (props: Partial<PopupProps> = {}) => render(<GitBranchesPopup {...defaultProps} {...props} />);
+
+  it.each([false, true])('copies the full branch name in worktree mode %s', (worktreeMode) => {
+    renderPopup({ worktreeMode, branches: [makeBranch({ name: 'origin/feature-x', isRemote: true })] });
+    fireEvent.change(getSearchInput(), { target: { value: 'feature-x' } });
+    openSubmenuFor('feature-x');
+
+    fireEvent.click(screen.getByText('git.copyBranchName'));
+
+    expect(api.writeToClipboard).toHaveBeenCalledWith('origin/feature-x');
+    expect(screen.queryByText('git.copyBranchName')).not.toBeInTheDocument();
+  });
 
   describe('local mode', () => {
     it('shows checkout actions in the branch submenu', () => {

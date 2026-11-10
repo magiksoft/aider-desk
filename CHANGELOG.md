@@ -10,6 +10,7 @@
 - added OpenLLM provider as first-class provider
 - fixed missing German translations in main-process messages
 - fixed Langfuse tracing with trailing slashes in host URLs
+- added copy branch name action to Git branch menus
 
 ## [0.91.0]
 

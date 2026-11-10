@@ -2387,6 +2387,7 @@
     "behindCommits_other": "落后 {{count}} 个提交",
     "recentBranches": "最近",
     "checkoutBranch": "检出 '{{branch}}'",
+    "copyBranchName": "复制分支名称",
     "newBranchFrom": "从 '{{branch}}' 新建分支...",
     "createWorktreeFrom": "从 '{{branch}}' 创建工作树",
     "mergeBranchInto": "将 '{{branch}}' 合并到 '{{current}}'",

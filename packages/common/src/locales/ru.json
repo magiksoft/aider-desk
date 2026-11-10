@@ -2233,6 +2233,7 @@
     "behindCommits_other": "На {{count}} коммитов позади",
     "recentBranches": "Недавние",
     "checkoutBranch": "Переключиться на '{{branch}}'",
+    "copyBranchName": "Копировать имя ветки",
     "newBranchFrom": "Новая ветка от '{{branch}}'...",
     "createWorktreeFrom": "Создать рабочее дерево от '{{branch}}'",
     "mergeBranchInto": "Слить '{{branch}}' в '{{current}}'",

@@ -6,6 +6,9 @@ import { IoGitBranch } from 'react-icons/io5';
 import { clsx } from 'clsx';
 import { BranchInfo } from '@common/types';
 
+import { useApi } from '@/contexts/ApiContext';
+import { showInfoNotification } from '@/utils/notifications';
+
 type Props = {
   branches: BranchInfo[];
   currentBranch: string;
@@ -93,6 +96,7 @@ export const GitBranchesPopup = ({
   onRequestClose,
 }: Props) => {
   const { t } = useTranslation();
+  const api = useApi();
   const [filter, setFilter] = useState('');
   const [folderOverrides, setFolderOverrides] = useState<Map<string, boolean>>(new Map());
   const [openSubmenu, setOpenSubmenu] = useState<{ branch: BranchInfo; top: number; left: number } | null>(null);
@@ -187,6 +191,16 @@ export const GitBranchesPopup = ({
       const isCurrent = !branch.isRemote && branch.name === currentBranch;
       const canDelete = !branch.isRemote && !isCurrent && !branch.hasWorktree;
       const canUpdate = !branch.isRemote && Boolean(branch.upstream) && Boolean(onUpdateBranch);
+      const copyBranchNameItem = {
+        key: 'copy-branch-name',
+        label: t('git.copyBranchName'),
+        disabled: false,
+        action: async () => {
+          onRequestClose?.();
+          await api.writeToClipboard(branch.name);
+          showInfoNotification(t('messages.copied'));
+        },
+      };
 
       if (worktreeMode) {
         return [
@@ -216,6 +230,7 @@ export const GitBranchesPopup = ({
                 },
               ]
             : []),
+          copyBranchNameItem,
         ];
       }
 
@@ -274,10 +289,12 @@ export const GitBranchesPopup = ({
               },
             ]
           : []),
+        copyBranchNameItem,
       ];
     },
     [
       t,
+      api,
       currentBranch,
       worktreeMode,
       onSelect,
@@ -288,6 +305,7 @@ export const GitBranchesPopup = ({
       onMergeIntoCurrent,
       onRebaseWorktreeOnto,
       onDelete,
+      onRequestClose,
     ],
   );
 

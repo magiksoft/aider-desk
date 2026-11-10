@@ -2379,6 +2379,7 @@
     "behindCommits_other": "{{count}} commits behind",
     "recentBranches": "Recent",
     "checkoutBranch": "Checkout '{{branch}}'",
+    "copyBranchName": "Copy branch name",
     "newBranchFrom": "New branch from '{{branch}}'...",
     "createWorktreeFrom": "Create worktree from '{{branch}}'",
     "mergeBranchInto": "Merge '{{branch}}' into '{{current}}'",
