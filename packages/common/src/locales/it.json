@@ -555,6 +555,12 @@
     "getApiKeyLink": "Ottieni chiave API LLM",
     "apiKey": "Chiave API"
   },
+  "openLlm": {
+    "docsLink": "Guida alla configurazione di OpenLLM",
+    "baseUrl": "URL di base",
+    "apiKey": "Chiave API",
+    "apiKeyHint": "Lascia vuota la chiave API per usare il daemon locale con accesso effettuato. Per il cloud usa https://www.openllm.sh/v1 con una chiave API."
+  },
   "zaiPlan": {
     "getApiKeyLink": "Ottieni chiave API Z.AI",
     "apiKey": "Chiave API",
@@ -612,6 +618,7 @@
     "openai": "OpenAI",
     "opencode": "OpenCode ZEN",
     "opencode-go": "OpenCode Go",
+    "openllm": "OpenLLM",
     "openai-compatible": "Compatibile con OpenAI",
     "openrouter": "OpenRouter",
     "requesty": "Requesty",

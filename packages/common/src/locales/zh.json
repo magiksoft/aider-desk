@@ -509,6 +509,12 @@
     "getApiKeyLink": "获取 LLM API 密钥",
     "apiKey": "API 密钥"
   },
+  "openLlm": {
+    "docsLink": "OpenLLM 设置指南",
+    "baseUrl": "基础 URL",
+    "apiKey": "API 密钥",
+    "apiKeyHint": "将 API 密钥留空即可使用已登录的本地守护进程。若使用云端，请将 https://www.openllm.sh/v1 与 API 密钥搭配使用。"
+  },
   "gemini": {
     "getApiKeyLink": "获取 Gemini API 密钥",
     "apiKey": "API 密钥",
@@ -613,6 +619,7 @@
     "openai": "OpenAI",
     "opencode": "OpenCode ZEN",
     "opencode-go": "OpenCode Go",
+    "openllm": "OpenLLM",
     "openai-compatible": "OpenAI Compatible",
     "openrouter": "OpenRouter",
     "requesty": "Requesty",

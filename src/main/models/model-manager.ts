@@ -44,6 +44,7 @@ import { openaiProviderStrategy } from './providers/openai';
 import { openaiCompatibleProviderStrategy } from './providers/openai-compatible';
 import { opencodeProviderStrategy } from './providers/opencode';
 import { opencodeGoProviderStrategy } from './providers/opencode-go';
+import { openLlmProviderStrategy } from './providers/openllm';
 import { openrouterProviderStrategy } from './providers/openrouter';
 import { requestyProviderStrategy } from './providers/requesty';
 import { syntheticProviderStrategy } from './providers/synthetic';
@@ -130,6 +131,7 @@ export class ModelManager {
     'openai-compatible': openaiCompatibleProviderStrategy,
     opencode: opencodeProviderStrategy,
     'opencode-go': opencodeGoProviderStrategy,
+    openllm: openLlmProviderStrategy,
     openrouter: openrouterProviderStrategy,
     requesty: requestyProviderStrategy,
     synthetic: syntheticProviderStrategy,

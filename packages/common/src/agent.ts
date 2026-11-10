@@ -57,6 +57,7 @@ export type LlmProviderName =
   | 'openai-compatible'
   | 'opencode'
   | 'opencode-go'
+  | 'openllm'
   | 'openrouter'
   | 'requesty'
   | 'synthetic'
@@ -108,6 +109,7 @@ export const AVAILABLE_PROVIDERS: LlmProviderName[] = [
   'openai-compatible',
   'opencode',
   'opencode-go',
+  'openllm',
   'openrouter',
   'requesty',
   'synthetic',
@@ -354,6 +356,13 @@ export interface LlmApiProvider extends LlmProviderBase {
 }
 export const isLlmApiProvider = (provider: LlmProviderBase): provider is LlmApiProvider => provider.name === 'llmapi';
 
+export interface OpenLlmProvider extends LlmProviderBase {
+  name: 'openllm';
+  baseUrl: string;
+  apiKey: string;
+}
+export const isOpenLlmProvider = (provider: LlmProviderBase): provider is OpenLlmProvider => provider.name === 'openllm';
+
 export interface ExtensionLlmProvider extends LlmProviderBase {
   [key: string]: unknown;
 }
@@ -387,6 +396,7 @@ export type LlmProvider =
   | MistralProvider
   | NeuralwattProvider
   | LlmApiProvider
+  | OpenLlmProvider
   | ExtensionLlmProvider;
 
 export const DEFAULT_PROVIDER_MODELS: Partial<Record<LlmProviderName, string>> = {
@@ -821,6 +831,14 @@ export const getDefaultProviderParams = <T extends LlmProvider>(providerName: Ll
         name: 'opencode-go',
         apiKey: '',
       } satisfies OpenCodeGoProvider;
+      break;
+    case 'openllm':
+      provider = {
+        name: 'openllm',
+        // Empty so OPENLLM_BASE_URL or the local default (http://127.0.0.1:8787/v1) is resolved at runtime
+        baseUrl: '',
+        apiKey: '',
+      } satisfies OpenLlmProvider;
       break;
     case 'lmstudio':
       provider = {

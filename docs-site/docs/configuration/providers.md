@@ -63,6 +63,7 @@ Absent `modalities` remains `undefined` in the effective model and skips attachm
 - [OpenAI Compatible](#openai-compatible)
 - [OpenCode](#opencode)
 - [OpenCode Go](#opencode-go)
+- [OpenLLM](#openllm)
 - [OpenRouter](#openrouter)
 - [Requesty](#requesty)
 - [Synthetic](#synthetic)
@@ -595,6 +596,38 @@ OpenCode Go provides access to OpenCode's Go plan through an OpenAI-compatible A
 
 ---
 
+## OpenLLM
+
+OpenLLM routes your API keys, subscription accounts and local models through one endpoint. It runs locally first and extends to the cloud.
+
+### Configuration Parameters
+
+- **Base URL**: Your OpenLLM endpoint
+  - Default: `http://127.0.0.1:8787/v1` (the local daemon)
+  - Cloud: `https://www.openllm.sh/v1`
+  - Environment variable: `OPENLLM_BASE_URL`
+  - Precedence: the Base URL set on the profile, then `OPENLLM_BASE_URL`, then the local default. This applies to model discovery, Agent mode and Aider mode.
+- **API Key**: Optional for the local daemon, which uses your saved login. Required for the cloud origin.
+  - Environment variable: `OPENLLM_API_KEY`
+
+### Setup
+
+1. Install OpenLLM with `curl -fsSL https://www.openllm.sh/install | bash`
+2. Sign in with `openllm login`
+3. Add the OpenLLM provider in the Model Library
+4. Models load from the daemon: the built-in chains `ultra`, `plus` and `lite` when available, plus your provider models
+5. For the cloud, set the Base URL to `https://www.openllm.sh/v1` and enter an API key, or set the `OPENLLM_API_KEY` and `OPENLLM_BASE_URL` environment variables (a profile is then added automatically)
+
+### Important Notes
+
+- **Model Discovery**: Models are loaded from the `/models` endpoint, and only chat-capable models are listed
+- **Model Metadata**: Context and output limits and vision support come from OpenLLM's model metadata
+- **Cost Tracking**: OpenLLM does not report per-token pricing, so usage cost shows as $0 unless you set overrides
+- **Aider Prefix**: Uses `openai/` prefix for Aider mode
+- **Documentation**: See [docs.openllm.sh](https://docs.openllm.sh)
+
+---
+
 ## Ollama
 
 Ollama allows you to run open-source models locally on your machine.
@@ -879,6 +912,7 @@ AiderDesk now uses a unified model prefix system across all modes (Agent, Code, 
 | OpenAI Compatible | `openai-compatible/` |
 | OpenCode ZEN | `opencode/` |
 | OpenCode Go | `openai/` |
+| OpenLLM | `openai/` |
 | OpenRouter | `openrouter/` |
 | Requesty | `requesty/` |
 | Synthetic | `openai/` |

@@ -48,6 +48,7 @@ const PROVIDER_OVERRIDES_MAP: Partial<Record<LlmProviderName, ComponentType<Prov
   deepseek: DeepseekModelOverrides,
   groq: DefaultModelOverrides,
   llmapi: DefaultModelOverrides,
+  openllm: DefaultModelOverrides,
   lmstudio: DefaultModelOverrides,
   minimax: DefaultModelOverrides,
   mistral: DefaultModelOverrides,

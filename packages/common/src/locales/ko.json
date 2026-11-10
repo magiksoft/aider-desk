@@ -559,6 +559,12 @@
     "getApiKeyLink": "LLM API 키 받기",
     "apiKey": "API 키"
   },
+  "openLlm": {
+    "docsLink": "OpenLLM 설정 가이드",
+    "baseUrl": "기본 URL",
+    "apiKey": "API 키",
+    "apiKeyHint": "API 키를 비워 두면 로그인된 로컬 데몬을 사용합니다. 클라우드를 사용하려면 API 키와 함께 https://www.openllm.sh/v1 을 사용하세요."
+  },
   "zaiPlan": {
     "getApiKeyLink": "Z.AI API 키 받기",
     "apiKey": "API 키",
@@ -616,6 +622,7 @@
     "openai": "OpenAI",
     "opencode": "OpenCode ZEN",
     "opencode-go": "OpenCode Go",
+    "openllm": "OpenLLM",
     "openai-compatible": "OpenAI 호환",
     "openrouter": "OpenRouter",
     "requesty": "Requesty",
