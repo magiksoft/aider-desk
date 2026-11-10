@@ -7,6 +7,7 @@
 - fixed misleading Git warnings when worktree directories were removed during file refresh
 - improved responsiveness when returning to the app by limiting Git refreshes to the active task and avoiding redundant requests
 - fixed task sidebar date grouping ignoring the year and merging older tasks into current-year day groups
+- added OpenLLM provider as first-class provider
 
 ## [0.91.0]
 
@@ -26,7 +27,6 @@
 - added Smart Checkout to carry uncommitted changes across branches with conflict resolution and recovery backups
 - added support for file links in messages with desktop opening and browser downloads or path copying
 - added project-level Aider settings overrides and Main, Weak, and Architect model defaults with automatic selection and inheritance
-- added OpenLLM provider
 
 ## [0.90.0]
 
