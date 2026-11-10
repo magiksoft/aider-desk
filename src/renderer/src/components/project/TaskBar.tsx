@@ -33,6 +33,7 @@ export type TaskBarRef = {
 type Props = {
   baseDir: string;
   task: TaskData;
+  isActive?: boolean;
   modelsData: ModelsData | null;
   mode: Mode;
   activeAgentProfile: AgentProfile | null;
@@ -49,6 +50,7 @@ export const TaskBar = forwardRef<TaskBarRef, Props>(
     {
       baseDir,
       task,
+      isActive = true,
       modelsData,
       mode,
       activeAgentProfile,
@@ -644,6 +646,7 @@ export const TaskBar = forwardRef<TaskBarRef, Props>(
             <ExtensionComponentWrapper placement="task-top-bar-right" />
             <TaskGitControls
               task={task}
+              isActive={isActive}
               onMerge={handleMergeNormal}
               onSquash={handleMergeSquash}
               onOnlyUncommitted={handleOnlyUncommitted}

@@ -34,6 +34,7 @@ enum WorktreeSwitchOption {
 
 type Props = {
   task: TaskData;
+  isActive?: boolean;
   onMerge: (targetBranch?: string) => void;
   onSquash: (targetBranch?: string, commitMessage?: string) => void;
   onOnlyUncommitted: () => void;
@@ -48,6 +49,7 @@ type Props = {
 
 export const TaskGitControls = ({
   task,
+  isActive = true,
   onMerge,
   onSquash,
   onOnlyUncommitted,
@@ -369,6 +371,7 @@ export const TaskGitControls = ({
               <GitBranchesButton
                 baseDir={task.baseDir}
                 taskId={task.id}
+                isActive={isActive}
                 worktreePath={task.workingMode === 'worktree' ? task.worktree?.path : undefined}
                 status={taskGitStatus}
                 taskName={task.name}

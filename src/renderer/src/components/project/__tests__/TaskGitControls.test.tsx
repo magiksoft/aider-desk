@@ -1,5 +1,5 @@
-import { fireEvent, screen, waitFor } from '@testing-library/react';
-import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { act, fireEvent, screen, waitFor } from '@testing-library/react';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { TaskData } from '@common/types';
 
 import { TaskGitControls } from '../TaskGitControls';
@@ -46,8 +46,13 @@ const props = {
 describe('TaskGitControls worktree switching', () => {
   let api: ReturnType<typeof createMockApi>;
 
+  afterEach(() => {
+    vi.restoreAllMocks();
+  });
+
   beforeEach(() => {
     vi.clearAllMocks();
+    vi.spyOn(document, 'hasFocus').mockReturnValue(true);
     api = createMockApi({
       isGitRepository: vi.fn().mockResolvedValue(true),
       listGitBranches: vi.fn().mockResolvedValue([
@@ -58,6 +63,19 @@ describe('TaskGitControls worktree switching', () => {
       getLocalUncommittedFiles: vi.fn().mockResolvedValue({ count: 1, files: ['changed.ts'] }),
     });
     vi.mocked(useApi).mockReturnValue(api);
+  });
+
+  it('defers branch and sync loading until its task becomes active', async () => {
+    const { rerender } = render(<TaskGitControls {...props} isActive={false} />);
+    await act(async () => {});
+    expect(api.listGitBranches).not.toHaveBeenCalled();
+    expect(api.getSyncCommits).not.toHaveBeenCalled();
+
+    rerender(<TaskGitControls {...props} isActive />);
+    await waitFor(() => {
+      expect(api.listGitBranches).toHaveBeenCalled();
+      expect(api.getSyncCommits).toHaveBeenCalled();
+    });
   });
 
   const openBranches = async () => {

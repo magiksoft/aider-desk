@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { FaArrowsRotate, FaBan, FaCodeMerge, FaCompress, FaDownload, FaFileLines, FaPlay, FaPlus, FaRobot, FaUpload } from 'react-icons/fa6';
 import { TbDeviceImacDown } from 'react-icons/tb';
 import { FaPencilAlt } from 'react-icons/fa';
@@ -62,6 +62,7 @@ const truncateBranchName = (name: string) => {
 type Props = {
   baseDir: string;
   taskId: string;
+  isActive?: boolean;
   worktreePath?: string;
   status?: TaskGitStatus | null;
   taskName?: string;
@@ -85,6 +86,7 @@ type Props = {
 export const GitBranchesButton = ({
   baseDir,
   taskId,
+  isActive = true,
   worktreePath,
   status,
   taskName,
@@ -155,10 +157,27 @@ export const GitBranchesButton = ({
   useClickOutside(dropdownRef, () => setIsOpen(false), isOpen);
 
   const statusCurrentBranch = status?.currentBranch;
-  const currentBranch = branches.find((b) => b.isCurrent)?.name || statusCurrentBranch || '';
-  const hasUpstream = Boolean(branches.find((b) => b.isCurrent)?.upstream);
   const isWorktree = Boolean(worktreePath);
   const worktreeBaseBranch = isWorktree ? status?.worktree?.baseBranch || status?.worktree?.targetBranch : undefined;
+  const refreshState = useMemo(
+    () => ({
+      currentBranch: statusCurrentBranch,
+      hasWorktree: Boolean(worktreePath),
+      queryBranches: () => api.listGitBranches(baseDir, taskId, true),
+      queryMainBranch: () => api.listBranches(baseDir),
+      querySyncCommits: () => api.getSyncCommits(baseDir, taskId, worktreeBaseBranch),
+      valid: true,
+      branchesLoaded: false,
+      mainBranchLoaded: false,
+      lastSyncAt: null as number | null,
+      branchesRequest: null as Promise<void> | null,
+      mainBranchRequest: null as Promise<void> | null,
+      syncRequest: null as Promise<void> | null,
+    }),
+    [api, baseDir, taskId, worktreePath, worktreeBaseBranch, statusCurrentBranch],
+  );
+  const currentBranch = branches.find((b) => b.isCurrent)?.name || refreshState.currentBranch || '';
+  const hasUpstream = Boolean(branches.find((b) => b.isCurrent)?.upstream);
   const baseBranchInfo = branches.find((branch) => branch.name === worktreeBaseBranch);
   const baseBranchUpstream = baseBranchInfo?.isRemote
     ? baseBranchInfo.name
@@ -173,96 +192,185 @@ export const GitBranchesButton = ({
   const [mainBranchName, setMainBranchName] = useState<string | null>(null);
   const rebaseBranch = status?.worktree?.baseBranch || mainBranchName;
 
-  const loadBranches = useCallback(async () => {
-    setLoading(true);
-    try {
-      const list = await api.listGitBranches(baseDir, taskId, true);
-      setBranches(list);
-    } catch (error) {
-      showErrorNotification(error instanceof Error ? error.message : String(error));
-      setBranches([]);
-    } finally {
-      setLoading(false);
-    }
-  }, [api, baseDir, taskId]);
-
-  const loadMainBranch = useCallback(async () => {
-    if (!worktreePath) {
-      return;
-    }
-
-    try {
-      const list = await api.listBranches(baseDir);
-      setMainBranchName(list.find((b) => b.isCurrent)?.name || null);
-    } catch {
-      setMainBranchName(null);
-    }
-  }, [api, baseDir, worktreePath]);
-
-  const loadSyncCommits = useCallback(async () => {
-    try {
-      const result = await api.getSyncCommits(baseDir, taskId, worktreeBaseBranch);
-      setSyncCommits(result);
-    } catch {
-      setSyncCommits({ outgoing: { count: 0, commits: [] }, incoming: { count: 0, commits: [] } });
-    }
-  }, [api, baseDir, taskId, worktreeBaseBranch]);
-
   useEffect(() => {
-    void loadBranches();
-  }, [loadBranches]);
+    refreshState.valid = true;
+    return () => {
+      refreshState.valid = false;
+    };
+  }, [refreshState]);
 
-  useEffect(() => {
-    if (statusCurrentBranch) {
-      void loadBranches();
+  const loadBranches = useCallback(
+    (force = false): Promise<void> => {
+      if (refreshState.branchesRequest) {
+        return force
+          ? refreshState.branchesRequest.then(() => {
+              if (refreshState.valid) {
+                return loadBranches();
+              }
+              return undefined;
+            })
+          : refreshState.branchesRequest;
+      }
+
+      setLoading(true);
+      refreshState.branchesRequest = (async () => {
+        try {
+          const list = await refreshState.queryBranches();
+          if (refreshState.valid) {
+            setBranches(list);
+            refreshState.branchesLoaded = true;
+          }
+        } catch (error) {
+          if (refreshState.valid) {
+            showErrorNotification(error instanceof Error ? error.message : String(error));
+            setBranches([]);
+          }
+        } finally {
+          refreshState.branchesRequest = null;
+          if (refreshState.valid) {
+            setLoading(false);
+          }
+        }
+      })();
+      return refreshState.branchesRequest;
+    },
+    [refreshState],
+  );
+
+  const loadMainBranch = useCallback(() => {
+    if (!refreshState.hasWorktree) {
+      return Promise.resolve();
     }
-  }, [statusCurrentBranch, loadBranches]);
+    if (refreshState.mainBranchRequest) {
+      return refreshState.mainBranchRequest;
+    }
 
-  useEffect(() => {
-    void loadMainBranch();
-  }, [loadMainBranch]);
+    refreshState.mainBranchRequest = (async () => {
+      try {
+        const list = await refreshState.queryMainBranch();
+        if (refreshState.valid) {
+          setMainBranchName(list.find((b) => b.isCurrent)?.name || null);
+          refreshState.mainBranchLoaded = true;
+        }
+      } catch {
+        if (refreshState.valid) {
+          setMainBranchName(null);
+        }
+      } finally {
+        refreshState.mainBranchRequest = null;
+      }
+    })();
+    return refreshState.mainBranchRequest;
+  }, [refreshState]);
 
-  useEffect(() => {
-    void loadSyncCommits();
-  }, [loadSyncCommits]);
+  const loadSyncCommits = useCallback(
+    (force = true): Promise<void> => {
+      if (refreshState.syncRequest) {
+        return force
+          ? refreshState.syncRequest.then(() => {
+              if (refreshState.valid) {
+                return loadSyncCommits();
+              }
+              return undefined;
+            })
+          : refreshState.syncRequest;
+      }
+      if (!force && refreshState.lastSyncAt !== null && Date.now() - refreshState.lastSyncAt < GIT_STATE_REFRESH_INTERVAL_MS) {
+        return Promise.resolve();
+      }
+
+      refreshState.syncRequest = (async () => {
+        try {
+          const result = await refreshState.querySyncCommits();
+          if (refreshState.valid) {
+            setSyncCommits(result);
+            refreshState.lastSyncAt = Date.now();
+          }
+        } catch {
+          if (refreshState.valid) {
+            setSyncCommits({ outgoing: { count: 0, commits: [] }, incoming: { count: 0, commits: [] } });
+          }
+        } finally {
+          refreshState.syncRequest = null;
+        }
+      })();
+      return refreshState.syncRequest;
+    },
+    [refreshState],
+  );
 
   useEffect(() => {
     if (prevRebaseInProgress.current && !rebaseInProgress) {
-      void loadBranches();
-      void loadSyncCommits();
-    }
-    prevRebaseInProgress.current = rebaseInProgress;
-  }, [rebaseInProgress, loadBranches, loadSyncCommits]);
-
-  useEffect(() => {
-    if (isOpen) {
-      void loadBranches();
-      void loadMainBranch();
-      void loadSyncCommits();
-    }
-  }, [isOpen, loadBranches, loadMainBranch, loadSyncCommits]);
-
-  useEffect(() => {
-    const refreshOnVisible = () => {
-      if (document.visibilityState === 'visible') {
+      refreshState.branchesLoaded = false;
+      refreshState.lastSyncAt = null;
+      if (isActive && document.visibilityState === 'visible' && document.hasFocus()) {
         void loadBranches();
         void loadSyncCommits();
       }
+    }
+    prevRebaseInProgress.current = rebaseInProgress;
+  }, [isActive, rebaseInProgress, loadBranches, loadSyncCommits, refreshState]);
+
+  useEffect(() => {
+    if (isActive && isOpen) {
+      void loadBranches();
+      void loadMainBranch();
+      void loadSyncCommits(false);
+    }
+  }, [isActive, isOpen, loadBranches, loadMainBranch, loadSyncCommits]);
+
+  useEffect(() => {
+    if (!isActive) {
+      return;
+    }
+
+    let timer: ReturnType<typeof setTimeout> | undefined;
+    let generation = 0;
+    const pause = () => {
+      generation += 1;
+      clearTimeout(timer);
+      timer = undefined;
+    };
+    const resume = () => {
+      pause();
+      if (document.visibilityState !== 'visible' || !document.hasFocus()) {
+        return;
+      }
+
+      if (!refreshState.branchesLoaded) {
+        void loadBranches();
+      }
+      if (!refreshState.mainBranchLoaded) {
+        void loadMainBranch();
+      }
+
+      const currentGeneration = generation;
+      const poll = async () => {
+        if (currentGeneration !== generation || document.visibilityState !== 'visible' || !document.hasFocus()) {
+          return;
+        }
+        await loadSyncCommits(false);
+        if (currentGeneration !== generation) {
+          return;
+        }
+        const age = refreshState.lastSyncAt === null ? 0 : Date.now() - refreshState.lastSyncAt;
+        timer = setTimeout(poll, Math.max(1, GIT_STATE_REFRESH_INTERVAL_MS - age));
+      };
+      void poll();
     };
 
-    const interval = setInterval(() => {
-      void loadSyncCommits();
-    }, GIT_STATE_REFRESH_INTERVAL_MS);
-
-    window.addEventListener('focus', refreshOnVisible);
-    document.addEventListener('visibilitychange', refreshOnVisible);
+    resume();
+    window.addEventListener('focus', resume);
+    window.addEventListener('blur', pause);
+    document.addEventListener('visibilitychange', resume);
 
     return () => {
-      clearInterval(interval);
-      window.removeEventListener('focus', refreshOnVisible);
-      document.removeEventListener('visibilitychange', refreshOnVisible);
+      pause();
+      window.removeEventListener('focus', resume);
+      window.removeEventListener('blur', pause);
+      document.removeEventListener('visibilitychange', resume);
     };
-  }, [loadBranches, loadSyncCommits]);
+  }, [isActive, refreshState, loadBranches, loadMainBranch, loadSyncCommits]);
 
   const handleError = useCallback((error: unknown) => {
     // The error is already logged to the task chat by the backend with a 'Resolve with AI' action
@@ -305,7 +413,7 @@ export const GitBranchesButton = ({
       trackRecentBranch(trimmedName);
       setShowNewBranchInput(false);
       setNewBranchName('');
-      await loadBranches();
+      await loadBranches(true);
       await loadSyncCommits();
     } catch (error) {
       handleError(error);
@@ -334,7 +442,7 @@ export const GitBranchesButton = ({
       trackRecentBranch(trimmedName);
       setBranchToBase(null);
       setNewBranchFromName('');
-      await loadBranches();
+      await loadBranches(true);
       await loadSyncCommits();
     } catch (error) {
       handleError(error);
@@ -389,11 +497,11 @@ export const GitBranchesButton = ({
         showInfoNotification(t('git.checkedOutBranch', { branch: branch.name }));
       }
       trackRecentBranch(branch.name);
-      await loadBranches();
+      await loadBranches(true);
       await loadSyncCommits();
     } catch (error) {
       handleError(error);
-      await loadBranches();
+      await loadBranches(true);
       await loadSyncCommits();
     } finally {
       checkoutInProgress.current = false;
@@ -418,7 +526,7 @@ export const GitBranchesButton = ({
       } else {
         showInfoNotification(t('git.mergedIntoCurrent', { branch: branch.name }));
       }
-      await loadBranches();
+      await loadBranches(true);
       await loadSyncCommits();
     } catch (error) {
       handleError(error);
@@ -433,7 +541,7 @@ export const GitBranchesButton = ({
       } else {
         showInfoNotification(t('git.rebasedOnto', { branch: branch.name }));
       }
-      await loadBranches();
+      await loadBranches(true);
       await loadSyncCommits();
     } catch (error) {
       handleError(error);
@@ -470,7 +578,7 @@ export const GitBranchesButton = ({
       await api.deleteGitBranch(baseDir, taskId, branchToDelete.name, forceDelete);
       showInfoNotification(t('git.branchDeleted', { branch: branchToDelete.name }));
       setBranchToDelete(null);
-      await loadBranches();
+      await loadBranches(true);
       await loadSyncCommits();
     } catch (error) {
       setBranchToDelete(null);
@@ -517,7 +625,7 @@ export const GitBranchesButton = ({
     try {
       await api.updateGitBranch(baseDir, taskId, branch.name);
       showInfoNotification(t('git.branchUpdated', { branch: branch.name }));
-      await loadBranches();
+      await loadBranches(true);
       await loadSyncCommits();
     } catch (error) {
       handleError(error);

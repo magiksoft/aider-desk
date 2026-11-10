@@ -831,6 +831,7 @@ export const TaskView = forwardRef<TaskViewRef, Props>(
             ref={projectTopBarRef}
             baseDir={projectDir}
             task={task}
+            isActive={isActive && isProjectActive}
             modelsData={aiderModelsData}
             mode={currentMode}
             activeAgentProfile={activeAgentProfile}
