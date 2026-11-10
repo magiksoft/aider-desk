@@ -49,6 +49,7 @@ export const SidebarGroupTree = ({
   // useTree keeps a mutable instance whose results (tree.getItems(), item.isExpanded())
   // React Compiler cannot track — memoizing this component defers expand/collapse
   // re-commits until an unrelated prop change busts the cache.
+  // eslint-disable-next-line react-compiler/react-compiler
   'use no memo';
   const { t } = useTranslation();
   const { treeData, files } = groupTree;
