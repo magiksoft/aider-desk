@@ -8,6 +8,8 @@
 - improved responsiveness when returning to the app by limiting Git refreshes to the active task and avoiding redundant requests
 - fixed task sidebar date grouping ignoring the year and merging older tasks into current-year day groups
 - added OpenLLM provider as first-class provider
+- fixed missing German translations in main-process messages
+- fixed Langfuse tracing with trailing slashes in host URLs
 
 ## [0.91.0]
 
