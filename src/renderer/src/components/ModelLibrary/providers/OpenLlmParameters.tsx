@@ -17,6 +17,7 @@ export const OpenLlmParameters = ({ provider, onChange }: Props) => {
   const apiKey = provider.apiKey || '';
 
   const { environmentVariable: openLlmApiKeyEnv } = useEffectiveEnvironmentVariable('OPENLLM_API_KEY');
+  const { environmentVariable: openLlmBaseUrlEnv } = useEffectiveEnvironmentVariable('OPENLLM_BASE_URL');
 
   const handleBaseUrlChange = (e: ChangeEvent<HTMLInputElement>) => {
     onChange({ ...provider, baseUrl: e.target.value });
@@ -33,7 +34,13 @@ export const OpenLlmParameters = ({ provider, onChange }: Props) => {
           {t('openLlm.docsLink')}
         </a>
       </div>
-      <Input label={t('openLlm.baseUrl')} type="text" value={baseUrl} onChange={handleBaseUrlChange} placeholder="http://127.0.0.1:8787/v1" />
+      <Input
+        label={t('openLlm.baseUrl')}
+        type="text"
+        value={baseUrl}
+        onChange={handleBaseUrlChange}
+        placeholder={openLlmBaseUrlEnv?.value || 'http://127.0.0.1:8787/v1'}
+      />
       <Input
         label={t('openLlm.apiKey')}
         type="password"

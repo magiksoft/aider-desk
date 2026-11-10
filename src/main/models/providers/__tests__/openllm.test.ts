@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { OpenLlmProvider } from '@common/agent';
+import { getDefaultProviderParams, OpenLlmProvider } from '@common/agent';
 import { Model, ModelModality, ProviderProfile, SettingsData } from '@common/types';
 
 const mockGetEffectiveEnvironmentVariable = vi.fn();
@@ -45,7 +45,12 @@ const mockFetchOk = (payload: unknown) => {
   return fetchMock;
 };
 
+const mockEnv = (env: Record<string, string>) => {
+  mockGetEffectiveEnvironmentVariable.mockImplementation((key: string) => (env[key] !== undefined ? { value: env[key], source: 'process.env' } : undefined));
+};
+
 beforeEach(() => {
+  mockGetEffectiveEnvironmentVariable.mockReset();
   mockGetEffectiveEnvironmentVariable.mockReturnValue(undefined);
 });
 
@@ -141,10 +146,7 @@ describe('loadOpenLlmModels', () => {
   });
 
   it('falls back to OPENLLM_API_KEY and the default base URL, trimming trailing slashes', async () => {
-    mockGetEffectiveEnvironmentVariable.mockReturnValue({
-      value: 'sk-llm-env',
-      source: 'process.env',
-    });
+    mockEnv({ OPENLLM_API_KEY: 'sk-llm-env' });
     const fetchMock = mockFetchOk({ data: [] });
 
     await loadOpenLlmModels(createProfile({ baseUrl: 'https://www.openllm.sh/v1//' }), settings);
@@ -194,7 +196,118 @@ describe('loadOpenLlmModels', () => {
   });
 });
 
+describe('loadOpenLlmModels error handling', () => {
+  it('keeps the original error when a reachable daemon returns malformed JSON', async () => {
+    global.fetch = vi.fn().mockResolvedValue({
+      ok: true,
+      json: async () => {
+        throw new SyntaxError('Unexpected token < in JSON at position 0');
+      },
+    }) as unknown as typeof fetch;
+
+    const result = await loadOpenLlmModels(createProfile(), settings);
+
+    expect(result).toEqual({
+      models: [],
+      success: false,
+      error: 'Unexpected token < in JSON at position 0',
+    });
+    expect(result.error).not.toContain('openllm start');
+  });
+
+  it('keeps the original error when the payload cannot be processed', async () => {
+    mockFetchOk({ data: [null] });
+
+    const result = await loadOpenLlmModels(createProfile(), settings);
+
+    expect(result.success).toBe(false);
+    expect(result.error).toBeTruthy();
+    expect(result.error).not.toContain('openllm start');
+  });
+
+  it('suggests starting the daemon for ECONNREFUSED on localhost', async () => {
+    const error = new TypeError('fetch failed');
+    (error as { cause?: unknown }).cause = Object.assign(new Error('connect ECONNREFUSED 127.0.0.1:8787'), { code: 'ECONNREFUSED' });
+    global.fetch = vi.fn().mockRejectedValue(error) as unknown as typeof fetch;
+
+    const result = await loadOpenLlmModels(createProfile(), settings);
+
+    expect(result.error).toContain('openllm start');
+  });
+});
+
+describe('OPENLLM_BASE_URL', () => {
+  it('uses OPENLLM_BASE_URL for model discovery when the profile has no URL', async () => {
+    mockEnv({ OPENLLM_API_KEY: 'sk-llm-env', OPENLLM_BASE_URL: 'https://www.openllm.sh/v1/' });
+    const fetchMock = mockFetchOk({ data: [] });
+
+    await loadOpenLlmModels(createProfile({ baseUrl: '' }), settings);
+
+    expect(mockGetEffectiveEnvironmentVariable).toHaveBeenCalledWith('OPENLLM_BASE_URL', settings, undefined);
+    expect(fetchMock).toHaveBeenCalledWith('https://www.openllm.sh/v1/models', { headers: { Authorization: 'Bearer sk-llm-env' } });
+  });
+
+  it('prefers an explicit profile URL over OPENLLM_BASE_URL', async () => {
+    mockEnv({ OPENLLM_BASE_URL: 'https://www.openllm.sh/v1' });
+    const fetchMock = mockFetchOk({ data: [] });
+
+    await loadOpenLlmModels(createProfile({ baseUrl: 'http://127.0.0.1:9999/v1' }), settings);
+
+    expect(fetchMock).toHaveBeenCalledWith('http://127.0.0.1:9999/v1/models', { headers: undefined });
+  });
+
+  it('falls back to the local default when neither is set', async () => {
+    const fetchMock = mockFetchOk({ data: [] });
+
+    await loadOpenLlmModels(createProfile({ baseUrl: '' }), settings);
+
+    expect(fetchMock).toHaveBeenCalledWith('http://127.0.0.1:8787/v1/models', { headers: undefined });
+  });
+
+  it('applies the same precedence in Aider mode', () => {
+    mockEnv({ OPENLLM_API_KEY: 'sk-llm-env', OPENLLM_BASE_URL: 'https://www.openllm.sh/v1' });
+
+    const fromEnv = getOpenLlmAiderMapping(createProfile({ baseUrl: '' }), 'plus', settings, '/project');
+    const explicit = getOpenLlmAiderMapping(createProfile({ baseUrl: 'http://127.0.0.1:9999/v1' }), 'plus', settings, '/project');
+
+    expect(mockGetEffectiveEnvironmentVariable).toHaveBeenCalledWith('OPENLLM_BASE_URL', settings, '/project');
+    expect(fromEnv.environmentVariables).toEqual({ OPENAI_API_BASE: 'https://www.openllm.sh/v1', OPENAI_API_KEY: 'sk-llm-env' });
+    expect(explicit.environmentVariables).toEqual({ OPENAI_API_BASE: 'http://127.0.0.1:9999/v1', OPENAI_API_KEY: 'sk-llm-env' });
+  });
+
+  it('applies the same precedence in Agent mode', () => {
+    mockEnv({ OPENLLM_API_KEY: 'sk-llm-env', OPENLLM_BASE_URL: 'https://www.openllm.sh/v1' });
+
+    createOpenLlmLlm(createProfile({ baseUrl: '' }), { id: 'plus', providerId: 'openllm-test' }, settings, '/project');
+    createOpenLlmLlm(createProfile({ baseUrl: 'http://127.0.0.1:9999/v1' }), { id: 'plus', providerId: 'openllm-test' }, settings, '/project');
+
+    expect(mockCreateOpenAICompatible).toHaveBeenNthCalledWith(1, expect.objectContaining({ baseURL: 'https://www.openllm.sh/v1', apiKey: 'sk-llm-env' }));
+    expect(mockCreateOpenAICompatible).toHaveBeenNthCalledWith(2, expect.objectContaining({ baseURL: 'http://127.0.0.1:9999/v1', apiKey: 'sk-llm-env' }));
+  });
+
+  it('auto-registered default profile does not shadow OPENLLM_BASE_URL', () => {
+    mockEnv({ OPENLLM_API_KEY: 'sk-llm-env', OPENLLM_BASE_URL: 'https://www.openllm.sh/v1' });
+    const provider = getDefaultProviderParams('openllm') as OpenLlmProvider;
+    const profile = { id: 'openllm', provider } as ProviderProfile;
+
+    expect(provider.baseUrl).toBe('');
+    expect(getOpenLlmAiderMapping(profile, 'plus', settings, '/project').environmentVariables?.OPENAI_API_BASE).toBe('https://www.openllm.sh/v1');
+  });
+});
+
 describe('hasOpenLlmEnvVars', () => {
+  it('is true for a cloud-only setup with OPENLLM_API_KEY and OPENLLM_BASE_URL', () => {
+    mockEnv({ OPENLLM_API_KEY: 'sk-llm-env', OPENLLM_BASE_URL: 'https://www.openllm.sh/v1' });
+
+    expect(hasOpenLlmEnvVars(settings)).toBe(true);
+  });
+
+  it('is true when only OPENLLM_BASE_URL is set', () => {
+    mockEnv({ OPENLLM_BASE_URL: 'https://www.openllm.sh/v1' });
+
+    expect(hasOpenLlmEnvVars(settings)).toBe(true);
+  });
+
   it('is true when OPENLLM_API_KEY resolves to a value', () => {
     mockGetEffectiveEnvironmentVariable.mockReturnValue({
       value: 'sk-llm-env',

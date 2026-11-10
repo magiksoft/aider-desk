@@ -835,7 +835,8 @@ export const getDefaultProviderParams = <T extends LlmProvider>(providerName: Ll
     case 'openllm':
       provider = {
         name: 'openllm',
-        baseUrl: 'http://127.0.0.1:8787/v1',
+        // Empty so OPENLLM_BASE_URL or the local default (http://127.0.0.1:8787/v1) is resolved at runtime
+        baseUrl: '',
         apiKey: '',
       } satisfies OpenLlmProvider;
       break;

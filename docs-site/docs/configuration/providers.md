@@ -605,6 +605,8 @@ OpenLLM routes your API keys, subscription accounts and local models through one
 - **Base URL**: Your OpenLLM endpoint
   - Default: `http://127.0.0.1:8787/v1` (the local daemon)
   - Cloud: `https://www.openllm.sh/v1`
+  - Environment variable: `OPENLLM_BASE_URL`
+  - Precedence: the Base URL set on the profile, then `OPENLLM_BASE_URL`, then the local default. This applies to model discovery, Agent mode and Aider mode.
 - **API Key**: Optional for the local daemon, which uses your saved login. Required for the cloud origin.
   - Environment variable: `OPENLLM_API_KEY`
 
@@ -614,7 +616,7 @@ OpenLLM routes your API keys, subscription accounts and local models through one
 2. Sign in with `openllm login`
 3. Add the OpenLLM provider in the Model Library
 4. Models load from the daemon: the built-in chains `ultra`, `plus` and `lite` when available, plus your provider models
-5. For the cloud, set the Base URL to `https://www.openllm.sh/v1` and enter an API key, or set the `OPENLLM_API_KEY` environment variable
+5. For the cloud, set the Base URL to `https://www.openllm.sh/v1` and enter an API key, or set the `OPENLLM_API_KEY` and `OPENLLM_BASE_URL` environment variables (a profile is then added automatically)
 
 ### Important Notes
 
