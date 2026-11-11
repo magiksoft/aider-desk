@@ -400,7 +400,7 @@
         "linux",
         "macos"
       ],
-      "installCount": 48
+      "installCount": 50
     },
     {
       "id": "searxng-search",
@@ -468,7 +468,7 @@
         "modes",
         "ui"
       ],
-      "installCount": 19
+      "installCount": 20
     },
     {
       "id": "claude-agent-sdk",
@@ -569,7 +569,7 @@
       "capabilities": [
         "ui"
       ],
-      "installCount": 56
+      "installCount": 58
     },
     {
       "id": "doom",
@@ -632,7 +632,7 @@
       "capabilities": [
         "ui"
       ],
-      "installCount": 62
+      "installCount": 63
     },
     {
       "id": "skill-gallery",
@@ -644,7 +644,7 @@
       "capabilities": [
         "ui"
       ],
-      "installCount": 181
+      "installCount": 182
     },
     {
       "id": "task-scheduler",
@@ -658,7 +658,7 @@
         "commands",
         "events"
       ],
-      "installCount": 33
+      "installCount": 35
     },
     {
       "id": "reasoning-selector",
@@ -682,7 +682,7 @@
       "capabilities": [
         "ui"
       ],
-      "installCount": 4
+      "installCount": 5
     },
     {
       "id": "compaction-studio",
