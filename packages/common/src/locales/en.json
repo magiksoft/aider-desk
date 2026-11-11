@@ -1,4 +1,34 @@
 {
+  "fileLink": {
+    "downloadTitle": "Download file",
+    "downloadPrompt": "Download this file?",
+    "download": "Download",
+    "copyPath": "Copy file path",
+    "openError": "Unable to open the file. It may be missing or inaccessible.",
+    "downloadError": "Unable to download the file. It may be missing or inaccessible.",
+    "copyError": "Unable to copy the file path.",
+    "readonly": "File downloads are unavailable in read-only mode. You can copy the file path."
+  },
+  "splitButton": {
+    "moreActions": "More actions"
+  },
+  "startup": {
+    "downloading": "Downloading application…",
+    "starting": "Starting application…",
+    "error": "Unable to load AiderDesk. Check your connection and try again.",
+    "retry": "Try again"
+  },
+  "projectTrust": {
+    "title": "Trust this project?",
+    "warning": "This project contains agents, MCP servers, or extensions. They may run malicious code with your user permissions, access your files and credentials, or send data to external services.",
+    "review": "Review the listed files before continuing. Only trust this project if you trust its source. Cancel to leave the project unopened.",
+    "confirm": "Trust the project",
+    "agents": "Agents",
+    "mcpServers": "MCP servers",
+    "extensions": "Extensions",
+    "checking": "Checking project configuration…",
+    "checkFailed": "Unable to inspect the project configuration. The project was not opened. Check file permissions and configuration files, then try again."
+  },
   "languages": {
     "en": "English",
     "zh": "中文",
@@ -46,10 +76,21 @@
     "switchToLocal": "Switch to Local Mode",
     "switchToWorktree": "Switch to Worktree Mode",
     "switchWorkingMode": "Switch the working mode",
+    "switchToAgentMode": "Switch to Agent mode",
+    "switchToCodeMode": "Switch to Code mode",
+    "switchToAskMode": "Switch to Ask mode",
+    "switchToArchitectMode": "Switch to Architect mode",
+    "switchToContextMode": "Switch to Context mode",
+    "switchToMode": "Switch to {{mode}} mode",
     "gitAction": "Git action",
     "gitBranches": "Show Git Branches"
   },
   "common": {
+    "forkBeforeCompaction": "Fork before compaction",
+    "restoreContextFailed": "Unable to restore this compaction point. Its backup may be missing or unreadable.",
+    "autonomyManual": "Manual",
+    "autonomyGuided": "Guided",
+    "autonomyAutonomous": "Auto",
     "settings": "Settings",
     "cancel": "Cancel",
     "save": "Save",
@@ -128,7 +169,32 @@
       "aider": "Aider",
       "agent": "AI Agent",
       "providers": "Providers",
-      "finish": "Finish"
+      "finish": "Finish",
+      "choosePath": "Choose Path",
+      "configure": "Configure"
+    },
+    "choice": {
+      "title": "How will you use AiderDesk?",
+      "description": "This tailors your setup and sets your default mode. You can change it anytime in Settings → General.",
+      "recommended": "Recommended",
+      "agent": {
+        "title": "Agent-first",
+        "subtitle": "Default",
+        "description": "Autonomous agent with full tool access. Describe the outcome — it plans and executes.",
+        "feature1": "Multi-step planning and file edits",
+        "feature2": "Power tools, MCP servers and skills",
+        "feature3": "Aider modes still one switch away",
+        "modeLabel": "Sets default mode → Agent"
+      },
+      "aider": {
+        "title": "Coming from Aider",
+        "subtitle": "Aider modes primary",
+        "description": "You already know aider — keep Code, Ask and Architect front and center.",
+        "feature1": "Aider settings set up in-line",
+        "feature2": "Edit formats, auto-commits, env vars",
+        "feature3": "Agent mode available when you want it",
+        "modeLabel": "Sets default mode → Code"
+      }
     },
     "language": {
       "title": "Choose Your Language",
@@ -143,9 +209,14 @@
         "3": ".env and .aider.conf.yaml are also read as they would with Aider"
       },
       "configureLater": "You can also do that later in the Settings.",
+      "modelTitle": "Choose your Aider model",
+      "modelDescription": "Choose the main model to use by default for new Aider tasks. Automatic picks an available model from your configured providers. You can change these defaults later in Settings → Aider.",
+      "advancedSettings": "Advanced settings (optional)",
+      "noModels": "No models are available yet. Go back to connect a provider, or continue with Automatic and configure a provider later in Settings.",
       "fineTuneTitle": "Fine-Tune Aider (Optional)",
       "fineTuneDescription": "Advanced users can configure additional Aider settings and environment variables. This step is completely optional and can be safely skipped.",
-      "fineTuneNote": "Note: These settings are for advanced users who want to customize Aider's behavior. Most users can skip this step and configure these later in Settings if needed."
+      "fineTuneNote": "Note: These settings are for advanced users who want to customize Aider's behavior. Most users can skip this step and configure these later in Settings if needed.",
+      "agentSwitchNote": "Tip: Agent mode is one switch away — use the mode picker above the prompt anytime you want full autonomy."
     },
     "providers": {
       "title": "Model Providers",
@@ -192,7 +263,24 @@
       "title": "Setup Complete!",
       "description": "Congratulations! You've successfully set up AiderDesk. You're now ready to steer AI-assisted development with full transparency and control.",
       "ready": "Click 'Finish Setup' to begin your coding journey.",
-      "success": "Onboarding completed successfully! Welcome to AiderDesk."
+      "success": "Onboarding completed successfully! Welcome to AiderDesk.",
+      "mode": "New tasks will start in {{mode}} mode — you can change this anytime in Settings → General.",
+      "modeAgent": "Agent",
+      "modeCode": "Code",
+      "customizeTitle": "Make AiderDesk yours",
+      "customizeDescription": "There's more to explore — a few places worth a look:",
+      "general": {
+        "title": "Settings → General",
+        "description": "Appearance, language, default mode and startup behavior"
+      },
+      "mcp": {
+        "title": "Settings → MCP",
+        "description": "Connect MCP servers to give the agent more tools"
+      },
+      "tasks": {
+        "title": "Settings → Tasks",
+        "description": "Task behavior, automation and smart states"
+      }
     },
     "errors": {
       "navigationFailed": "Navigation failed. Please try again.",
@@ -238,9 +326,27 @@
     }
   },
   "mermaid": {
-    "renderFailed": "Failed to render diagram:"
+    "renderFailed": "Failed to render diagram:",
+    "zoomIn": "Zoom in",
+    "zoomOut": "Zoom out",
+    "resetZoom": "Reset zoom"
   },
   "modelLibrary": {
+    "modalities": {
+      "label": "Modalities",
+      "input": "Input",
+      "inputTooltip": "Modalities the model can understand as input.",
+      "output": "Output",
+      "outputTooltip": "Modalities the model can generate as output.",
+      "text": "Text",
+      "image": "Image",
+      "audio": "Audio",
+      "video": "Video",
+      "pdf": "PDF",
+      "unknown": "Unknown modalities",
+      "unknownTooltip": "Model capabilities are unknown. Attachment validation is skipped.",
+      "description": "Image input means vision, not image generation. When metadata is unavailable, no modalities are selected and attachment validation is skipped. Editing these selections saves model-specific capabilities; unrelated settings do not override them. Empty selections explicitly declare no supported modalities."
+    },
     "enableVoiceControl": "Enable Voice Control",
     "enableVoiceControlOnlyOneInfo": "Only one provider can be enabled at a time.",
     "voiceControl": "Voice control",
@@ -319,6 +425,8 @@
     },
     "disableStreaming": "Disable streaming",
     "disableStreamingInfo": "Disables response streaming. Use this when the provider or model does not support streaming responses.",
+    "requireStreaming": "Require streaming",
+    "requireStreamingInfo": "Requires streaming for all requests, including background generation. Use this for models that reject non-streaming requests.",
     "disableToolCallStreaming": "Disable tool call streaming",
     "disableToolCallStreamingInfo": "Disables streaming of tool call input. Tool calls will still execute but their arguments won't be shown progressively.",
     "trackTokenUsage": "Track token usage",
@@ -451,6 +559,12 @@
     "getApiKeyLink": "Get Atlas Cloud API key",
     "apiKey": "API Key"
   },
+  "openLlm": {
+    "docsLink": "OpenLLM setup guide",
+    "baseUrl": "Base URL",
+    "apiKey": "API Key",
+    "apiKeyHint": "Leave the API key empty to use your signed-in local daemon. Use https://www.openllm.sh/v1 with an API key for the cloud."
+  },
   "zaiPlan": {
     "getApiKeyLink": "Get Z.AI API key",
     "apiKey": "API Key",
@@ -509,6 +623,7 @@
     "openai": "OpenAI",
     "opencode": "OpenCode ZEN",
     "opencode-go": "OpenCode Go",
+    "openllm": "OpenLLM",
     "openai-compatible": "OpenAI Compatible",
     "openrouter": "OpenRouter",
     "requesty": "Requesty",
@@ -689,8 +804,12 @@
     },
     "startup": {
       "title": "Start Up",
+      "taskMode": "On start up",
+      "recovery": "Recovery",
       "emptyTask": "Start with empty task",
-      "lastTask": "Load last task"
+      "lastTask": "Load last task",
+      "resumeAgentAfterRestart": "Resume interrupted agent after restart",
+      "resumeAgentAfterRestartTooltip": "When enabled, an agent run that was interrupted by an app close or crash is automatically resumed the next time the project opens. Replay-safe tools may re-run; tools with side effects are not repeated. When disabled, interrupted runs are left as-is."
     },
     "tasks": {
       "title": "Tasks",
@@ -700,6 +819,11 @@
       "autoGenerateTaskNameTooltip": "When enabled, the model generates a concise task name from your prompt. When disabled, the first 5 words of your prompt will be used as the task name.",
       "showTaskStateActions": "Show Task State Actions",
       "showTaskStateActionsTooltip": "When enabled, task state actions are displayed at the bottom of messages. Disable to hide these actions.",
+      "defaultTaskMode": "Default Mode for New Tasks",
+      "defaultTaskModeTooltip": "Used when a new task is created in a project that already has tasks. 'Use latest task's mode' keeps the mode from the most recent task.",
+      "defaultTaskModeLast": "Use latest task's mode",
+      "defaultProjectMode": "Default Mode for New Projects",
+      "defaultProjectModeTooltip": "Used as the initial mode for a project's first task (when there are no previous tasks to inherit from). Set automatically during onboarding.",
       "contextManagement": "Context Management",
       "contextCompactingThreshold": "Auto-compact Threshold",
       "contextCompactingThresholdTooltip": "When token usage exceeds this threshold, the conversation will be automatically managed according to the selected compaction type. Set to 0 to disable.",
@@ -739,6 +863,10 @@
       "commitMessageModel": "Commit Message",
       "commitMessageModelTooltip": "Model used for generating commit messages",
       "inheritModel": "Inherit",
+      "compactionModel": "Compaction model",
+      "handoffModel": "Handoff model",
+      "useCurrentTaskModel": "Use task’s current model",
+      "contextModelTooltip": "Model used for manual and automatic compaction or handoff in Agent mode. Each type keeps its own selection. A different model must support the conversation’s context size and may not reuse cached input.",
       "defaultWorkingMode": "Default Working Mode",
       "defaultWorkingModeTooltip": "The default working mode for new tasks. Local works directly in the project directory, Worktree uses an isolated git worktree."
     },
@@ -805,6 +933,9 @@
       "includeFilesTooltip": "Adds content of context files into the chat of agent. This will increase token usage.",
       "includeRepoMap": "Include repository map",
       "includeRepoMapTooltip": "Include the repository map from Aider in the agent's context. This can help the agent understand the project structure, but will increase token usage.",
+      "memory": "Memory",
+      "useAgentMemoryScope": "Isolate memories by agent",
+      "useAgentMemoryScopeTooltip": "When enabled, this agent stores and retrieves memories in its own scope instead of the project directory. These memories are shared across all projects where this agent is used.",
       "autonomyMode": "Autonomy mode",
       "override": "Override",
       "clearOverride": "Clear Override",
@@ -826,6 +957,7 @@
       "envVarFoundPlaceholder": "Found in: {{source}}",
       "createNewProfile": "Create New",
       "genericTools": "Tools",
+      "extensionTools": "Extension tools",
       "noGenericToolsConfigured": "No tools configured.",
       "todoTools": "Todo tools",
       "includeTodoToolsTooltip": "Allows the agent to manage a list of todo items, including setting, getting, updating, and clearing them.",
@@ -898,11 +1030,23 @@
       "envVarsDocumentation": "Check the documentation for environment variables at",
       "context": "Context",
       "addRuleFiles": "Add rule files from project's <file>.aider-desk/rules</file> directory as read-only files.",
-      "confirmBeforeEdit": "Confirm before editing files"
+      "confirmBeforeEdit": "Confirm before editing files",
+      "models": "Models",
+      "auto": "Auto",
+      "inherited": "Inherited",
+      "automaticModel": "Automatic",
+      "inheritMainModel": "Inherit from Main",
+      "globalSettings": "Global",
+      "additionalOptions": "Additional Aider options",
+      "addRuleFilesLabel": "Include project rule files",
+      "projectEnvironmentHint": "Project keys override matching global environment variables. Other global keys remain available."
     },
     "common": {
       "showSecrets": "Show Secrets",
-      "learnMore": "Learn more"
+      "learnMore": "Learn more",
+      "scopeGlobal": "Global",
+      "previousContext": "Previous context",
+      "nextContext": "Next context"
     },
     "notificationsEnabled": "Notifications enabled",
     "zoom": "Zoom level",
@@ -1050,7 +1194,8 @@
       "viewModeFull": "Full",
       "viewModeCompact": "Compact",
       "fullMessageRendering": "Use full message rendering (Legacy)",
-      "fullMessageRenderingTooltip": "Renders all messages in the DOM without virtualization. May impact performance with large conversation histories."
+      "fullMessageRenderingTooltip": "Renders all messages in the DOM without virtualization. May impact performance with large conversation histories.",
+      "messageMap": "Show message map"
     },
     "memory": {
       "configuration": "Configuration",
@@ -1077,8 +1222,8 @@
       },
       "memories": {
         "title": "Memories",
-        "project": "Project",
-        "allProjects": "All projects",
+        "scope": "Scope",
+        "all": "All",
         "loading": "Loading memories...",
         "empty": "No memories found.",
         "delete": "Delete",
@@ -1087,6 +1232,9 @@
         "deleteDialogText": "Delete memory",
         "deleteProjectDialogTitle": "Delete project memories",
         "deleteProjectDialogText": "Delete all memories for project",
+        "deleteAllForAgent": "Delete all for agent",
+        "deleteAgentMemoriesDialogTitle": "Delete agent memories",
+        "deleteAgentMemoriesDialogText": "Delete all memories for agent",
         "projectId": "projectId",
         "id": "id"
       }
@@ -1121,6 +1269,14 @@
     "scrollToBottom": "Scroll to bottom",
     "previousUserMessage": "Previous user message",
     "nextUserMessage": "Next user message",
+    "map": {
+      "title": "Message map",
+      "turn": "Turn {{number}}",
+      "userPrompt": "Your prompt",
+      "assistantReply": "Last reply",
+      "emptyPreview": "No text preview",
+      "goToMessage": "Go to {{label}} in turn {{number}}"
+    },
     "messageBar": "Message Bar",
     "execute": "Execute",
     "resume": "Resume",
@@ -1150,7 +1306,7 @@
     "appCrash": {
       "title": "Something went wrong",
       "message": "An unexpected error occurred and the application could not continue.",
-      "reportIssue": "Please, consider reporting an issue at <a>https://github.com/hotovo/aider-desk/issues</a>. Thank you.",
+      "reportIssue": "Please, consider reporting an issue at <a>https://github.com/magiksoft/aider-desk/issues</a>. Thank you.",
       "reload": "Reload",
       "details": "Error details",
       "copy": "Copy",
@@ -1228,12 +1384,21 @@
     "saveAllTooltip": "Save all open files",
     "savedAll": "Saved {{count}} files",
     "closeTab": "Close tab {{file}}",
+    "copyAbsolutePath": "Copy absolute path",
+    "copyRelativePath": "Copy relative path",
+    "openInExternal": "Open in external application",
+    "pathCopied": "Path copied to clipboard",
+    "fileTree": "Files",
+    "showFileTree": "Show file tree",
+    "hideFileTree": "Hide file tree",
+    "noProjectFiles": "No project files found",
     "discardTitle": "Discard unsaved changes?",
     "discard": "Discard",
     "discardMessage": "Your unsaved file changes will be lost.",
     "title": "Editor"
   },
   "contextFiles": {
+    "renamedFrom": "Renamed from {{path}}",
     "workspaceTitle": "Workspace",
     "title": "Context Files",
     "updatedFiles": "Updated Files",
@@ -1302,6 +1467,8 @@
     "generateMessage": "Generate Message",
     "amend": "Amend",
     "amendTooltip": "Amend the last commit instead of creating a new one",
+    "skipGitHooks": "Skip Git hooks",
+    "skipGitHooksTooltip": "Create the commit without running Git hooks (git commit --no-verify)",
     "commit": "Commit",
     "generatingMessage": "Generating...",
     "committing": "Committing...",
@@ -1409,6 +1576,18 @@
       "never": "Never",
       "always": "Always",
       "ask": "Ask"
+    },
+    "recovery": {
+      "forget": "Forget unfinished",
+      "safe": "Replay safely",
+      "notify": "Notify interrupted",
+      "label": "Recovery mode",
+      "description": "Controls how unfinished tool calls are handled when a task resumes after an unexpected interruption, such as an app crash.",
+      "descriptions": {
+        "forget": "Drop unfinished calls when the task resumes.",
+        "safe": "Re-run unfinished calls on resume. The tool must tolerate repetition.",
+        "notify": "Report an unknown outcome so the model verifies before retrying."
+      }
     }
   },
   "autocompletion": {
@@ -1451,6 +1630,11 @@
     "answer": "ANSWER"
   },
   "toolMessage": {
+    "truncatedResult": {
+      "notice": "Tool result truncated. Only a preview is available.",
+      "originalLength": "Original result: {{length}} characters",
+      "unavailable": "The result could not be serialized; no preview is available."
+    },
     "toolLabel": "{{server}}: {{tool}}",
     "arguments": "Arguments:",
     "executing": "Executing tool...",
@@ -1469,7 +1653,7 @@
       "createTask": "Create task",
       "createSubtask": "Create subtask",
       "deleteTask": "Delete task",
-      "runPrompt": "Run prompt on task",
+      "runPrompt": "Run task",
       "searchTask": "Search task:",
       "inTask": "in",
       "searchTaskNoMatches": "No matches found.",
@@ -1642,7 +1826,7 @@
     "oldValue": "Old Value",
     "newValue": "New Value",
     "error": "Error: {{message}}",
-    "reportIssue": "Please report an issue in https://github.com/hotovo/aider-desk/issues.",
+    "reportIssue": "Please report an issue in https://github.com/magiksoft/aider-desk/issues.",
     "sideBySide": "Side by Side",
     "unified": "Unified",
     "compact": "Compact",
@@ -1660,11 +1844,8 @@
     "savePrompt": "Save Prompt",
     "savePromptDescription": "Save prompt without executing",
     "saveError": "Failed to save prompt: {{error}}",
-    "autonomyManual": "Manual",
     "autonomyManualTooltip": "Manual mode: Every tool execution and plan requires your explicit approval before proceeding. Best for unfamiliar codebases or risky operations.",
-    "autonomyGuided": "Guided",
     "autonomyGuidedTooltip": "Guided mode: The agent plans before acting and waits for your approval before executing changes. Tool executions are auto-approved. Best for everyday development.",
-    "autonomyAutonomous": "Auto",
     "autonomyAutonomousTooltip": "Autonomous mode: The agent plans and executes without interruption until the task is complete. Best for trusted tasks where you want to step away.",
     "autonomyLockTooltip": "Locking keeps the current autonomy mode for newly created tasks",
     "placeholders": {
@@ -1729,7 +1910,8 @@
     "tools": "Tools",
     "model": "Model",
     "selectProfile": "Select...",
-    "useAsProjectDefault": "Use as project default"
+    "useAsProjectDefault": "Use as project default",
+    "infoTooltip": "Agents control which model and tools the AI uses for your tasks — switch between them or set one as the project default. You can also just ask the AI directly to create a new agent profile for you."
   },
   "projectBar": {
     "editFormatTooltip": "This is the format used for editing code. Changing it might cause the model to not perform as expected.",
@@ -1898,8 +2080,7 @@
     "tabLabel": "Terminal",
     "copyOutput": "Copy terminal output to prompt",
     "minimize": "Minimize terminal",
-    "addTerminal": "Add new terminal",
-    "restartHint": "Session ended. Press any key to restart."
+    "addTerminal": "Add new terminal"
   },
   "contextMenu": {
     "copy": "Copy",
@@ -2130,6 +2311,9 @@
     "caCertPathPlaceholder": "/path/to/ca.pem"
   },
   "git": {
+    "conflictsDescription": "Conflicts detected in the following files. Resolve them manually or use the AI agent to help.",
+    "smartCheckout": "Smart Checkout",
+    "smartCheckoutMessage": "Your local changes prevent switching to {{branch}}. Smart Checkout temporarily stashes tracked and untracked changes, switches branches, and reapplies your changes. Some changes may become unstaged. If conflicts occur, you can resolve them on the destination branch.",
     "askpass": {
       "passwordTitle": "Git Authentication",
       "usernameTitle": "Git Username",
@@ -2190,13 +2374,19 @@
     "noCommitsToPush": "No commits to push",
     "confirmPushSetUpstreamMessage": "Branch '{{branch}}' has no upstream. Push it to the remote and set the remote branch as its upstream?",
     "force": "Force",
+    "pushToBaseUpstream": "Push to base branch’s upstream",
+    "pushToBaseDestination": "Destination: {{upstream}}",
+    "pushToBaseNoUpstream": "The base branch has no remote upstream configured.",
+    "confirmPushToBaseMessage": "Push the HEAD of {{branch}} to {{upstream}}? Local branches and upstream tracking will remain unchanged.",
     "aheadCommits_one": "{{count}} commit ahead",
     "aheadCommits_other": "{{count}} commits ahead",
     "behindCommits_one": "{{count}} commit behind",
     "behindCommits_other": "{{count}} commits behind",
     "recentBranches": "Recent",
     "checkoutBranch": "Checkout '{{branch}}'",
+    "copyBranchName": "Copy branch name",
     "newBranchFrom": "New branch from '{{branch}}'...",
+    "createWorktreeFrom": "Create worktree from '{{branch}}'",
     "mergeBranchInto": "Merge '{{branch}}' into '{{current}}'",
     "rebaseOnto": "Rebase '{{current}}' onto '{{branch}}'",
     "deleteBranchName": "Delete '{{branch}}'",
@@ -2204,5 +2394,28 @@
     "actionNotAvailableInWorktree": "This action is not available in worktree mode",
     "updateFromRemote": "Update from '{{upstream}}'",
     "branchUpdated": "Branch '{{branch}}' updated from remote"
+  },
+  "durability": {
+    "notices": {
+      "interrupted": "Tool execution was interrupted. Its outcome is unknown. Verify the state before retrying.",
+      "finalizationInterrupted": "Tool execution completed, but its finalized output is unavailable. Do not repeat it just to recover the output.",
+      "unavailable": "The interrupted tool is no longer available or permitted.",
+      "argumentsChanged": "Recovery stopped because the tool arguments changed or failed validation.",
+      "ownerChanged": "Recovery stopped because the tool owner changed.",
+      "identityConflict": "Execution refused: this call identity belongs to a different operation."
+    },
+    "labels": {
+      "interrupted": "Interrupted",
+      "finalizationInterrupted": "Finalize interrupted",
+      "unavailable": "Unavailable",
+      "argumentsChanged": "Arguments changed",
+      "ownerChanged": "Owner changed",
+      "identityConflict": "Identity conflict"
+    },
+    "recovery": {
+      "detailsTitle": "Preserved output",
+      "noOutput": "No additional output was preserved."
+    },
+    "missingProfile": "Unable to recover task: agent profile is unavailable."
   }
 }

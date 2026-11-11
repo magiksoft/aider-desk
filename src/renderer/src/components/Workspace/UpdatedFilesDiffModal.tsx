@@ -9,6 +9,7 @@ import { DiffViewMode, UpdatedFile } from '@common/types';
 import { clsx } from 'clsx';
 
 import { sortFilesByTreeOrder } from './group-files';
+import { FileRenameBadge } from './FileRenameBadge';
 
 import { ModalOverlayLayout } from '@/components/common/ModalOverlayLayout';
 import { IconButton } from '@/components/common/IconButton';
@@ -69,6 +70,7 @@ export const UpdatedFilesDiffModal = ({ groups, initialFile, onClose, baseDir, t
   const [isReverting, setIsReverting] = useState(false);
   const [commitMessage, setCommitMessage] = useState('');
   const [amend, setAmend] = useState(false);
+  const [skipGitHooks, setSkipGitHooks] = useState(false);
   const [isGeneratingMessage, setIsGeneratingMessage] = useState(false);
   const { isCommitting, commit, cancelCommit } = useCommitChanges(baseDir, taskId);
   const [commitError, setCommitError] = useState<string | null>(null);
@@ -314,7 +316,7 @@ export const UpdatedFilesDiffModal = ({ groups, initialFile, onClose, baseDir, t
 
     setIsReverting(true);
     try {
-      await api.restoreFile(baseDir, taskId, currentFile.path);
+      await api.restoreFile(baseDir, taskId, currentFile.path, currentFile.previousPath);
       setShowRevertConfirm(false);
       onClose();
     } catch (error) {
@@ -353,10 +355,12 @@ export const UpdatedFilesDiffModal = ({ groups, initialFile, onClose, baseDir, t
       await commit(
         commitMessage,
         amend,
+        skipGitHooks,
         selectedFiles.map((f) => f.path),
       );
       setCommitMessage('');
       setAmend(false);
+      setSkipGitHooks(false);
       onClose();
     } catch (error) {
       // eslint-disable-next-line no-console
@@ -365,7 +369,7 @@ export const UpdatedFilesDiffModal = ({ groups, initialFile, onClose, baseDir, t
       const rawError = error instanceof Error ? error.message : String(error);
       setCommitError(rawError.replace(/^Error invoking remote method 'commit-changes':\s*(Error:\s*)?/, ''));
     }
-  }, [commit, commitMessage, amend, onClose, selectedFiles]);
+  }, [commit, commitMessage, amend, skipGitHooks, onClose, selectedFiles]);
 
   const handleCancelCommit = useCallback(() => {
     cancelCommit();
@@ -641,6 +645,7 @@ export const UpdatedFilesDiffModal = ({ groups, initialFile, onClose, baseDir, t
                   </span>
                 )}
                 <span className="text-3xs sm:text-xs font-medium text-text-primary truncate">{currentFile.path}</span>
+                <FileRenameBadge previousPath={currentFile.previousPath} />
                 <>
                   {currentFile.additions > 0 && <span className="text-3xs sm:text-xs font-medium text-success shrink-0">+{currentFile.additions}</span>}
                   {currentFile.deletions > 0 && <span className="text-3xs sm:text-xs font-medium text-error shrink-0">-{currentFile.deletions}</span>}
@@ -826,7 +831,7 @@ export const UpdatedFilesDiffModal = ({ groups, initialFile, onClose, baseDir, t
             </div>
           )}
 
-          <div className="flex items-center justify-between w-full gap-4">
+          <div className="flex flex-col w-full gap-2">
             <div className="flex-1 min-w-0 relative">
               <TextArea
                 value={commitMessage}
@@ -859,35 +864,46 @@ export const UpdatedFilesDiffModal = ({ groups, initialFile, onClose, baseDir, t
               </div>
             </div>
 
-            <div className="flex items-center shrink-0 gap-2 pr-4">
-              <Checkbox checked={amend} onChange={setAmend} label={t('contextFiles.amend')} tooltip={t('contextFiles.amendTooltip')} size="xs" />
-              <Button
-                onClick={handleCommit}
-                disabled={(!commitMessage.trim() && !amend) || isCommitting || isGeneratingMessage || (selectedFiles.length === 0 && !amend)}
-                variant="contained"
-                color="primary"
-                size="sm"
-              >
-                {isCommitting ? (
-                  <>
-                    <CgSpinner className="h-4 w-4 mr-1 animate-spin" />
-                    {t('contextFiles.committing')}
-                  </>
-                ) : (
-                  <>
-                    <MdOutlineCommit className="h-4 w-4 mr-1" />
-                    {t('contextFiles.commit')}
-                  </>
-                )}
-              </Button>
-              {isCommitting && (
-                <IconButton
-                  icon={<MdClose className="h-4 w-4" />}
-                  onClick={handleCancelCommit}
-                  tooltip={t('contextFiles.cancelCommit')}
-                  className="p-1.5 rounded-md transition-colors hover:bg-bg-tertiary text-text-muted"
+            <div className="flex items-center justify-between w-full gap-4">
+              <div className="flex items-center gap-4">
+                <Checkbox checked={amend} onChange={setAmend} label={t('contextFiles.amend')} tooltip={t('contextFiles.amendTooltip')} size="xs" />
+                <Checkbox
+                  checked={skipGitHooks}
+                  onChange={setSkipGitHooks}
+                  label={t('contextFiles.skipGitHooks')}
+                  tooltip={t('contextFiles.skipGitHooksTooltip')}
+                  size="xs"
                 />
-              )}
+              </div>
+              <div className="flex items-center shrink-0 gap-2">
+                <Button
+                  onClick={handleCommit}
+                  disabled={(!commitMessage.trim() && !amend) || isCommitting || isGeneratingMessage || (selectedFiles.length === 0 && !amend)}
+                  variant="contained"
+                  color="primary"
+                  size="sm"
+                >
+                  {isCommitting ? (
+                    <>
+                      <CgSpinner className="h-4 w-4 mr-1 animate-spin" />
+                      {t('contextFiles.committing')}
+                    </>
+                  ) : (
+                    <>
+                      <MdOutlineCommit className="h-4 w-4 mr-1" />
+                      {t('contextFiles.commit')}
+                    </>
+                  )}
+                </Button>
+                {isCommitting && (
+                  <IconButton
+                    icon={<MdClose className="h-4 w-4" />}
+                    onClick={handleCancelCommit}
+                    tooltip={t('contextFiles.cancelCommit')}
+                    className="p-1.5 rounded-md transition-colors hover:bg-bg-tertiary text-text-muted"
+                  />
+                )}
+              </div>
             </div>
           </div>
         </div>

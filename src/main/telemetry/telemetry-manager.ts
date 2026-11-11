@@ -1,5 +1,9 @@
 import { PostHog } from 'posthog-node';
-import { AgentProfile, Mode, SettingsData, TaskData } from '@common/types';
+import { AgentProfile, AIDER_MODES, Mode, SettingsData, TaskData } from '@common/types';
+import { extractProviderModel } from '@common/utils';
+
+import type { Task } from '@/task/task';
+import type { ModelManager } from '@/models/model-manager';
 
 import { Store } from '@/store';
 import logger from '@/logger';
@@ -10,8 +14,12 @@ export class TelemetryManager {
   private readonly store: Store;
   private readonly distinctId: string;
   private client?: PostHog;
+  private openTelemetry?: Promise<typeof import('./open-telemetry')>;
 
-  constructor(store: Store) {
+  constructor(
+    store: Store,
+    private readonly modelManager: ModelManager,
+  ) {
     this.store = store;
     this.distinctId = store.getUserId();
   }
@@ -34,7 +42,8 @@ export class TelemetryManager {
 
   async init(): Promise<void> {
     try {
-      await import('./open-telemetry');
+      this.openTelemetry = import('./open-telemetry');
+      await this.openTelemetry;
 
       if (!POSTHOG_PUBLIC_API_KEY) {
         logger.info('TelemetryManager skipped: POSTHOG_PUBLIC_API_KEY not configured.');
@@ -66,9 +75,14 @@ export class TelemetryManager {
   }
 
   async destroy(): Promise<void> {
-    if (this.client) {
-      await this.client.shutdown();
-      logger.info('TelemetryManager destroyed.');
+    try {
+      if (this.client) {
+        await this.client.shutdown();
+        logger.info('TelemetryManager destroyed.');
+      }
+    } finally {
+      const openTelemetry = await this.openTelemetry;
+      await openTelemetry?.shutdownOpenTelemetry();
     }
   }
 
@@ -98,15 +112,23 @@ export class TelemetryManager {
     });
   }
 
-  captureRunPrompt(mode?: Mode) {
-    if (!this.store.getSettings().telemetryEnabled) {
+  async captureRunPrompt(task: Task, mode: Mode) {
+    if (!this.store.getSettings().telemetryEnabled || !this.client) {
       return;
     }
-    this.client?.capture({
+
+    const profile = AIDER_MODES.includes(mode) ? null : await task.getTaskAgentProfile();
+    const aiderModels = task.getAiderModelsData();
+
+    this.client.capture({
       distinctId: this.distinctId,
       event: 'run-prompt',
       properties: {
         mode,
+        ...this.getAgentModelProperties(profile),
+        mainModel: this.getTelemetryModelName(aiderModels?.mainModel),
+        weakModel: this.getTelemetryModelName(aiderModels?.weakModel),
+        architectModel: this.getTelemetryModelName(task.getArchitectModel()),
       },
     });
   }
@@ -119,6 +141,7 @@ export class TelemetryManager {
       distinctId: this.distinctId,
       event: 'agent-run',
       properties: {
+        ...this.getAgentModelProperties(profile),
         maxIterations: profile.maxIterations,
         customInstructionsDefined: profile.customInstructions.trim().length > 0,
         useAiderTools: profile.useAiderTools,
@@ -131,6 +154,26 @@ export class TelemetryManager {
         totalMcpServersCount,
       },
     });
+  }
+
+  private getTelemetryProviderName(providerId: string): string | undefined {
+    return this.modelManager.getProviders().find((provider) => provider.id === providerId)?.provider.name;
+  }
+
+  private getAgentModelProperties(profile: AgentProfile | null) {
+    return {
+      provider: profile ? this.getTelemetryProviderName(profile.provider) : undefined,
+      model: profile?.model,
+    };
+  }
+
+  private getTelemetryModelName(model?: string | null): string | null | undefined {
+    if (!model) {
+      return model;
+    }
+    const [providerId, modelId] = extractProviderModel(model);
+    const providerName = this.getTelemetryProviderName(providerId);
+    return providerName ? `${providerName}/${modelId}` : model;
   }
 
   captureCustomCommand(commandName: string, argsCount: number, mode: Mode) {

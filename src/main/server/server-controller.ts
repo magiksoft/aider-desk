@@ -31,8 +31,8 @@ import { Store } from '@/store';
 import { isDev, isElectron } from '@/app';
 import { PythonDependenciesInstaller } from '@/python-dependencies-installer';
 import { createCorsOriginValidator } from '@/server/cors';
-
-const REQUEST_TIMEOUT_MS = 5 * 60 * 1000; // 5 minutes
+import { serveRendererAssets } from '@/server/renderer-assets';
+import { requestTimeoutMiddleware } from '@/server/request-timeout';
 
 export class ServerController {
   private readonly app = express();
@@ -67,22 +67,6 @@ export class ServerController {
         error: 'Server is not started. Enable the server in your AiderDesk -> Settings -> Server.',
       });
     }
-  }
-
-  private timeoutMiddleware(req: Request, res: Response, next: NextFunction): void {
-    // Skip timeout for SSE responses (Accept: text/event-stream)
-    if (req.accepts('text/event-stream')) {
-      next();
-      return;
-    }
-
-    req.setTimeout(REQUEST_TIMEOUT_MS, () => {
-      res.status(504).json({ error: 'Request timeout' });
-    });
-    res.setTimeout(REQUEST_TIMEOUT_MS, () => {
-      res.status(504).json({ error: 'Response timeout' });
-    });
-    next();
   }
 
   private basicAuthMiddleware(req: Request, res: Response, next: NextFunction): void {
@@ -180,7 +164,7 @@ export class ServerController {
     this.app.use(this.serverGuardMiddleware.bind(this));
 
     // Set timeout for all requests
-    this.app.use(this.timeoutMiddleware.bind(this));
+    this.app.use(requestTimeoutMiddleware);
 
     // Add Basic Auth
     this.app.use(this.basicAuthMiddleware.bind(this));
@@ -198,7 +182,7 @@ export class ServerController {
           : path.join(__dirname, process.env.AIDER_DESK_RENDERER_DIR)
         : path.join(__dirname, '../renderer');
 
-      this.app.use(express.static(rendererDir));
+      this.app.use(serveRendererAssets(rendererDir));
       // Handle SPA routing: serve index.html for non-API routes
       this.app.get('*', (req, res) => {
         if (this.isReadonlyMode && req.path !== '/') {

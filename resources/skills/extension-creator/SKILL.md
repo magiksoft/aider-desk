@@ -98,6 +98,20 @@ Do not use when:
 
 **Never:** Use `@/` imports in extension files
 
+### Rule: Integrate custom providers with the host contract
+
+**When:** Registering an LLM provider, especially one wrapping an external coding-agent SDK/server
+
+**Then:** Read [external-agent-providers.md](references/external-agent-providers.md) and the current `ExtensionProviderStrategy` in `packages/common/src/extensions.ts` before implementation
+
+**Must:** Keep the complete positional `createLlm` contract: `profile, model, settings, projectDir, toolSet?, systemPrompt?, providerMetadata?, tlsRegistrar?, sessionId?, approveTool?`. Providers can omit unused trailing arguments.
+
+**Must:** Use the optional `ProviderToolApprovalHandler` for native-tool decisions, mapping tool names/inputs to Power schemas. Reject native execution if the callback is absent; do not replace the shared autonomy, approval settings, bash patterns and veto hooks with unconditional questions.
+
+**Must:** Keep one execution owner, preserve original UI tool-result shapes, and deduplicate continuation replays. Separate persistent native sessions from transient processes/bridges, and scope parent/subagent conversations independently.
+
+**Must:** Tell the user when the extension requires core changes, document native execution limitations, and verify against the matching core build. Extension reload or renderer refresh cannot update an older main process.
+
 ### Rule: Add UI components when needed
 
 **When:** Extension needs to display UI elements in task page placements
@@ -111,6 +125,18 @@ Do not use when:
 **If:** Component needs data, set `loadData: true` and implement `getUIExtensionData()`
 
 **If:** Component triggers actions, implement `executeUIExtensionAction()`
+
+### Rule: Keep extension model catalogs and favorites independent
+
+**When:** Extension UI uses `ui.ModelSelector` with a custom catalog or extension-owned favorites
+
+**Then:** Read [ModelSelector props and preference semantics](references/ui-components.md#modelselector) and use the public `ModelSelectorProps` contract
+
+**Must:** Pass `models` to restrict the catalog (including displayed favorites); pass `providers` only when overriding core provider labels and disabled-state lookup
+
+**Must:** For extension-owned favorites, supply `preferredModels` and handle `onPreferredModelsChange(next)` by updating extension state and persisting independently through an extension action. Initialize `preferredModels` to `[]` while loading so selection cannot accidentally update core favorites.
+
+**Note:** Supplied preferences without a callback are read-only. Out-of-catalog IDs are hidden, not deleted from saved preferences. Omitting `preferredModels` retains core favorite persistence; a callback alone does not enable controlled mode. `skipPreferredModelsUpdate` suppresses selection-driven updates, not explicit removal.
 
 ### Rule: Use external libraries when UI components need npm packages
 
@@ -194,7 +220,9 @@ Do not use when:
 
 **Then:** Store config files in extension directory
 
-**Never:** Store config outside extension directory
+**Never:** Store user-editable config outside the extension directory
+
+**Note:** Native session databases and runtime state are not user-editable config. They may use a separate documented, access-restricted extension-owned location; see [external-agent-providers.md](references/external-agent-providers.md). Temporary process cleanup must not erase sessions intended for reuse.
 
 ## Process Overview
 
@@ -246,14 +274,14 @@ Before using this skill, verify:
 
 **IMPORTANT:** The reference files below are comprehensive but may lag behind the latest code. For the **authoritative** and **complete** API, always refer to these source files:
 
-- **Types source:** [packages/common/src/extensions.ts](https://raw.githubusercontent.com/hotovo/aider-desk/refs/heads/main/packages/common/src/extensions.ts) — Extension interface, all contexts (ExtensionContext, TaskContext, ProjectContext), event payloads, UI component definitions
-- **Context message types:** [packages/common/src/types/context.ts](https://raw.githubusercontent.com/hotovo/aider-desk/refs/heads/main/packages/common/src/types/context.ts) — ContextMessage, ContextFile, message part types
-- **Task/common types:** [packages/common/src/types/common.ts](https://raw.githubusercontent.com/hotovo/aider-desk/refs/heads/main/packages/common/src/types/common.ts) — TaskData, Model, AgentProfile, CreateTaskParams, etc.
+- **Types source:** [packages/common/src/extensions.ts](https://raw.githubusercontent.com/magiksoft/aider-desk/refs/heads/main/packages/common/src/extensions.ts) — Extension interface, all contexts (ExtensionContext, TaskContext, ProjectContext), event payloads, UI component definitions
+- **Context message types:** [packages/common/src/types/context.ts](https://raw.githubusercontent.com/magiksoft/aider-desk/refs/heads/main/packages/common/src/types/context.ts) — ContextMessage, ContextFile, message part types
+- **Task/common types:** [packages/common/src/types/common.ts](https://raw.githubusercontent.com/magiksoft/aider-desk/refs/heads/main/packages/common/src/types/common.ts) — TaskData, Model, AgentProfile, CreateTaskParams, etc.
 
 When you need a method or type that's not in the reference docs, **fetch the raw source first** before guessing.
 
 **Built-in extension examples** are available at:
-- [Online extensions gallery](https://github.com/hotovo/aider-desk/blob/main/docs-site/docs/extensions/extensions-gallery.md) — documented overview
+- [Online extensions gallery](https://github.com/magiksoft/aider-desk/blob/main/docs-site/docs/extensions/extensions-gallery.md) — documented overview
 - Source code for each built-in extension is in the AiderDesk repo at `packages/extensions/extensions/[extension-name]/` — browse these for real-world patterns
 
 ### Reference docs
@@ -276,6 +304,8 @@ After completing this skill, verify:
 - Extension loads without errors
 - Extension appears in extensions list
 - Extension capabilities work as expected
+- **If provider:** Current signatures and host compatibility checked; native approvals, streaming/result shapes, session continuity, subagent isolation and cleanup verified as applicable
+- **If core changes are required:** README and user handoff explicitly require the matching core build and main-process restart
 
 **Success metrics:**
 
@@ -329,7 +359,7 @@ After completing this skill, verify:
     return '';
   }
   ```
-- Reference: [context.ts](https://raw.githubusercontent.com/hotovo/aider-desk/refs/heads/main/packages/common/src/types/context.ts) for full ContextMessage type
+- Reference: [context.ts](https://raw.githubusercontent.com/magiksoft/aider-desk/refs/heads/main/packages/common/src/types/context.ts) for full ContextMessage type
 
 **Situation:** Extension needs to run shell commands
 
@@ -401,21 +431,22 @@ After completing this skill, verify:
 - When: Extension wants to persist knowledge across tasks (user preferences, code patterns, architectural decisions)
 - Then: Use `context.getMemoryContext()` to access the Memory API
 - Check: Always call `isMemoryEnabled()` before using memory operations
-- Store: `memory.storeMemory(projectId, taskId, type, content)` — returns the created memory ID
-- Retrieve: `memory.retrieveMemories(projectId, query, limit?)` — returns semantically similar memories
+- Store: `memory.storeMemory(scopeId, taskId, type, content)` — returns the created memory ID
+- Retrieve: `memory.retrieveMemories(scopeId, query, limit?)` — returns semantically similar memories
 - Types: Use `MemoryEntryType` enum ('task', 'user-preference', 'code-pattern')
-- Note: Works outside of project/task scope — pass empty strings for `projectId`/`taskId` if not applicable
+- Scope: use the project directory (`context.getProjectDir()`) for project-scoped memories, or `agent-profile:{profileId}` to share memories across projects for agents with memory isolation (`useAgentMemoryScope`) enabled
+- Note: Works outside of project/task scope — pass empty strings for `scopeId`/`taskId` if not applicable
 - Example:
   ```typescript
   async onAgentFinished(event: AgentFinishedEvent, context: ExtensionContext) {
     const memory = context.getMemoryContext();
     if (!memory.isMemoryEnabled()) return;
 
-    const projectId = context.getProjectDir();
+    const scopeId = context.getProjectDir();
     const taskId = context.getTaskContext()?.data.id ?? '';
 
-    await memory.storeMemory(projectId, taskId, 'code-pattern', 'Always use clsx for conditional classes');
-    const memories = await memory.retrieveMemories(projectId, 'React class naming');
+    await memory.storeMemory(scopeId, taskId, 'code-pattern', 'Always use clsx for conditional classes');
+    const memories = await memory.retrieveMemories(scopeId, 'React class naming');
     context.log(`Found ${memories.length} relevant memories`, 'info');
   }
   ```
@@ -490,7 +521,8 @@ After completing this skill, verify:
 
 ### Technical Reference (all targets)
 
-- [packages/common/src/extensions.ts](https://raw.githubusercontent.com/hotovo/aider-desk/refs/heads/main/packages/common/src/extensions.ts) - Extension types and interfaces
+- [packages/common/src/extensions.ts](https://raw.githubusercontent.com/magiksoft/aider-desk/refs/heads/main/packages/common/src/extensions.ts) - Extension types and interfaces
+- [external-agent-providers.md](references/external-agent-providers.md) - Custom provider signatures, native approvals, MCP execution ownership, streaming, persistent sessions and host compatibility
 - [extension-interface.md](references/extension-interface.md) - Full Extension interface, ExtensionContext, TaskContext, ProjectContext, MemoryContext, and all supporting types
 - [extension-types.md](references/extension-types.md) - Single-file vs folder extensions, examples, extensions.json format
 - [event-types.md](references/event-types.md) - All event types, payloads, and extension method mappings

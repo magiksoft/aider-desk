@@ -1,5 +1,124 @@
 # Changelog
 
+## [UNRELEASED]
+
+- improved database write performance by enabling SQLite WAL mode to reduce UI freezes under concurrent agents
+- fixed amend commits including unselected staged changes instead of respecting the selected files
+- fixed misleading Git warnings when worktree directories were removed during file refresh
+- improved responsiveness when returning to the app by limiting Git refreshes to the active task and avoiding redundant requests
+- fixed task sidebar date grouping ignoring the year and merging older tasks into current-year day groups
+- added OpenLLM provider as first-class provider
+- fixed missing German translations in main-process messages
+- fixed Langfuse tracing with trailing slashes in host URLs
+- added copy branch name action to Git branch menus
+
+## [0.91.0]
+
+- fixed OS command injection via commit messages and file paths in git operations
+- fixed terminal startup cleanup and retries, cancelling abandoned initialization and waiting for the fitted emulator before creating its shell session
+- added Italian locale
+- safely render non-JSON subagent tool results
+- added browser loading progress with retry support and improved startup downloads with bundle minification, compression, and caching
+- fixed timeouts for long-running browser prompts and task operations while preserving CLI streaming
+- fixed database errors during app shutdown by waiting for project and task cleanup to finish
+- added support for payload data in log message actions while preserving existing action behavior
+- added reusable split buttons with additional-action menus and support for UI extensions
+- fixed terminal text input on Wayland with IBus while preserving keyboard and composition handling
+- added an option to fork tasks from pre-compaction history through the Undo dropdown while preserving the current task
+- fixed Langfuse Cloud agent tracing by migrating to OpenTelemetry ingestion and flushing traces on shutdown
+- fixed concurrent git mutations racing on one repository via unified repo-level locking and made worktree uncommitted-changes recovery preserve both change sets
+- added Smart Checkout to carry uncommitted changes across branches with conflict resolution and recovery backups
+- added support for file links in messages with desktop opening and browser downloads or path copying
+- added project-level Aider settings overrides and Main, Weak, and Architect model defaults with automatic selection and inheritance
+
+## [0.90.0]
+
+- updated Electron, Node.js, and uv for security fixes, added automatic Python certificate bundle updates and warnings for unpatched Node.js versions
+- fixed duplicate prompt execution when mobile clients replayed requests after reconnecting
+- added separate model overrides for conversation compaction and handoff in Context Management settings
+- added file tree sidebar, tab context menus, and editor state persistence to the file editor modal
+- added extension hooks for worktree creation and merging to support project-specific automation
+- improved Task tools with support for starting and resuming prepared tasks, explicit execution and autonomy controls, and task names in tool messages
+- fixed grouping and spacing of tool-only messages in Compact message view
+- added required streaming settings for providers and individual models
+- added extension APIs for background generation from task context
+- added custom model catalogs and independent favorites for extension model selectors
+- added editable model input and output modalities with attachment filtering for known capabilities while preserving attachments for unknown models
+- fixed missing `onPromptFinished` extension hook after agent resume and restart recovery
+- fixed context image attachments emitting a generic image media type instead of the detected MIME type, which could fail model requests for less common formats
+- prevented OS command injection in extension repository clone path
+
+## [0.89.0]
+
+- improved Mermaid diagrams with theme-aware colors and fonts and smoother streaming using Pele library
+- added support for pushing worktree fixes to the base branch’s upstream from the Push dialog
+- added pre-compaction context snapshots kept across compactions and exposed to the agent in the system prompt
+- fixed message map scrollbar styling to match the rest of the interface
+- added native tool approval support for extension providers, respecting task autonomy and Power tool approval settings
+- fixed duplicated and incorrectly grouped assistant messages when streaming reasoning and tool calls
+- added automatic task and subagent recovery after app restarts, preserving completed tool results and supporting configurable per-tool replay modes
+- fixed notification overflow and centering on small screens
+- fixed dialog overflow on small screens with responsive widths and wrapping footer buttons
+- fixed Model Library layout on small screens with a wrapping toolbar and a horizontally scrollable models table
+- fixed crashes when displaying truncated tool results while preserving tool details and input parameters
+
+## [0.88.0]
+
+- improved performance when switching between loaded tasks by preserving virtualized message size caches
+- fixed extension settings actions not respecting the selected project
+- added command palette actions for switching task modes
+- added branch menu action to create a clean worktree from a selected branch without moving uncommitted changes
+- added extension hooks for message transformation and cache control; updated optimization hooks to use transformed messages
+- fixed Aider tool responses not staying grouped after reloading tasks
+- fixed special-token text crashing token counting, with fallback estimates when tokenization fails
+- fixed bash tool calls hanging when command output processing fails
+- fixed failed subagent runs returning success with empty or incomplete results
+- optimized task list rendering, settings caching, and date formatting
+- added support for inline and block LaTeX formulas in chat messages
+- fixed malformed or incomplete compact diffs crashing the chat, with plain-text fallback for unsupported diffs
+- improved background performance by building command palette items only while open and preserved selection during live updates
+- fixed task auto-compaction not being disabled when its threshold was set to zero
+- added a trust confirmation before opening projects containing agents, MCP servers, or extensions through the UI
+- fixed image tool results triggering unnecessary auto-compaction due to inflated token estimates
+- fixed renamed files missing from Updated Files, including rename-aware diffs, reverting, and extension support
+
+## [0.87.0]
+
+- added option to skip Git hooks on commit
+- added icon support for extension custom modes from icon packs
+- fixed terminal staying open with a dead session when the shell exits (e.g. Ctrl+D)
+- fixed crash (React maximum update depth exceeded) when interacting with diff viewer dropdown while task is running
+- removed diff view mode switcher from code block headers in favor of global Settings (also improves code block rendering performance)
+- patched @legendapp/list to prevent crash in the message list from excessive container measurements
+- fixed task state not resyncing after socket reconnect
+- fixed delayed paste (Ctrl+V) on Linux when the app was idle
+- updated Electron to 44.7.0
+- added message map with color-coded users and assistants, hover previews, and click-to-scroll navigation
+- added arrow-key path segment completion with fuzzy matching in the prompt field
+- fixed delayed expand/collapse of folders in the updated files diff sidebar
+- fixed confirmation dialogs being clipped inside messages when deleting memories
+- fixed stale "(Not found)" shown in the stored memory tool message
+- fixed paused chat scroll position being lost when switching between tasks
+
+## [0.86.0]
+
+- added getProviders to extension context to access configured provider profiles
+- added option to isolate memories per agent profile
+- fixed crash during streaming (React maximum update depth exceeded) in message list
+- added agent-based conflict resolution support also on project root level, not only in worktrees
+- fixed updated files section not refreshing for tasks sharing the same worktree or project root
+- added pressing ArrowUp in an empty prompt field entering edit mode of the last user message
+- added onboarding path choice with default agent or code mode
+- added `smartCompact` and `getEstimatedTokens` to the extension task context
+- added extension tools section to agent selector with auto-refresh on extension changes
+- added automatic state resync for tasks and readonly view after socket reconnect
+- fixed task.json and todo.json being left half-written when the app crashes during save
+- fixed commit failing for already-staged file deletions
+- added default mode setting for new tasks and new projects
+- fixed todo list not auto-expanding again when a completed list is replaced with new items
+- fixed subagent token usage overwriting the main run's context size info
+- added onToolsetCreated extension event to modify the agent run toolset
+
 ## [0.85.0]
 
 - added Atlas Cloud provider

@@ -1,3 +1,4 @@
+import { createHash } from 'node:crypto';
 import path from 'path';
 import fs from 'fs/promises';
 
@@ -137,7 +138,7 @@ export class McpManager {
         ...mcpConnector.toolDefinitions,
         tools: mcpConnector.toolDefinitions.tools.map((toolDefinition) => ({
           ...toolDefinition,
-          inputSchema: this.fixInputSchema(providerName, toolDefinition.inputSchema),
+          inputSchema: this.fixInputSchema(providerName, this.normalizeToolInputSchema(toolDefinition.inputSchema)),
         })),
       } satisfies ListToolsResult;
       const mcpTools = mcpConnector.client.toolsFromDefinitions(toolDefinitions);
@@ -145,6 +146,7 @@ export class McpManager {
       for (const toolDefinition of toolDefinitions.tools) {
         const toolId = `${mcpConnector.serverName}${TOOL_GROUP_NAME_SEPARATOR}${toolDefinition.name}`;
         const normalizedToolId = toolId.toLowerCase().replaceAll(/\s+/g, '_');
+        const replayOwner = 'mcp:' + toolId + ':' + createHash('sha256').update(JSON.stringify(mcpConnector.serverConfig)).digest('hex');
 
         const approvalState = profile.toolApprovals[toolId];
         if (approvalState === ToolApprovalState.Never) {
@@ -168,6 +170,7 @@ export class McpManager {
           lastToolCallTimeRef,
           promptContext,
         );
+        toolSet[normalizedToolId] = { ...toolSet[normalizedToolId], ...{ recoveryModeKey: toolId, replayOwner } };
       }
     }
 
@@ -331,6 +334,13 @@ export class McpManager {
     };
 
     return processObject(schema);
+  }
+
+  private normalizeToolInputSchema(inputSchema: ListToolsResult['tools'][number]['inputSchema']): McpToolInputSchema {
+    return {
+      ...inputSchema,
+      type: (inputSchema.type as string | undefined) ?? 'object',
+    } as McpToolInputSchema;
   }
 
   private fixInputSchema(provider: LlmProviderName, inputSchema: McpToolInputSchema): McpToolInputSchema {
@@ -740,7 +750,7 @@ export class McpManager {
         serverName,
         name: tool.name,
         description: tool.description,
-        inputSchema: tool.inputSchema,
+        inputSchema: this.normalizeToolInputSchema(tool.inputSchema),
       })),
     };
 

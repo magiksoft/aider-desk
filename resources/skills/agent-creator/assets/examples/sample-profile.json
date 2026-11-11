@@ -2,7 +2,7 @@
   "id": "sample-agent",
   "name": "Sample Agent Profile",
   "provider": "anthropic",
-  "model": "claude-sonnet-5",
+  "model": "claude-opus-5",
   "maxIterations": 0,
   "minTimeBetweenToolCalls": 0,
   "enabledServers": [],

@@ -31,6 +31,7 @@ vi.mock('fs/promises');
 vi.mock('path');
 vi.mock('uuid');
 vi.mock('@/task/aider-manager');
+vi.mock('@/utils/atomic-write');
 vi.mock('@/task/context-manager');
 vi.mock('@/agent/agent');
 
@@ -175,7 +176,7 @@ describe('Project - createNewTask', () => {
     // Mock all other dependencies with minimal implementations
     mockMcpManager = {};
     mockTelemetryManager = {};
-    mockDataManager = {};
+    mockDataManager = { getAgentExecutions: vi.fn(() => []), saveAgentExecution: vi.fn(), deleteAgentExecution: vi.fn() };
     mockEventManager = {
       sendTaskCreated: vi.fn(),
       sendProjectStarted: vi.fn(),
@@ -185,6 +186,7 @@ describe('Project - createNewTask', () => {
       sendTaskDeleted: vi.fn(),
     };
     mockModelManager = {
+      getProviders: vi.fn(() => []),
       getProviderModels: vi.fn(() => Promise.resolve({ models: [] })),
       getAiderModelMapping: vi.fn(() => ({
         modelName: 'default-model',

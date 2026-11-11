@@ -19,6 +19,7 @@ vi.mock('@/prompts');
 vi.mock('@/extensions/extension-manager');
 vi.mock('@/task/aider-manager');
 vi.mock('@/task/context-manager');
+vi.mock('@/utils/atomic-write');
 vi.mock('@/project/migrations');
 vi.mock('fs/promises', () => {
   const mockFs = {
@@ -72,7 +73,7 @@ describe('Project Duplicate Subtask Prevention', () => {
       {} as any,
       { initializeForProject: vi.fn(), removeProject: vi.fn() } as any,
       {} as any,
-      {} as any,
+      { getAgentExecutions: vi.fn(() => []), saveAgentExecution: vi.fn(), deleteAgentExecution: vi.fn() } as any,
       mockEventManager as any,
       mockModelManager as any,
       mockGitManager as any,

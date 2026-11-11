@@ -2,6 +2,7 @@ import { useCallback, useEffect } from 'react';
 import { useTranslation } from 'react-i18next';
 import { v4 as uuidv4 } from 'uuid';
 import { isLogMessage } from '@common/types';
+import { getLogActions } from '@common/log-actions';
 
 import type { LogData, LogMessage, LoadingMessage, Message } from '@common/types';
 
@@ -19,7 +20,9 @@ export const useTaskLogHandlers = (baseDir: string, taskId: string) => {
   const { t } = useTranslation();
 
   const handleLog = useCallback(
-    ({ level, message, finished, promptContext, actionIds, timestamp }: LogData) => {
+    (data: LogData) => {
+      const { level, message, finished, promptContext, timestamp } = data;
+      const actions = getLogActions(data);
       touchTaskActivity(taskId);
       if (level === 'loading') {
         if (finished) {
@@ -47,11 +50,11 @@ export const useTaskLogHandlers = (baseDir: string, taskId: string) => {
           setMessages(taskId, (prevMessages) => prevMessages.filter((message) => message.type !== 'loading'));
         } else {
           const loadingMessage: LoadingMessage = {
-            id: uuidv4(),
+            id: data.id ?? uuidv4(),
             type: 'loading',
             content: message || t('messages.thinking'),
             promptContext,
-            actionIds,
+            actions,
             timestamp,
           };
 
@@ -60,9 +63,8 @@ export const useTaskLogHandlers = (baseDir: string, taskId: string) => {
             if (existingLoadingIndex !== -1) {
               const updatedMessages = [...prevMessages];
               updatedMessages[existingLoadingIndex] = {
-                ...updatedMessages[existingLoadingIndex],
-                content: loadingMessage.content,
-                promptContext,
+                ...loadingMessage,
+                id: updatedMessages[existingLoadingIndex].id,
               };
 
               return updatedMessages;
@@ -73,22 +75,23 @@ export const useTaskLogHandlers = (baseDir: string, taskId: string) => {
         }
       } else {
         const logMessage: LogMessage = {
-          id: uuidv4(),
+          id: data.id ?? uuidv4(),
           type: 'log',
+          persistent: data.persistent,
           level,
           content: message || '',
           promptContext,
-          actionIds,
+          actions,
           timestamp,
         };
         setMessages(taskId, (prevMessages) => [
           ...prevMessages
             .map((msg) =>
-              isLogMessage(msg) && msg.actionIds?.includes(RESOLVE_GIT_ERROR_WITH_AGENT_ACTION_ID)
-                ? { ...msg, actionIds: msg.actionIds.filter((id) => id !== RESOLVE_GIT_ERROR_WITH_AGENT_ACTION_ID) }
+              isLogMessage(msg) && msg.actions?.some((action) => action.id === RESOLVE_GIT_ERROR_WITH_AGENT_ACTION_ID)
+                ? { ...msg, actions: msg.actions.filter((action) => action.id !== RESOLVE_GIT_ERROR_WITH_AGENT_ACTION_ID) }
                 : msg,
             )
-            .filter((message) => !isLoadingMessage(message)),
+            .filter((message) => !isLoadingMessage(message) && message.id !== logMessage.id),
           logMessage,
         ]);
       }

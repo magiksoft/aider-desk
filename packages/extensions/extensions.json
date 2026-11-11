@@ -1,6 +1,30 @@
 {
   "extensions": [
     {
+      "id": "opencode-free",
+      "name": "OpenCode Free",
+      "description": "Free OpenCode models with native shell/read and AiderDesk tools over MCP",
+      "folder": "opencode-free",
+      "type": "folder",
+      "hasDependencies": true,
+      "capabilities": [
+        "providers"
+      ],
+      "installCount": 10
+    },
+    {
+      "id": "jev",
+      "name": "Jev",
+      "description": "Jev decision-model tools: typed yes/no, choice, and score questions about files, command output, or state",
+      "folder": "jev",
+      "type": "folder",
+      "hasDependencies": false,
+      "capabilities": [
+        "tools"
+      ],
+      "installCount": 20
+    },
+    {
       "id": "binary-files",
       "name": "Binary Files",
       "description": "Attaches local binary files to multimodal model requests",
@@ -8,9 +32,10 @@
       "type": "folder",
       "hasDependencies": false,
       "capabilities": [
-        "tools"
+        "tools",
+        "ui"
       ],
-      "installCount": 29
+      "installCount": 49
     },
     {
       "id": "wakatime",
@@ -21,7 +46,7 @@
       "capabilities": [
         "tracking"
       ],
-      "installCount": 10
+      "installCount": 15
     },
     {
       "id": "pirate",
@@ -45,7 +70,7 @@
         "commands",
         "example"
       ],
-      "installCount": 16
+      "installCount": 27
     },
     {
       "id": "questions",
@@ -58,7 +83,7 @@
         "commands",
         "ui"
       ],
-      "installCount": 35
+      "installCount": 54
     },
     {
       "id": "theme",
@@ -80,7 +105,7 @@
       "capabilities": [
         "modes"
       ],
-      "installCount": 74
+      "installCount": 129
     },
     {
       "id": "protected-paths",
@@ -92,7 +117,7 @@
       "capabilities": [
         "security"
       ],
-      "installCount": 31
+      "installCount": 59
     },
     {
       "id": "permission-gate",
@@ -103,7 +128,7 @@
       "capabilities": [
         "security"
       ],
-      "installCount": 27
+      "installCount": 41
     },
     {
       "id": "ultrathink",
@@ -114,7 +139,7 @@
       "capabilities": [
         "optimization"
       ],
-      "installCount": 38
+      "installCount": 57
     },
     {
       "id": "external-rules",
@@ -126,7 +151,7 @@
       "capabilities": [
         "context"
       ],
-      "installCount": 25
+      "installCount": 33
     },
     {
       "id": "external-skills",
@@ -138,7 +163,7 @@
       "capabilities": [
         "context"
       ],
-      "installCount": 54
+      "installCount": 83
     },
     {
       "id": "learn",
@@ -151,7 +176,7 @@
         "commands",
         "tools"
       ],
-      "installCount": 64
+      "installCount": 113
     },
     {
       "id": "legacy-system-prompt",
@@ -163,19 +188,19 @@
       "capabilities": [
         "context"
       ],
-      "installCount": 10
+      "installCount": 17
     },
     {
       "id": "sound-notification",
       "name": "Sound Notification",
-      "description": "Plays sound notifications using packs from og-packs",
+      "description": "Plays sound notifications using og-packs or custom audio files",
       "folder": "sound-notification",
       "type": "folder",
       "hasDependencies": false,
       "capabilities": [
         "notifications"
       ],
-      "installCount": 23
+      "installCount": 39
     },
     {
       "id": "sandbox",
@@ -191,7 +216,7 @@
         "linux",
         "macos"
       ],
-      "installCount": 10
+      "installCount": 14
     },
     {
       "id": "rtk",
@@ -208,7 +233,7 @@
         "linux",
         "macos"
       ],
-      "installCount": 21
+      "installCount": 38
     },
     {
       "id": "redact-secrets",
@@ -220,7 +245,7 @@
       "capabilities": [
         "security"
       ],
-      "installCount": 20
+      "installCount": 35
     },
     {
       "id": "chunkhound-search",
@@ -232,7 +257,7 @@
       "capabilities": [
         "search"
       ],
-      "installCount": 11
+      "installCount": 18
     },
     {
       "id": "chunkhound-on-semantic-search-tool",
@@ -244,7 +269,7 @@
       "capabilities": [
         "search"
       ],
-      "installCount": 11
+      "installCount": 18
     },
     {
       "id": "tree-sitter-repo-map",
@@ -257,7 +282,7 @@
         "context",
         "commands"
       ],
-      "installCount": 51
+      "installCount": 91
     },
     {
       "id": "context-autocompletion-words",
@@ -269,7 +294,7 @@
       "capabilities": [
         "context"
       ],
-      "installCount": 18
+      "installCount": 29
     },
     {
       "id": "lsp",
@@ -282,7 +307,7 @@
         "tools",
         "code-intelligence"
       ],
-      "installCount": 60
+      "installCount": 99
     },
     {
       "id": "plannotator",
@@ -297,7 +322,7 @@
         "commands",
         "workflows"
       ],
-      "installCount": 19
+      "installCount": 31
     },
     {
       "id": "programmatic-tool-calls",
@@ -309,7 +334,7 @@
       "capabilities": [
         "tools"
       ],
-      "installCount": 23
+      "installCount": 46
     },
     {
       "id": "ui-placement-demo",
@@ -321,7 +346,7 @@
         "ui",
         "example"
       ],
-      "installCount": 7
+      "installCount": 22
     },
     {
       "id": "multi-model-run",
@@ -334,7 +359,7 @@
         "ui",
         "workflows"
       ],
-      "installCount": 12
+      "installCount": 19
     },
     {
       "id": "providers-quota-extension",
@@ -346,7 +371,7 @@
       "capabilities": [
         "ui"
       ],
-      "installCount": 8
+      "installCount": 10
     },
     {
       "id": "openai-codex",
@@ -358,7 +383,7 @@
       "capabilities": [
         "providers"
       ],
-      "installCount": 29
+      "installCount": 39
     },
     {
       "id": "fff",
@@ -375,7 +400,7 @@
         "linux",
         "macos"
       ],
-      "installCount": 28
+      "installCount": 50
     },
     {
       "id": "searxng-search",
@@ -388,7 +413,7 @@
         "tools",
         "search"
       ],
-      "installCount": 18
+      "installCount": 36
     },
     {
       "id": "seek",
@@ -405,7 +430,7 @@
         "linux",
         "macos"
       ],
-      "installCount": 12
+      "installCount": 21
     },
     {
       "id": "tps-counter",
@@ -417,7 +442,7 @@
       "capabilities": [
         "metrics"
       ],
-      "installCount": 68
+      "installCount": 122
     },
     {
       "id": "verifier",
@@ -430,7 +455,7 @@
         "workflows",
         "ui"
       ],
-      "installCount": 41
+      "installCount": 68
     },
     {
       "id": "bmad",
@@ -443,7 +468,7 @@
         "modes",
         "ui"
       ],
-      "installCount": 11
+      "installCount": 20
     },
     {
       "id": "claude-agent-sdk",
@@ -456,7 +481,7 @@
         "providers",
         "agent-loop"
       ],
-      "installCount": 20
+      "installCount": 30
     },
     {
       "id": "auggie-sdk",
@@ -468,7 +493,7 @@
       "capabilities": [
         "providers"
       ],
-      "installCount": 2
+      "installCount": 6
     },
     {
       "id": "cursor",
@@ -480,7 +505,7 @@
       "capabilities": [
         "providers"
       ],
-      "installCount": 8
+      "installCount": 11
     },
     {
       "id": "cursor-sdk",
@@ -493,7 +518,7 @@
         "providers",
         "agent-loop"
       ],
-      "installCount": 8
+      "installCount": 12
     },
     {
       "id": "github-copilot",
@@ -506,7 +531,7 @@
         "providers",
         "agent-loop"
       ],
-      "installCount": 8
+      "installCount": 13
     },
     {
       "id": "checkpoints",
@@ -519,7 +544,7 @@
         "events",
         "ui"
       ],
-      "installCount": 29
+      "installCount": 46
     },
     {
       "id": "codegraph",
@@ -532,7 +557,7 @@
         "tools",
         "search"
       ],
-      "installCount": 51
+      "installCount": 94
     },
     {
       "id": "kanban",
@@ -544,7 +569,7 @@
       "capabilities": [
         "ui"
       ],
-      "installCount": 35
+      "installCount": 58
     },
     {
       "id": "doom",
@@ -556,7 +581,7 @@
       "capabilities": [
         "ui"
       ],
-      "installCount": 7
+      "installCount": 12
     },
     {
       "id": "my-minions",
@@ -569,7 +594,7 @@
         "agents",
         "example"
       ],
-      "installCount": 39
+      "installCount": 79
     },
     {
       "id": "wigolo",
@@ -582,7 +607,7 @@
         "tools",
         "search"
       ],
-      "installCount": 45
+      "installCount": 77
     },
     {
       "id": "destructive-command-guard",
@@ -595,7 +620,7 @@
         "security",
         "commands"
       ],
-      "installCount": 31
+      "installCount": 56
     },
     {
       "id": "git-log",
@@ -607,7 +632,7 @@
       "capabilities": [
         "ui"
       ],
-      "installCount": 39
+      "installCount": 63
     },
     {
       "id": "skill-gallery",
@@ -619,7 +644,7 @@
       "capabilities": [
         "ui"
       ],
-      "installCount": 94
+      "installCount": 182
     },
     {
       "id": "task-scheduler",
@@ -633,7 +658,7 @@
         "commands",
         "events"
       ],
-      "installCount": 21
+      "installCount": 35
     },
     {
       "id": "reasoning-selector",
@@ -645,7 +670,32 @@
       "capabilities": [
         "ui"
       ],
-      "installCount": 91
+      "installCount": 156
+    },
+    {
+      "id": "dbx",
+      "name": "DBX",
+      "description": "DBX database client UI running in a local testcontainers-backed container, embedded in a modal",
+      "folder": "dbx",
+      "type": "folder",
+      "hasDependencies": true,
+      "capabilities": [
+        "ui"
+      ],
+      "installCount": 5
+    },
+    {
+      "id": "compaction-studio",
+      "name": "Compaction Studio",
+      "description": "Manually compact the current context with full control over what gets compacted, the safe window and the compaction level",
+      "folder": "compaction-studio",
+      "type": "folder",
+      "hasDependencies": false,
+      "capabilities": [
+        "ui",
+        "commands"
+      ],
+      "installCount": 25
     }
   ]
 }

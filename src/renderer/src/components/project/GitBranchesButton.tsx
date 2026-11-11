@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { FaArrowsRotate, FaBan, FaCodeMerge, FaCompress, FaDownload, FaFileLines, FaPlay, FaPlus, FaRobot, FaUpload } from 'react-icons/fa6';
 import { TbDeviceImacDown } from 'react-icons/tb';
 import { FaPencilAlt } from 'react-icons/fa';
@@ -8,7 +8,7 @@ import { MdKeyboardArrowDown } from 'react-icons/md';
 import { useTranslation } from 'react-i18next';
 import { useHotkeys } from 'react-hotkeys-hook';
 import { useLocalStorage } from '@reactuses/core';
-import { BranchInfo, GitSyncCommits, WorktreeIntegrationStatus } from '@common/types';
+import { BranchInfo, GitSyncCommits, TaskGitStatus } from '@common/types';
 
 import { useApi } from '@/contexts/ApiContext';
 import { useClickOutside } from '@/hooks/useClickOutside';
@@ -62,12 +62,13 @@ const truncateBranchName = (name: string) => {
 type Props = {
   baseDir: string;
   taskId: string;
+  isActive?: boolean;
   worktreePath?: string;
-  status?: WorktreeIntegrationStatus | null;
+  status?: TaskGitStatus | null;
   taskName?: string;
   disabled?: boolean;
   onSwitchToLocal: () => void;
-  onSwitchToWorktree: () => void;
+  onSwitchToWorktree: (baseBranch?: string) => void;
   willShowConfirmDialog?: boolean;
   onMerge: (targetBranch?: string) => void;
   onSquash: (targetBranch?: string, commitMessage?: string) => void;
@@ -85,6 +86,7 @@ type Props = {
 export const GitBranchesButton = ({
   baseDir,
   taskId,
+  isActive = true,
   worktreePath,
   status,
   taskName,
@@ -125,6 +127,8 @@ export const GitBranchesButton = ({
   const [newBranchName, setNewBranchName] = useState('');
 
   const [branchToCheckout, setBranchToCheckout] = useState<BranchInfo | null>(null);
+  const [smartCheckoutRequest, setSmartCheckoutRequest] = useState<{ branch: BranchInfo; takeOver: boolean } | null>(null);
+  const checkoutInProgress = useRef(false);
   const [branchToBase, setBranchToBase] = useState<BranchInfo | null>(null);
   const [newBranchFromName, setNewBranchFromName] = useState('');
   const [branchToMerge, setBranchToMerge] = useState<BranchInfo | null>(null);
@@ -143,6 +147,7 @@ export const GitBranchesButton = ({
   const [showResolveWithAgentConfirm, setShowResolveWithAgentConfirm] = useState(false);
   const [showPushConfirm, setShowPushConfirm] = useState(false);
   const [forcePush, setForcePush] = useState(false);
+  const [pushToBase, setPushToBase] = useState(false);
   const [showPullConfirm, setShowPullConfirm] = useState(false);
 
   const dropdownRef = useRef<HTMLDivElement>(null);
@@ -152,108 +157,220 @@ export const GitBranchesButton = ({
   useClickOutside(dropdownRef, () => setIsOpen(false), isOpen);
 
   const statusCurrentBranch = status?.currentBranch;
-  const currentBranch = branches.find((b) => b.isCurrent)?.name || statusCurrentBranch || '';
-  const hasUpstream = Boolean(branches.find((b) => b.isCurrent)?.upstream);
   const isWorktree = Boolean(worktreePath);
-  const worktreeBaseBranch = isWorktree ? status?.baseBranch || status?.targetBranch : undefined;
+  const worktreeBaseBranch = isWorktree ? status?.worktree?.baseBranch || status?.worktree?.targetBranch : undefined;
+  const refreshState = useMemo(
+    () => ({
+      currentBranch: statusCurrentBranch,
+      hasWorktree: Boolean(worktreePath),
+      queryBranches: () => api.listGitBranches(baseDir, taskId, true),
+      queryMainBranch: () => api.listBranches(baseDir),
+      querySyncCommits: () => api.getSyncCommits(baseDir, taskId, worktreeBaseBranch),
+      valid: true,
+      branchesLoaded: false,
+      mainBranchLoaded: false,
+      lastSyncAt: null as number | null,
+      branchesRequest: null as Promise<void> | null,
+      mainBranchRequest: null as Promise<void> | null,
+      syncRequest: null as Promise<void> | null,
+    }),
+    [api, baseDir, taskId, worktreePath, worktreeBaseBranch, statusCurrentBranch],
+  );
+  const currentBranch = branches.find((b) => b.isCurrent)?.name || refreshState.currentBranch || '';
+  const hasUpstream = Boolean(branches.find((b) => b.isCurrent)?.upstream);
+  const baseBranchInfo = branches.find((branch) => branch.name === worktreeBaseBranch);
+  const baseBranchUpstream = baseBranchInfo?.isRemote
+    ? baseBranchInfo.name
+    : baseBranchInfo?.upstream || branches.find((branch) => branch.upstream === worktreeBaseBranch)?.upstream;
+  const canPushToBase = Boolean(isWorktree && status?.worktree?.baseBranch && baseBranchUpstream && !baseBranchUpstream.startsWith('.'));
+  const isBasePush = isWorktree && pushToBase;
 
   const incomingCount = syncCommits.incoming.count;
   const outgoingCount = syncCommits.outgoing.count;
   const recentBranchesWithCurrent = currentBranch ? [currentBranch, ...recentBranches.filter((name) => name !== currentBranch)] : recentBranches;
 
   const [mainBranchName, setMainBranchName] = useState<string | null>(null);
-  const rebaseBranch = status?.baseBranch || mainBranchName;
-
-  const loadBranches = useCallback(async () => {
-    setLoading(true);
-    try {
-      const list = await api.listGitBranches(baseDir, taskId, true);
-      setBranches(list);
-    } catch (error) {
-      showErrorNotification(error instanceof Error ? error.message : String(error));
-      setBranches([]);
-    } finally {
-      setLoading(false);
-    }
-  }, [api, baseDir, taskId]);
-
-  const loadMainBranch = useCallback(async () => {
-    if (!worktreePath) {
-      return;
-    }
-
-    try {
-      const list = await api.listBranches(baseDir);
-      setMainBranchName(list.find((b) => b.isCurrent)?.name || null);
-    } catch {
-      setMainBranchName(null);
-    }
-  }, [api, baseDir, worktreePath]);
-
-  const loadSyncCommits = useCallback(async () => {
-    try {
-      const result = await api.getSyncCommits(baseDir, taskId, worktreeBaseBranch);
-      setSyncCommits(result);
-    } catch {
-      setSyncCommits({ outgoing: { count: 0, commits: [] }, incoming: { count: 0, commits: [] } });
-    }
-  }, [api, baseDir, taskId, worktreeBaseBranch]);
+  const rebaseBranch = status?.worktree?.baseBranch || mainBranchName;
 
   useEffect(() => {
-    void loadBranches();
-  }, [loadBranches]);
+    refreshState.valid = true;
+    return () => {
+      refreshState.valid = false;
+    };
+  }, [refreshState]);
 
-  useEffect(() => {
-    if (statusCurrentBranch) {
-      void loadBranches();
+  const loadBranches = useCallback(
+    (force = false): Promise<void> => {
+      if (refreshState.branchesRequest) {
+        return force
+          ? refreshState.branchesRequest.then(() => {
+              if (refreshState.valid) {
+                return loadBranches();
+              }
+              return undefined;
+            })
+          : refreshState.branchesRequest;
+      }
+
+      setLoading(true);
+      refreshState.branchesRequest = (async () => {
+        try {
+          const list = await refreshState.queryBranches();
+          if (refreshState.valid) {
+            setBranches(list);
+            refreshState.branchesLoaded = true;
+          }
+        } catch (error) {
+          if (refreshState.valid) {
+            showErrorNotification(error instanceof Error ? error.message : String(error));
+            setBranches([]);
+          }
+        } finally {
+          refreshState.branchesRequest = null;
+          if (refreshState.valid) {
+            setLoading(false);
+          }
+        }
+      })();
+      return refreshState.branchesRequest;
+    },
+    [refreshState],
+  );
+
+  const loadMainBranch = useCallback(() => {
+    if (!refreshState.hasWorktree) {
+      return Promise.resolve();
     }
-  }, [statusCurrentBranch, loadBranches]);
+    if (refreshState.mainBranchRequest) {
+      return refreshState.mainBranchRequest;
+    }
 
-  useEffect(() => {
-    void loadMainBranch();
-  }, [loadMainBranch]);
+    refreshState.mainBranchRequest = (async () => {
+      try {
+        const list = await refreshState.queryMainBranch();
+        if (refreshState.valid) {
+          setMainBranchName(list.find((b) => b.isCurrent)?.name || null);
+          refreshState.mainBranchLoaded = true;
+        }
+      } catch {
+        if (refreshState.valid) {
+          setMainBranchName(null);
+        }
+      } finally {
+        refreshState.mainBranchRequest = null;
+      }
+    })();
+    return refreshState.mainBranchRequest;
+  }, [refreshState]);
 
-  useEffect(() => {
-    void loadSyncCommits();
-  }, [loadSyncCommits]);
+  const loadSyncCommits = useCallback(
+    (force = true): Promise<void> => {
+      if (refreshState.syncRequest) {
+        return force
+          ? refreshState.syncRequest.then(() => {
+              if (refreshState.valid) {
+                return loadSyncCommits();
+              }
+              return undefined;
+            })
+          : refreshState.syncRequest;
+      }
+      if (!force && refreshState.lastSyncAt !== null && Date.now() - refreshState.lastSyncAt < GIT_STATE_REFRESH_INTERVAL_MS) {
+        return Promise.resolve();
+      }
+
+      refreshState.syncRequest = (async () => {
+        try {
+          const result = await refreshState.querySyncCommits();
+          if (refreshState.valid) {
+            setSyncCommits(result);
+            refreshState.lastSyncAt = Date.now();
+          }
+        } catch {
+          if (refreshState.valid) {
+            setSyncCommits({ outgoing: { count: 0, commits: [] }, incoming: { count: 0, commits: [] } });
+          }
+        } finally {
+          refreshState.syncRequest = null;
+        }
+      })();
+      return refreshState.syncRequest;
+    },
+    [refreshState],
+  );
 
   useEffect(() => {
     if (prevRebaseInProgress.current && !rebaseInProgress) {
-      void loadBranches();
-      void loadSyncCommits();
-    }
-    prevRebaseInProgress.current = rebaseInProgress;
-  }, [rebaseInProgress, loadBranches, loadSyncCommits]);
-
-  useEffect(() => {
-    if (isOpen) {
-      void loadBranches();
-      void loadMainBranch();
-      void loadSyncCommits();
-    }
-  }, [isOpen, loadBranches, loadMainBranch, loadSyncCommits]);
-
-  useEffect(() => {
-    const refreshOnVisible = () => {
-      if (document.visibilityState === 'visible') {
+      refreshState.branchesLoaded = false;
+      refreshState.lastSyncAt = null;
+      if (isActive && document.visibilityState === 'visible' && document.hasFocus()) {
         void loadBranches();
         void loadSyncCommits();
       }
+    }
+    prevRebaseInProgress.current = rebaseInProgress;
+  }, [isActive, rebaseInProgress, loadBranches, loadSyncCommits, refreshState]);
+
+  useEffect(() => {
+    if (isActive && isOpen) {
+      void loadBranches();
+      void loadMainBranch();
+      void loadSyncCommits(false);
+    }
+  }, [isActive, isOpen, loadBranches, loadMainBranch, loadSyncCommits]);
+
+  useEffect(() => {
+    if (!isActive) {
+      return;
+    }
+
+    let timer: ReturnType<typeof setTimeout> | undefined;
+    let generation = 0;
+    const pause = () => {
+      generation += 1;
+      clearTimeout(timer);
+      timer = undefined;
+    };
+    const resume = () => {
+      pause();
+      if (document.visibilityState !== 'visible' || !document.hasFocus()) {
+        return;
+      }
+
+      if (!refreshState.branchesLoaded) {
+        void loadBranches();
+      }
+      if (!refreshState.mainBranchLoaded) {
+        void loadMainBranch();
+      }
+
+      const currentGeneration = generation;
+      const poll = async () => {
+        if (currentGeneration !== generation || document.visibilityState !== 'visible' || !document.hasFocus()) {
+          return;
+        }
+        await loadSyncCommits(false);
+        if (currentGeneration !== generation) {
+          return;
+        }
+        const age = refreshState.lastSyncAt === null ? 0 : Date.now() - refreshState.lastSyncAt;
+        timer = setTimeout(poll, Math.max(1, GIT_STATE_REFRESH_INTERVAL_MS - age));
+      };
+      void poll();
     };
 
-    const interval = setInterval(() => {
-      void loadSyncCommits();
-    }, GIT_STATE_REFRESH_INTERVAL_MS);
-
-    window.addEventListener('focus', refreshOnVisible);
-    document.addEventListener('visibilitychange', refreshOnVisible);
+    resume();
+    window.addEventListener('focus', resume);
+    window.addEventListener('blur', pause);
+    document.addEventListener('visibilitychange', resume);
 
     return () => {
-      clearInterval(interval);
-      window.removeEventListener('focus', refreshOnVisible);
-      document.removeEventListener('visibilitychange', refreshOnVisible);
+      pause();
+      window.removeEventListener('focus', resume);
+      window.removeEventListener('blur', pause);
+      document.removeEventListener('visibilitychange', resume);
     };
-  }, [loadBranches, loadSyncCommits]);
+  }, [isActive, refreshState, loadBranches, loadMainBranch, loadSyncCommits]);
 
   const handleError = useCallback((error: unknown) => {
     // The error is already logged to the task chat by the backend with a 'Resolve with AI' action
@@ -276,6 +393,7 @@ export const GitBranchesButton = ({
     setNewBranchFromName('');
     setShowPushConfirm(false);
     setForcePush(false);
+    setPushToBase(false);
   }, []);
 
   const handleCreateBranchConfirm = async () => {
@@ -295,7 +413,7 @@ export const GitBranchesButton = ({
       trackRecentBranch(trimmedName);
       setShowNewBranchInput(false);
       setNewBranchName('');
-      await loadBranches();
+      await loadBranches(true);
       await loadSyncCommits();
     } catch (error) {
       handleError(error);
@@ -324,7 +442,7 @@ export const GitBranchesButton = ({
       trackRecentBranch(trimmedName);
       setBranchToBase(null);
       setNewBranchFromName('');
-      await loadBranches();
+      await loadBranches(true);
       await loadSyncCommits();
     } catch (error) {
       handleError(error);
@@ -357,22 +475,47 @@ export const GitBranchesButton = ({
     });
   };
 
-  const performCheckout = async (branch: BranchInfo, takeOver = false) => {
+  const performCheckout = async (branch: BranchInfo, takeOver = false, smartCheckout = false) => {
     if (isWorktree) {
       showErrorNotification(t('git.actionNotAvailableInWorktree'));
       return;
     }
+    if (checkoutInProgress.current) {
+      return;
+    }
 
+    checkoutInProgress.current = true;
     handleCloseDropdown();
+    setSmartCheckoutRequest(null);
     try {
-      await api.checkoutGitBranch(baseDir, taskId, branch.name, branch.isRemote, takeOver);
-      showInfoNotification(t('git.checkedOutBranch', { branch: branch.name }));
+      const result = await api.checkoutGitBranch(baseDir, taskId, branch.name, branch.isRemote, takeOver, smartCheckout);
+      if (result.requiresSmartCheckout) {
+        setSmartCheckoutRequest({ branch, takeOver });
+        return;
+      }
+      if (!result.conflictedFiles?.length) {
+        showInfoNotification(t('git.checkedOutBranch', { branch: branch.name }));
+      }
       trackRecentBranch(branch.name);
-      await loadBranches();
+      await loadBranches(true);
       await loadSyncCommits();
     } catch (error) {
       handleError(error);
+      await loadBranches(true);
+      await loadSyncCommits();
+    } finally {
+      checkoutInProgress.current = false;
     }
+  };
+
+  const handleSmartCheckoutConfirm = () => {
+    if (smartCheckoutRequest) {
+      void performCheckout(smartCheckoutRequest.branch, smartCheckoutRequest.takeOver, true);
+    }
+  };
+
+  const handleCancelSmartCheckout = () => {
+    setSmartCheckoutRequest(null);
   };
 
   const performMerge = async (branch: BranchInfo) => {
@@ -383,7 +526,7 @@ export const GitBranchesButton = ({
       } else {
         showInfoNotification(t('git.mergedIntoCurrent', { branch: branch.name }));
       }
-      await loadBranches();
+      await loadBranches(true);
       await loadSyncCommits();
     } catch (error) {
       handleError(error);
@@ -398,7 +541,7 @@ export const GitBranchesButton = ({
       } else {
         showInfoNotification(t('git.rebasedOnto', { branch: branch.name }));
       }
-      await loadBranches();
+      await loadBranches(true);
       await loadSyncCommits();
     } catch (error) {
       handleError(error);
@@ -435,7 +578,7 @@ export const GitBranchesButton = ({
       await api.deleteGitBranch(baseDir, taskId, branchToDelete.name, forceDelete);
       showInfoNotification(t('git.branchDeleted', { branch: branchToDelete.name }));
       setBranchToDelete(null);
-      await loadBranches();
+      await loadBranches(true);
       await loadSyncCommits();
     } catch (error) {
       setBranchToDelete(null);
@@ -482,7 +625,7 @@ export const GitBranchesButton = ({
     try {
       await api.updateGitBranch(baseDir, taskId, branch.name);
       showInfoNotification(t('git.branchUpdated', { branch: branch.name }));
-      await loadBranches();
+      await loadBranches(true);
       await loadSyncCommits();
     } catch (error) {
       handleError(error);
@@ -490,32 +633,47 @@ export const GitBranchesButton = ({
   };
 
   const handlePush = useCallback(() => {
-    if (disabled || !currentBranch || (outgoingCount === 0 && hasUpstream)) {
+    if (disabled || !currentBranch || (!isWorktree && outgoingCount === 0 && hasUpstream)) {
       return;
     }
     handleCloseDropdown();
     setForcePush(false);
+    setPushToBase(false);
     setShowPushConfirm(true);
-  }, [disabled, currentBranch, outgoingCount, hasUpstream, handleCloseDropdown]);
+  }, [disabled, currentBranch, outgoingCount, hasUpstream, isWorktree, handleCloseDropdown]);
 
   const handlePushConfirm = async () => {
+    if (isBasePush && !canPushToBase) {
+      return;
+    }
     setShowPushConfirm(false);
     try {
-      await api.gitPush(baseDir, taskId, forcePush, !hasUpstream);
+      if (isBasePush) {
+        await api.gitPush(baseDir, taskId, forcePush, false, true);
+      } else {
+        await api.gitPush(baseDir, taskId, forcePush, !hasUpstream);
+      }
       showInfoNotification(t('git.pushSuccess'));
       await loadSyncCommits();
     } catch (error) {
       if (error instanceof Error && /fetch first|non-fast-forward|rejected because the tip|remote contains work/i.test(error.message)) {
-        showErrorNotification(t('git.pushRejectedPullFirst'));
+        showErrorNotification(isBasePush ? error.message : t('git.pushRejectedPullFirst'));
       } else {
         handleError(error);
       }
     }
   };
 
+  const handlePushToBaseChange = (checked: boolean) => {
+    if (canPushToBase) {
+      setPushToBase(checked);
+    }
+  };
+
   const handlePushCancel = () => {
     setShowPushConfirm(false);
     setForcePush(false);
+    setPushToBase(false);
   };
 
   const handleEditBranch = useCallback(() => {
@@ -547,6 +705,13 @@ export const GitBranchesButton = ({
     if (!disabled) {
       handleCloseDropdown();
       onSwitchToLocal();
+    }
+  };
+
+  const handleCreateWorktreeFrom = (branch: BranchInfo) => {
+    if (!disabled) {
+      handleCloseDropdown();
+      onSwitchToWorktree(branch.name);
     }
   };
 
@@ -803,9 +968,9 @@ export const GitBranchesButton = ({
                 </Tooltip>
               )}
             </div>
-            {status?.baseBranch && (
+            {status?.worktree?.baseBranch && (
               <div className="px-3 py-0.5 pb-1.5 text-2xs text-text-muted">
-                {t('worktree.basedOn')}: <span className="text-text-secondary">{status.baseBranch}</span>
+                {t('worktree.basedOn')}: <span className="text-text-secondary">{status.worktree?.baseBranch}</span>
               </div>
             )}
           </div>
@@ -942,12 +1107,15 @@ export const GitBranchesButton = ({
                 {t('git.updateProject')}
                 {incomingCount > 0 && outgoingCount > 0 ? '...' : ''}
               </button>
-              <button onClick={handlePush} className={menuItemClass} disabled={disabled || !currentBranch || (outgoingCount === 0 && hasUpstream)}>
-                <FaUpload className="w-3 h-3" />
-                {t('git.push')}...
-              </button>
             </div>
           )}
+
+          <div className="border-b border-border-default-dark py-1">
+            <button onClick={handlePush} className={menuItemClass} disabled={disabled || !currentBranch || (!isWorktree && outgoingCount === 0 && hasUpstream)}>
+              <FaUpload className="w-3 h-3" />
+              {t('git.push')}...
+            </button>
+          </div>
 
           <GitBranchesPopup
             branches={branches}
@@ -957,6 +1125,7 @@ export const GitBranchesButton = ({
             worktreeMode={isWorktree}
             onSelect={handleSelect}
             onNewBranchFrom={handleNewBranchFrom}
+            onCreateWorktreeFrom={handleCreateWorktreeFrom}
             onUpdateBranch={handleUpdateBranch}
             onMergeIntoCurrent={handleMergeIntoCurrent}
             onRebaseOnto={handleRebaseOnto}
@@ -965,6 +1134,18 @@ export const GitBranchesButton = ({
             onRequestClose={handleCloseDropdown}
           />
         </div>
+      )}
+
+      {smartCheckoutRequest && (
+        <ConfirmDialog
+          title={t('git.smartCheckout')}
+          onConfirm={handleSmartCheckoutConfirm}
+          onCancel={handleCancelSmartCheckout}
+          confirmButtonText={t('git.smartCheckout')}
+          closeOnEscape
+        >
+          <p className="text-sm">{t('git.smartCheckoutMessage', { branch: smartCheckoutRequest.branch.name })}</p>
+        </ConfirmDialog>
       )}
 
       {branchToCheckout && (
@@ -1031,7 +1212,7 @@ export const GitBranchesButton = ({
           title={t('worktree.confirmMergeTitle')}
           message={t('worktree.confirmMergeMessage')}
           confirmButtonText={t('worktree.merge')}
-          defaultBranch={status?.targetBranch}
+          defaultBranch={status?.worktree?.targetBranch}
           onCancel={() => setShowMergeDialog(false)}
           onConfirm={(branch) => {
             setShowMergeDialog(false);
@@ -1046,10 +1227,12 @@ export const GitBranchesButton = ({
           title={t('worktree.confirmSquashTitle')}
           message={t('worktree.confirmSquashMessage')}
           confirmButtonText={t('worktree.squash')}
-          defaultBranch={status?.targetBranch}
+          defaultBranch={status?.worktree?.targetBranch}
           showCommitMessage
           initialCommitMessage={
-            status?.aheadCommits.commits && status.aheadCommits.commits.length > 0 ? status.aheadCommits.commits[0].split(' ').slice(1).join(' ') : taskName
+            status?.worktree?.aheadCommits.commits && status.worktree.aheadCommits.commits.length > 0
+              ? status.worktree.aheadCommits.commits[0].split(' ').slice(1).join(' ')
+              : taskName
           }
           onCancel={() => setShowSquashDialog(false)}
           onConfirm={(branch, commitMessage) => {
@@ -1155,18 +1338,21 @@ export const GitBranchesButton = ({
       {showPushConfirm && (
         <ConfirmDialog
           title={t('git.confirmPushTitle')}
-          onConfirm={() => void handlePushConfirm()}
+          disabled={isBasePush && !canPushToBase}
+          onConfirm={handlePushConfirm}
           onCancel={handlePushCancel}
           confirmButtonText={t('git.push')}
           closeOnEscape
         >
           <div className="flex flex-col gap-3">
-            {!hasUpstream ? (
+            {isBasePush ? (
+              <p className="text-sm">{t('git.confirmPushToBaseMessage', { branch: currentBranch, upstream: baseBranchUpstream })}</p>
+            ) : !hasUpstream ? (
               <p className="text-sm">{t('git.confirmPushSetUpstreamMessage', { branch: currentBranch })}</p>
             ) : (
               <p className="text-sm">{t('git.confirmPushMessage', { count: outgoingCount })}</p>
             )}
-            {outgoingCount > 0 && (
+            {!isBasePush && outgoingCount > 0 && (
               <div className="max-h-48 overflow-y-auto space-y-1 rounded border border-border-default bg-bg-primary-light p-2 font-mono text-2xs text-text-secondary">
                 {syncCommits.outgoing.commits.map((commit, index) => (
                   <div key={index} className="truncate">
@@ -1176,6 +1362,12 @@ export const GitBranchesButton = ({
               </div>
             )}
             <Checkbox label={t('git.force')} checked={forcePush} onChange={setForcePush} />
+            {canPushToBase && (
+              <div className="space-y-2">
+                <Checkbox label={t('git.pushToBaseUpstream')} checked={pushToBase} onChange={handlePushToBaseChange} />
+                <p className="text-2xs text-text-muted">{t('git.pushToBaseDestination', { upstream: baseBranchUpstream })}</p>
+              </div>
+            )}
           </div>
         </ConfirmDialog>
       )}

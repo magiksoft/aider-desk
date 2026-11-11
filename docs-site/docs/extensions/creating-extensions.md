@@ -406,6 +406,7 @@ The following components are available via `props.ui`:
 | Component | Description |
 |-----------|-------------|
 | `Button` | Standard button with variants (solid, outline) and colors (primary, secondary, tertiary, danger) |
+| `SplitButton` | Primary action button with an additional-actions dropdown; supports all Button variants, colors, and sizes |
 | `IconButton` | Button with icon only |
 | `Checkbox` | Checkbox input with label |
 | `Input` | Text input field |
@@ -420,6 +421,66 @@ The following components are available via `props.ui`:
 | `Tooltip` | Tooltip wrapper for hover content |
 | `LoadingOverlay` | Loading spinner with message |
 | `ConfirmDialog` | Confirmation dialog modal |
+
+#### SplitButton
+
+`ui.SplitButton` combines a primary `Button` with a separate arrow that opens an
+additional-actions menu. Selecting a menu item executes it immediately; it does
+not change the primary action. It supports the same `variant` (`contained`,
+`text`, `outline`), `color`, `size`, `disabled`, `tooltip`, and native button
+props as `Button`. These button props apply to the primary action; the arrow
+always has `type="button"` so it cannot submit a form.
+
+```jsx
+const handleMerge = () => executeExtensionAction('merge');
+const handleSquash = () => executeExtensionAction('squash');
+
+<ui.SplitButton
+  onClick={handleMerge}
+  variant="outline"
+  size="sm"
+  actions={[
+    { id: 'squash', label: 'Squash and merge', onClick: handleSquash },
+  ]}
+>
+  Merge
+</ui.SplitButton>
+```
+
+Each action requires a stable `id`, a `label` (text or JSX), and an `onClick`
+callback; `icon` (JSX) and `disabled` are optional. `disabled` on the component
+disables both halves. An empty `actions` array disables only the arrow.
+`menuLabel` overrides the arrow's localized accessible name (`More actions`).
+`className` styles the primary button; `containerClassName` styles the combined
+wrapper. The dropdown supports keyboard navigation, Escape, and outside-click
+dismissal, and is portaled to avoid clipping by parent containers.
+
+#### ModelSelector catalogs and extension-owned favorites
+
+`ui.ModelSelector` accepts the exported `ModelSelectorProps` contract:
+
+```jsx
+<ui.ModelSelector
+  models={imageModels}
+  providers={imageProviders}
+  selectedModelId={selectedModelId}
+  onChange={handleModelChange}
+  preferredModels={preferredModels}
+  onPreferredModelsChange={handlePreferredModelsChange}
+  popupPlacement="bottom"
+/>
+```
+
+- `models?: Model[]` replaces the core catalog. Only IDs in that array can appear as favorites; `[]` shows no models. Without this prop, unavailable/unknown favorites retain their ordinary core behavior. The supplied array is not mutated.
+- `providers?: ProviderProfile[]` replaces core providers for names and disabled-state lookup. Omit it to use core providers.
+- `selectedModelId?: string | null` uses a provider-qualified ID (`providerId/modelId`); use `null` for an enabled selector with no selection. `undefined` disables the selector button. `onChange(model: Model | null)` receives the selected model, not its ID.
+- `preferredModels?: string[]` is a **controlled** list of provider-qualified IDs. Supplying it, including `[]`, isolates favorites completely from core settings. Selection prepends/deduplicates the selected ID; explicit removal removes that ID. Clearing selection does not change favorites.
+- `onPreferredModelsChange?: (next: string[]) => void` receives the complete next list. The extension must update its state/props and persist the list independently (for example through an extension UI action). Without this callback, supplied favorites are read-only and removal controls are hidden; selection still calls `onChange`. The callback is used only when `preferredModels` is supplied.
+- Out-of-catalog favorite IDs are hidden, not deleted from the controlled list or emitted updates. This allows switching catalogs without losing saved preferences.
+- `skipPreferredModelsUpdate?: boolean` suppresses selection-driven favorite updates in either mode, but not explicit removal. Omit both preference props to retain core favorites and persistence, even when using a custom catalog.
+- Existing optional props remain available: `className`, `popupPlacement` (`"top" | "bottom"`), `labelOnNull` (adds a clearing option), and `usePortal`.
+
+Initialize extension-owned favorites to `[]` while loading persisted data rather than omitting `preferredModels`, so the selector never temporarily uses core favorites.
 
 #### Component Props
 
@@ -556,6 +617,40 @@ export default class ProtectedPathsExtension implements Extension {
 }
 ```
 
+### Worktree Lifecycle Hooks
+
+Use a project-local extension at `.aider-desk/extensions/worktree-setup.ts` to run project-specific setup whenever AiderDesk creates a worktree:
+
+```typescript
+import { exec } from 'node:child_process';
+import { promisify } from 'node:util';
+import type { Extension, ExtensionContext, WorktreeCreatedEvent, WorktreeMergedEvent } from '@aiderdesk/extensions';
+
+const execAsync = promisify(exec);
+
+export default class WorktreeSetupExtension implements Extension {
+  static metadata = {
+    name: 'Project Worktree Setup',
+    version: '1.0.0',
+    description: 'Install project dependencies in newly created worktrees',
+  };
+
+  async onWorktreeCreated(event: WorktreeCreatedEvent, context: ExtensionContext): Promise<void> {
+    const { stdout, stderr } = await execAsync('npm ci', { cwd: event.worktree.path });
+    context.log([stdout, stderr].filter(Boolean).join('\n'), 'info');
+  }
+
+  async onWorktreeMerged(event: WorktreeMergedEvent, context: ExtensionContext): Promise<void> {
+    context.log(`Merged ${event.worktree.path} into ${event.targetBranch ?? event.targetPath}`, 'info');
+  }
+}
+```
+
+- **`onWorktreeCreated`** receives `{ task, worktree }`. It is awaited after worktree creation, symlink setup, and the existing `worktreePostCreateCommand` (if configured). It also covers switching an existing task to a newly created worktree. Loading or sharing an existing worktree does not trigger it. The task may not yet be fully initialized, so use `event.worktree.path` rather than relying on task readiness or its current working mode.
+- **`onWorktreeMerged`** receives `{ task, worktree, targetPath, targetBranch?, squash, includeUncommitted }`. It is awaited after successful merge-to-project, merge-before-switch-to-local, and worktree-to-worktree operations, before source cleanup. Failed merges do not trigger it. `worktree` describes the source; `targetPath` identifies the destination repository. `targetBranch` is supplied for merges to a project branch, and omitted for worktree-to-worktree merges. For checkoutless merges, the target branch is updated without checking it out in `targetPath`; do not assume that directory has the merged files checked out. `includeUncommitted` records whether the operation includes uncommitted changes, not whether any were present.
+
+Both hooks are post-operation notifications returning `Promise<void>`; they cannot cancel or alter the completed Git operation. Handler failures are logged and other extensions continue. The existing `worktreePostCreateCommand` remains supported; clear it when moving the same setup into an extension to avoid running it twice. Project-local extensions only receive events for their own project. Only run commands you trust; these hooks execute without agent tool approval.
+
 ### Extension with Memory Integration
 
 Extensions can access AiderDesk's built-in memory system via `context.getMemoryContext()`. This enables storing and retrieving knowledge across tasks — useful for auto-extracting insights from agent interactions or building context-aware extensions.
@@ -575,17 +670,17 @@ export default class MemoryInsightsExtension implements Extension {
     const memory = context.getMemoryContext();
     if (!memory.isMemoryEnabled()) return;
 
-    const projectId = context.getProjectDir();
+    const scopeId = context.getProjectDir();
     const taskContext = context.getTaskContext();
     const taskId = taskContext?.data.id ?? '';
 
     // Retrieve relevant context from previous tasks
-    const memories = await memory.retrieveMemories(projectId, 'project conventions');
+    const memories = await memory.retrieveMemories(scopeId, 'project conventions');
     context.log(`Loaded ${memories.length} memories for context`, 'info');
 
     // Store a pattern observed during this task
     await memory.storeMemory(
-      projectId,
+      scopeId,
       taskId,
       'code-pattern',
       'Use Zod schemas for all runtime input validation',
@@ -615,7 +710,7 @@ export default class SmartMemoryExtension implements Extension {
     const taskContext = context.getTaskContext();
     if (!taskContext) return;
 
-    const projectId = context.getProjectDir();
+    const scopeId = context.getProjectDir();
     const taskId = taskContext.data.id;
 
     // Use a cheap model to extract insights from the conversation
@@ -630,7 +725,7 @@ export default class SmartMemoryExtension implements Extension {
     try {
       const insights = JSON.parse(extractionResult);
       for (const insight of insights) {
-        await memory.storeMemory(projectId, taskId, insight.type, insight.content);
+        await memory.storeMemory(scopeId, taskId, insight.type, insight.content);
       }
       context.log(`Stored ${insights.length} extracted memories`, 'info');
     } catch {

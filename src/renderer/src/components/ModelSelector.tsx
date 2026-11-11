@@ -20,12 +20,15 @@ type Props = {
   className?: string;
   models: Model[];
   selectedModelId?: string | null;
+  resolvedModelId?: string;
+  selectionHint?: string;
   onChange: (model: Model | null) => void;
   preferredModelIds: string[];
   removePreferredModel?: (modelId: string) => void;
   providers: ProviderProfile[];
   popupPlacement?: 'top' | 'bottom';
   labelOnNull?: string;
+  selectedLabelOnNull?: string;
   usePortal?: boolean;
 };
 
@@ -35,12 +38,15 @@ export const ModelSelector = forwardRef<ModelSelectorRef, Props>(
       className,
       models,
       selectedModelId,
+      resolvedModelId,
+      selectionHint,
       onChange,
       preferredModelIds,
       removePreferredModel,
       providers,
       popupPlacement = 'bottom',
       labelOnNull,
+      selectedLabelOnNull,
       usePortal = false,
     },
     ref,
@@ -56,7 +62,7 @@ export const ModelSelector = forwardRef<ModelSelectorRef, Props>(
       const provider = providers.find((p) => p.id === providerId);
       return provider?.name || t(`providers.${providerId}`);
     };
-    const [selectedProviderId, selectedModel] = extractProviderModel(optimisticSelectedModelId || '');
+    const [selectedProviderId, selectedModel] = extractProviderModel(optimisticSelectedModelId || resolvedModelId || '');
     const selectedProviderName = selectedProviderId ? getProviderName(selectedProviderId) : '';
 
     const { isOpen, state, open, close, toggle, updateState } = useDropdownState({
@@ -236,10 +242,10 @@ export const ModelSelector = forwardRef<ModelSelectorRef, Props>(
             className,
           )}
         >
-          {optimisticSelectedModelId === null ? (
+          {optimisticSelectedModelId === null && !resolvedModelId ? (
             <div className="flex items-end">
               <div className="flex items-start justify-between flex-1 min-w-0 gap-0.5">
-                <div className="text-2xs text-text-muted leading-tight">{labelOnNull ?? ''}</div>
+                <div className="text-2xs text-text-muted leading-tight">{selectedLabelOnNull ?? labelOnNull ?? ''}</div>
                 <MdKeyboardArrowUp className="w-3 h-3 ml-1 flex-shrink-0 transform rotate-180" />
               </div>
             </div>
@@ -249,6 +255,7 @@ export const ModelSelector = forwardRef<ModelSelectorRef, Props>(
                 <div className="text-2xs text-text-muted leading-none">{selectedProviderName}</div>
                 <div className="flex items-center gap-1">
                   <div className="text-2xs font-medium truncate leading-tight">{selectedModel}</div>
+                  {selectionHint && <span className="text-2xs text-text-muted whitespace-nowrap">{selectionHint}</span>}
                   <MdKeyboardArrowUp className="w-3 h-3 ml-1 flex-shrink-0 transform rotate-180" />
                 </div>
               </div>

@@ -4,6 +4,9 @@ import { FaBrain, FaCheckCircle, FaExclamationTriangle, FaTimesCircle, FaTrash }
 import { CgSpinner } from 'react-icons/cg';
 import { ToolMessage } from '@common/types';
 
+import { getTruncatedToolResult } from './truncated-tool-result';
+import { TruncatedToolResultContent } from './TruncatedToolResultContent';
+
 import { ExpandableMessageBlock } from '@/components/message/ExpandableMessageBlock';
 import { IconButton } from '@/components/common/IconButton';
 import { Tooltip } from '@/components/ui/Tooltip';
@@ -38,6 +41,7 @@ export const StoreMemoryToolMessage = ({ message, onRemove, compact = false, onF
 
   const type = (message.args.type as string) || '';
   const parsedContent = message.content && JSON.parse(message.content);
+  const truncatedResult = getTruncatedToolResult(parsedContent);
   // Tool results are stored JSON-stringified; versions that returned a JSON string from the tool are stored double-encoded
   const unwrapped =
     typeof parsedContent === 'object' && parsedContent !== null
@@ -52,6 +56,7 @@ export const StoreMemoryToolMessage = ({ message, onRemove, compact = false, onF
   const memoryId = result?.success ? result.id : undefined;
 
   const [currentMemories, setCurrentMemories] = useState<Set<string>>(new Set());
+  const [hasLoadedMemories, setHasLoadedMemories] = useState(false);
   const [isDeleteDialogOpen, setIsDeleteDialogOpen] = useState(false);
 
   useEffect(() => {
@@ -61,10 +66,12 @@ export const StoreMemoryToolMessage = ({ message, onRemove, compact = false, onF
         setCurrentMemories(new Set(allMemories.map((m) => m.id)));
       } catch {
         // Ignore errors loading memories
+      } finally {
+        setHasLoadedMemories(true);
       }
     };
     void loadMemories();
-  }, [api]);
+  }, [api, message.content]);
 
   const handleDeleteMemory = async () => {
     setIsDeleteDialogOpen(false);
@@ -134,11 +141,12 @@ export const StoreMemoryToolMessage = ({ message, onRemove, compact = false, onF
       );
     }
 
-    const memoryExists = memoryId ? currentMemories.has(memoryId) : true;
+    const memoryExists = memoryId ? (hasLoadedMemories ? currentMemories.has(memoryId) : true) : true;
 
     return (
       <div className="px-4 py-1 text-2xs text-text-tertiary bg-bg-secondary">
         <div className="space-y-3">
+          {truncatedResult && <TruncatedToolResultContent result={truncatedResult} />}
           {/* Memory Details */}
           <div className="space-y-2">
             <div className={`border border-border-dark-light rounded bg-bg-primary-light px-3 py-2 space-y-1 ${!memoryExists ? 'opacity-50' : ''}`}>

@@ -19,6 +19,7 @@ import { Select } from '@/components/common/Select';
 import { Input } from '@/components/common/Input';
 import { Checkbox } from '@/components/common/Checkbox';
 import { Button } from '@/components/common/Button';
+import { SplitButton } from '@/components/common/SplitButton';
 import { initExtensionLibraryLoader } from '@/utils/extension-library-loader';
 import { ModalOverlayLayout } from '@/components/common/ModalOverlayLayout';
 import { CodeBlock } from '@/components/common/CodeBlock';
@@ -75,6 +76,7 @@ const useExtensionsContext = (): ExtensionsContextValue => {
 
 export const uiComponents: UIComponents = {
   Button,
+  SplitButton,
   Checkbox,
   Input,
   Select,

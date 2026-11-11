@@ -12,10 +12,18 @@ import {
   TodoItem,
   UpdatedFile,
   UsageReportData,
-  WorktreeUncommittedFiles,
+  UncommittedFiles,
 } from '@common/types';
 
-import type { QuestionOptions, TaskContext, ResponseMessage } from '@common/extensions';
+import type {
+  ContextGenerationOptions,
+  ContextGenerationResult,
+  QuestionOptions,
+  SmartCompactionOptions,
+  SmartCompactionResult,
+  TaskContext,
+  ResponseMessage,
+} from '@common/extensions';
 import type { z } from 'zod';
 import type { Task } from '@/task';
 
@@ -129,8 +137,8 @@ export class TaskContextImpl implements TaskContext {
     return this.task.getUpdatedFiles();
   }
 
-  async getUpdatedFileDiff(filePath: string, commitHash?: string): Promise<string> {
-    return this.task.getUpdatedFileDiff(filePath, commitHash);
+  async getUpdatedFileDiff(filePath: string, commitHash?: string, previousPath?: string): Promise<string> {
+    return this.task.getUpdatedFileDiff(filePath, commitHash, previousPath);
   }
 
   async getUpdatedFileContents(filePath: string, commitHash?: string): Promise<{ oldContent: string; newContent: string }> {
@@ -228,6 +236,14 @@ export class TaskContextImpl implements TaskContext {
     return this.task.generateObject(modelId, systemPrompt, prompt, schema);
   }
 
+  async generateTextFromContext(prompt: string, options?: ContextGenerationOptions): Promise<ContextGenerationResult<string>> {
+    return this.task.generateTextFromContext(prompt, options);
+  }
+
+  async generateObjectFromContext<T>(prompt: string, schema: z.ZodType<T>, options?: ContextGenerationOptions): Promise<ContextGenerationResult<T>> {
+    return this.task.generateObjectFromContext(prompt, schema, options);
+  }
+
   // User Interaction
 
   async askQuestion(text: string, options?: QuestionOptions): Promise<string> {
@@ -246,8 +262,8 @@ export class TaskContextImpl implements TaskContext {
     return this.task.answerQuestion(answer, userInput);
   }
 
-  addLogMessage(level: 'info' | 'error' | 'warning', message?: string): void {
-    this.task.addLogMessage(level, message);
+  addLogMessage(level: 'info' | 'error' | 'warning', message?: string, persistent = false): void {
+    this.task.addLogMessage(level, message, false, undefined, undefined, persistent);
   }
 
   addLoadingMessage(message?: string, finished?: boolean): void {
@@ -281,6 +297,22 @@ export class TaskContextImpl implements TaskContext {
 
   async compactConversation(instructions?: string): Promise<void> {
     await this.task.compactConversation('agent', instructions);
+  }
+
+  async smartCompact(options?: SmartCompactionOptions): Promise<SmartCompactionResult> {
+    const messagesBefore = (await this.task.getContextMessages()).length;
+    const tokensBefore = await this.task.getEstimatedTokens();
+
+    await this.task.smartCompactConversation(undefined, 'Conversation manually compacted.', options);
+
+    const messagesAfter = (await this.task.getContextMessages()).length;
+    const tokensAfter = await this.task.getEstimatedTokens();
+
+    return { messagesBefore, messagesAfter, tokensBefore, tokensAfter };
+  }
+
+  async getEstimatedTokens(): Promise<number> {
+    return this.task.getEstimatedTokens();
   }
 
   async generateContextMarkdown(): Promise<string | null> {
@@ -327,7 +359,7 @@ export class TaskContextImpl implements TaskContext {
     await this.task.switchToLocalWorkingMode(options);
   }
 
-  async getLocalUncommittedFiles(): Promise<WorktreeUncommittedFiles> {
+  async getLocalUncommittedFiles(): Promise<UncommittedFiles> {
     return this.task.getLocalUncommittedFiles();
   }
 

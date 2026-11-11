@@ -15,7 +15,7 @@ const config: Config = {
     v4: true, // Improve compatibility with the upcoming Docusaurus v4
   },
 
-  url: 'https://aiderdesk.hotovo.com',
+  url: 'https://aiderdesk.dev',
   baseUrl: '/',
 
   // Add Google Fonts for Nunito and Victor Mono
@@ -43,7 +43,7 @@ const config: Config = {
     },
   ],
 
-  organizationName: 'hotovo',
+  organizationName: 'magiksoft',
   projectName: 'aider-desk',
   trailingSlash: false,
 
@@ -119,7 +119,7 @@ const config: Config = {
           activeBaseRegex: '^/docs',
         },
         {
-          href: 'https://github.com/hotovo/aider-desk',
+          href: 'https://github.com/magiksoft/aider-desk',
           label: 'GitHub',
           position: 'right',
           className: 'navbar__item--no-external-icon',
@@ -128,7 +128,7 @@ const config: Config = {
     },
     footer: {
       style: 'dark',
-      copyright: `Copyright © ${new Date().getFullYear()} AiderDesk contributors. Happy coding!`,
+      copyright: `Copyright © ${new Date().getFullYear()} Magiksoft s.r.o.`,
     },
     prism: {
       theme: prismThemes.github,

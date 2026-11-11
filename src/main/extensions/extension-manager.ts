@@ -15,7 +15,7 @@ import {
   ToolApprovalState,
 } from '@common/types';
 import { TOOL_GROUP_NAME_SEPARATOR } from '@common/tools';
-import { AIDER_DESK_EXTENSIONS_REPO_URL, ProviderDefinition, Tool, UIComponentDefinition } from '@common/extensions';
+import { AIDER_DESK_EXTENSIONS_REPO_URL, EXTENSION_ORIGIN, ProviderDefinition, Tool, UIComponentDefinition } from '@common/extensions';
 import { DEFAULT_AGENT_PROFILE } from '@common/agent';
 
 import { ExtensionLoader } from './extension-loader';
@@ -39,6 +39,7 @@ import type {
   CustomCommandExecutedEvent,
   Extension,
   ExtensionContext,
+  ExtensionToolOrigin,
   FilesAddedEvent,
   FilesDroppedEvent,
   HandleApprovalEvent,
@@ -46,6 +47,8 @@ import type {
   InterruptedEvent,
   ModeDefinition,
   OptimizeMessagesEvent,
+  TransformMessagesEvent,
+  ApplyCacheControlEvent,
   ProjectStartedEvent,
   ProjectStoppedEvent,
   PromptFinishedEvent,
@@ -64,10 +67,13 @@ import type {
   TaskInitializedEvent,
   TaskPreparedEvent,
   TaskUpdatedEvent,
+  WorktreeCreatedEvent,
+  WorktreeMergedEvent,
   ToolApprovalEvent,
   ToolCalledEvent,
   ToolDefinition,
   ToolFinishedEvent,
+  ToolsetCreatedEvent,
 } from '@common/extensions';
 import type { AgentProfile } from '@common/types';
 import type { Store } from '@/store';
@@ -138,6 +144,8 @@ export type ExtensionEventMap = {
   onTaskClosed: TaskClosedEvent;
   onTaskUpdated: TaskUpdatedEvent;
   onTaskDeleted: TaskDeletedEvent;
+  onWorktreeCreated: WorktreeCreatedEvent;
+  onWorktreeMerged: WorktreeMergedEvent;
   onPromptStarted: PromptStartedEvent;
   onPromptFinished: PromptFinishedEvent;
   onPromptTemplate: PromptTemplateEvent;
@@ -146,12 +154,15 @@ export type ExtensionEventMap = {
   onAgentStepStarted: AgentStepStartedEvent;
   onAgentStepFinished: AgentStepFinishedEvent;
   onOptimizeMessages: OptimizeMessagesEvent;
+  onTransformMessages: TransformMessagesEvent;
+  onApplyCacheControl: ApplyCacheControlEvent;
   onImportantReminders: ImportantRemindersEvent;
   onAiderPromptStarted: AiderPromptStartedEvent;
   onAiderPromptFinished: AiderPromptFinishedEvent;
   onToolApproval: ToolApprovalEvent;
   onToolCalled: ToolCalledEvent;
   onToolFinished: ToolFinishedEvent;
+  onToolsetCreated: ToolsetCreatedEvent;
   onFilesAdded: FilesAddedEvent;
   onFilesDropped: FilesDroppedEvent;
   onRuleFilesRetrieved: RuleFilesRetrievedEvent;
@@ -231,6 +242,7 @@ export class ExtensionManager {
     for (const listener of this.listeners) {
       listener(extensions);
     }
+    this.eventManager.sendExtensionsUpdated();
   }, 100);
 
   private isExtensionDisabled(filePath: string): boolean {
@@ -245,7 +257,8 @@ export class ExtensionManager {
    * @returns Filtered extensions excluding disabled ones
    */
   private filterEnabledExtensions(extensions: LoadedExtension[]): LoadedExtension[] {
-    return extensions.filter((ext) => !this.isExtensionDisabled(ext.filePath));
+    const disabledExtensions = this.store.getSettings().extensions?.disabled || [];
+    return extensions.filter((ext) => !disabledExtensions.includes(ext.filePath));
   }
 
   /**
@@ -306,6 +319,8 @@ export class ExtensionManager {
       }
 
       const changedExtensions = [...newlyDisabled, ...newlyEnabled];
+
+      this.eventManager.sendExtensionsUpdated();
 
       if (changedExtensions.length > 0) {
         // Check if any changed extensions have UI components
@@ -1085,7 +1100,9 @@ export class ExtensionManager {
           continue;
         }
 
-        const toolInfos = tools.filter((tool) => tool.name && tool.description).map((tool) => ({ name: tool.name, description: tool.description }));
+        const toolInfos = tools
+          .filter((tool) => tool.name && tool.description)
+          .map((tool) => ({ name: tool.name, description: tool.description, recoveryMode: tool.recoveryMode }));
 
         if (toolInfos.length > 0) {
           result.push({
@@ -1185,6 +1202,7 @@ export class ExtensionManager {
       // Tool approval filtering is handled in getTools()
 
       toolSet[toolId] = {
+        ...{ recoveryMode: tool.recoveryMode, recoveryModeKey: fullToolId, replayOwner: 'extension:' + fullToolId },
         description: tool.description,
         inputSchema: tool.inputSchema,
         execute: async (input: Record<string, unknown>, options: ToolExecutionOptions<unknown>) => {
@@ -1211,14 +1229,22 @@ export class ExtensionManager {
           const allToolsInternal = Object.entries(allTools).reduce(
             (acc, [toolId, tool]) => {
               acc[toolId] = {
+                description: typeof tool.description === 'string' ? tool.description : undefined,
+                inputSchema: tool.inputSchema,
                 execute: async (input: Record<string, unknown>) => {
                   if (tool.execute) {
-                    return await tool.execute(input, {
+                    // Tools invoked internally by an extension must not be propagated to the UI
+                    // and must not take part in durability (honours the documented Tool contract).
+                    // The structured flags are prepared for a future opt-in where extensions could
+                    // enable UI surfacing and/or durable execution for their internal tool calls.
+                    const internalOptions = {
                       toolCallId: '',
                       abortSignal: abortSignal || options.abortSignal,
                       messages: [],
                       context: undefined as never,
-                    });
+                      [EXTENSION_ORIGIN]: { durable: false, surfaceInUi: false } as ExtensionToolOrigin,
+                    };
+                    return await tool.execute(input, internalOptions);
                   } else {
                     return 'Tool does not have an execute function';
                   }
@@ -1378,9 +1404,9 @@ export class ExtensionManager {
     return agents.find((a) => a.agent.id === agentId);
   }
 
-  getModes(project: Project): RegisteredMode[] {
+  getModes(project?: Project): RegisteredMode[] {
     const collectedModes: RegisteredMode[] = [];
-    const allExtensions = this.registry.getExtensions(project.baseDir);
+    const allExtensions = this.registry.getExtensions(project?.baseDir);
     const extensions = this.filterEnabledExtensions(allExtensions);
 
     for (const loaded of extensions) {

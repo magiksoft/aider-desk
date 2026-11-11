@@ -22,6 +22,7 @@ import { NetworkManager } from '@/network-manager';
 import { EventsHandler } from '@/events-handler';
 import { PromptsManager } from '@/prompts';
 import { PythonDependenciesInstaller } from '@/python-dependencies-installer';
+import { startEventLoopMonitor, stopEventLoopMonitor } from '@/diagnostics';
 
 export interface ManagersResult {
   eventsHandler: EventsHandler;
@@ -43,12 +44,6 @@ export const initManagers = async (store: Store, windowManager?: WindowManager):
   // Initialize network manager FIRST — must be before any network calls
   const networkManager = new NetworkManager();
   networkManager.init(store.getSettings());
-
-  // Initialize telemetry manager (non-blocking - analytics not critical for startup)
-  const telemetryManager = new TelemetryManager(store);
-  telemetryManager.init().catch((error) => {
-    logger.error('[Telemetry] Telemetry initialization failed, continuing without analytics:', error);
-  });
 
   // Initialize MCP manager
   const mcpManager = new McpManager(undefined, () => store.getSettings().language);
@@ -74,9 +69,17 @@ export const initManagers = async (store: Store, windowManager?: WindowManager):
   // Initialize model manager
   const modelManager = new ModelManager(store, eventManager, networkManager);
 
+  const telemetryManager = new TelemetryManager(store, modelManager);
+  telemetryManager.init().catch((error) => {
+    logger.error('[Telemetry] Telemetry initialization failed, continuing without analytics:', error);
+  });
+
   // Initialize data manager
   const dataManager = new DataManager();
   dataManager.init();
+
+  // Opt-in diagnostics (AIDER_DESK_DIAGNOSTICS=true); no-op otherwise
+  startEventLoopMonitor();
 
   // Initialize memory manager (non-blocking - heavy operation with lazy loading)
   const memoryManager = new MemoryManager(store);
@@ -170,37 +173,59 @@ export const initManagers = async (store: Store, windowManager?: WindowManager):
   httpServer.listen(SERVER_PORT);
   logger.info(`AiderDesk headless server listening on http://localhost:${SERVER_PORT}`);
 
-  let cleanedUp = false;
-  const cleanup = async (): Promise<void> => {
-    if (cleanedUp) {
-      return;
-    }
-
+  let cleanupPromise: Promise<void> | undefined;
+  const performCleanup = async (): Promise<void> => {
     try {
-      cloudflareTunnelManager.stop();
-      terminalManager.close();
-      versionsManager.destroy();
-      dataManager.close();
+      const cleanupActions = [
+        { manager: 'cloudflareTunnelManager', run: () => cloudflareTunnelManager.stop() },
+        { manager: 'terminalManager', run: () => terminalManager.close() },
+        { manager: 'versionsManager', run: () => versionsManager.destroy() },
+        { manager: 'connectorManager', run: () => connectorManager.close() },
+        { manager: 'serverController', run: () => serverController.close() },
+        { manager: 'projectManager', run: () => projectManager.close() },
+        { manager: 'mcpManager', run: () => mcpManager.close() },
+        { manager: 'mcpConfigManager', run: () => mcpConfigManager.dispose() },
+        { manager: 'agentProfileManager', run: () => agentProfileManager.dispose() },
+        { manager: 'promptsManager', run: () => promptsManager.dispose() },
+        { manager: 'extensionManager', run: () => extensionManager.dispose() },
+        { manager: 'gitAskpassManager', run: () => gitAskpassManager.close() },
+      ];
+      const results = await Promise.allSettled(cleanupActions.map((action) => Promise.resolve().then(action.run)));
 
-      await Promise.all([
-        connectorManager.close(),
-        serverController.close(),
-        projectManager.close(),
-        mcpManager.close(),
-        mcpConfigManager.dispose(),
-        telemetryManager.destroy(),
-        agentProfileManager.dispose(),
-        promptsManager.dispose(),
-        extensionManager.dispose(),
-        gitAskpassManager.close(),
-      ]);
+      results.forEach((result, index) => {
+        if (result.status === 'rejected') {
+          const error: unknown = result.reason;
+          logger.error('Error during cleanup:', {
+            manager: cleanupActions[index].manager,
+            error: error instanceof Error ? error.message : String(error),
+            stack: error instanceof Error ? error.stack : undefined,
+          });
+        }
+      });
+
+      try {
+        await telemetryManager.destroy();
+      } catch (error) {
+        logger.error('Error during cleanup:', {
+          manager: 'telemetryManager',
+          error: error instanceof Error ? error.message : String(error),
+          stack: error instanceof Error ? error.stack : undefined,
+        });
+      }
+
+      dataManager.close();
+      stopEventLoopMonitor();
     } catch (error) {
       logger.error('Error during cleanup:', {
         error: error instanceof Error ? error.message : String(error),
+        stack: error instanceof Error ? error.stack : undefined,
       });
     }
+  };
 
-    cleanedUp = true;
+  const cleanup = (): Promise<void> => {
+    cleanupPromise ??= Promise.resolve().then(performCleanup);
+    return cleanupPromise;
   };
 
   // Handle process signals

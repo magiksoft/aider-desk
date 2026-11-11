@@ -90,9 +90,9 @@ export const TaskControlBar = forwardRef<TaskControlBarRef, Props>(
               </Button>
             )}
             {canUndoContextChange && onUndoContextChange ? (
-              <Button variant="text" color="tertiary" onClick={onUndoContextChange} size="xs" tooltip={t('promptField.undoContextChange')}>
-                <MdUndo className="w-4 h-4 text-text-secondary" />
-                <span className="hidden sm:inline ml-1 text-text-secondary">{t('common.undo')}</span>
+              <Button variant="text" color="primary" onClick={onUndoContextChange} size="xs" tooltip={t('promptField.undoContextChange')}>
+                <MdUndo className="w-4 h-4" />
+                <span className="hidden sm:inline ml-1 text-2xs">{t('common.undo')}</span>
               </Button>
             ) : (
               <Button variant="text" color="tertiary" onClick={() => clearMessages()} size="xs">

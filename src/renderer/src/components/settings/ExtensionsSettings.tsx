@@ -2,7 +2,7 @@ import { AvailableExtension, InstalledExtension, ProjectData, SettingsData } fro
 import { Activity, useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useMount } from '@reactuses/core';
 import { useTranslation } from 'react-i18next';
-import { FaChevronDown, FaChevronLeft, FaChevronRight, FaPlus, FaSearch, FaSync, FaTrash } from 'react-icons/fa';
+import { FaChevronDown, FaPlus, FaSearch, FaSync, FaTrash } from 'react-icons/fa';
 import { AIDER_DESK_EXTENSIONS_REPO_URL } from '@common/extensions';
 import { clsx } from 'clsx';
 
@@ -10,6 +10,7 @@ import { useApi } from '@/contexts/ApiContext';
 import { getPathBasename } from '@/utils/path-utils';
 import { Button } from '@/components/common/Button';
 import { IconButton } from '@/components/common/IconButton';
+import { ScopeSelector } from '@/components/common/ScopeSelector';
 import { Input } from '@/components/common/Input';
 import { showErrorNotification, showSuccessNotification } from '@/utils/notifications';
 import { LoadingOverlay } from '@/components/common/LoadingOverlay';
@@ -97,25 +98,18 @@ export const ExtensionsSettings = ({ settings, setSettings, openProjects = [], s
 
   // Context state for project-level extensions
   const contexts = useMemo(() => ['global', ...openProjects.map((p) => p.baseDir)], [openProjects]);
-  const [contextIndex, setContextIndex] = useState(0);
   const [profileContext, setProfileContext] = useState<'global' | string>(selectedProjectContext || 'global');
 
   // Sync internal profileContext with selectedProjectContext prop
   useEffect(() => {
     if (selectedProjectContext !== undefined) {
       setProfileContext(selectedProjectContext);
-      const newIndex = contexts.indexOf(selectedProjectContext);
-      if (newIndex !== -1) {
-        setContextIndex(newIndex);
-      }
     }
-  }, [selectedProjectContext, contexts]);
+  }, [selectedProjectContext]);
 
   // Context navigation logic
-  const navigateContext = (direction: 'prev' | 'next') => {
-    const newIndex = direction === 'prev' ? (contextIndex - 1 + contexts.length) % contexts.length : (contextIndex + 1) % contexts.length;
-    setContextIndex(newIndex);
-    setProfileContext(contexts[newIndex]);
+  const handleContextChange = (nextContext: string) => {
+    setProfileContext(nextContext);
   };
 
   // Get context display name
@@ -678,23 +672,15 @@ export const ExtensionsSettings = ({ settings, setSettings, openProjects = [], s
           </button>
         </div>
         <div className="flex flex-wrap items-center gap-x-4 gap-y-2 ml-auto">
-          <div className="flex items-center justify-between flex-1 min-w-[180px] max-w-[200px]">
-            <IconButton
-              icon={<FaChevronLeft className="w-3 h-3" />}
-              onClick={() => navigateContext('prev')}
-              tooltip={t('settings.extensions.previousContext')}
-              disabled={contexts.length <= 1}
-              className="p-1"
-            />
-            <div className="text-xs text-text-secondary truncate flex-1 text-center">{getContextDisplayName()}</div>
-            <IconButton
-              icon={<FaChevronRight className="w-3 h-3" />}
-              onClick={() => navigateContext('next')}
-              tooltip={t('settings.extensions.nextContext')}
-              disabled={contexts.length <= 1}
-              className="p-1"
-            />
-          </div>
+          <ScopeSelector
+            contexts={contexts}
+            value={profileContext}
+            onChange={handleContextChange}
+            getDisplayName={getContextDisplayName}
+            previousTooltip={t('settings.extensions.previousContext')}
+            nextTooltip={t('settings.extensions.nextContext')}
+            className="flex-1 min-w-[180px] max-w-[200px]"
+          />
           <Button onClick={handleRefresh} disabled={isLoading} variant="outline" size="sm">
             <FaSync className={clsx('mr-1.5 w-3 h-3', isLoading && 'animate-spin')} />
             {t('common.refresh')}

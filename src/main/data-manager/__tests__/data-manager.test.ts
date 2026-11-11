@@ -16,6 +16,9 @@ vi.mock('@/logger', () => ({
 
 vi.mock('@/constants', () => ({
   DB_FILE_PATH: ':memory:',
+  DIAGNOSTICS_MODE: false,
+  DB_JOURNAL_MODE: 'WAL',
+  DB_SYNCHRONOUS: 'NORMAL',
 }));
 
 const getDb = (manager: DataManager): DatabaseSync => (manager as unknown as { db: DatabaseSync }).db;
@@ -265,5 +268,23 @@ describe('DataManager - Messages', () => {
     expect(row!.input_tokens).toBeNull();
     expect(row!.output_tokens).toBeNull();
     expect(row!.cost).toBeNull();
+  });
+  it('stores and updates durable executions independently by project, task and prompt context', () => {
+    dataManager.init();
+    dataManager.saveAgentExecution('/project', 'task', 'parent', JSON.stringify({ version: 1, step: 'first' }));
+    dataManager.saveAgentExecution('/project', 'task', 'child', JSON.stringify({ version: 1, step: 'child' }));
+    dataManager.saveAgentExecution('/other', 'task', 'parent', JSON.stringify({ version: 1, step: 'other' }));
+    dataManager.saveAgentExecution('/project', 'other-task', 'parent', JSON.stringify({ version: 1, step: 'other task' }));
+    dataManager.saveAgentExecution('/project', 'task', 'parent', JSON.stringify({ version: 1, step: 'updated' }));
+    expect(
+      dataManager
+        .getAgentExecutions('/project', 'task')
+        .map((json) => JSON.parse(json).step)
+        .sort(),
+    ).toEqual(['child', 'updated']);
+    dataManager.deleteAgentExecution('/project', 'task', 'child');
+    expect(dataManager.getAgentExecutions('/project', 'task').map((json) => JSON.parse(json).step)).toEqual(['updated']);
+    expect(dataManager.getAgentExecutions('/other', 'task')).toHaveLength(1);
+    expect(dataManager.getAgentExecutions('/project', 'other-task')).toHaveLength(1);
   });
 });

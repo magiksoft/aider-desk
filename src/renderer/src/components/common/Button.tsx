@@ -1,4 +1,4 @@
-import { ReactNode, MouseEvent } from 'react';
+import { ReactNode, MouseEvent, ButtonHTMLAttributes, Ref } from 'react';
 import { twMerge } from 'tailwind-merge';
 
 import { Tooltip } from '@/components/ui/Tooltip';
@@ -7,7 +7,8 @@ export type ButtonVariant = 'contained' | 'text' | 'outline';
 export type ButtonColor = 'primary' | 'secondary' | 'tertiary' | 'danger';
 export type ButtonSize = 'sm' | 'md' | 'xs';
 
-type Props = {
+type Props = Omit<ButtonHTMLAttributes<HTMLButtonElement>, 'children' | 'color' | 'onClick'> & {
+  ref?: Ref<HTMLButtonElement>;
   children: ReactNode;
   onClick?: (e: MouseEvent<HTMLButtonElement>) => void;
   variant?: ButtonVariant;
@@ -62,6 +63,8 @@ export const Button = ({
   type = 'button',
   title,
   tooltip,
+  ref,
+  ...buttonProps
 }: Props) => {
   const renderButton = () => {
     const baseColorClasses = disabled
@@ -74,6 +77,8 @@ export const Button = ({
 
     return (
       <button
+        {...buttonProps}
+        ref={ref}
         type={type}
         onClick={onClick}
         disabled={disabled}

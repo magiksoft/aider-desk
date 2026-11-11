@@ -1,11 +1,11 @@
 import { act, screen, fireEvent, waitFor } from '@testing-library/react';
-import { describe, it, expect, vi, beforeEach } from 'vitest';
-import { WorktreeIntegrationStatus } from '@common/types';
+import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
+import { BranchInfo, GitSyncCommits, TaskGitStatus } from '@common/types';
 
 import { GitBranchesButton } from '../GitBranchesButton';
 
 import { invokeAction } from '@/stores/actionsStore';
-import { showErrorNotification } from '@/utils/notifications';
+import { showErrorNotification, showInfoNotification } from '@/utils/notifications';
 import { render } from '@/__tests__/render';
 import { useApi } from '@/contexts/ApiContext';
 import { createMockApi } from '@/__tests__/mocks/api';
@@ -13,6 +13,9 @@ import { createMockApi } from '@/__tests__/mocks/api';
 vi.mock('react-i18next', () => ({
   useTranslation: () => ({
     t: (key: string, options?: Record<string, unknown>) => {
+      if (options && 'upstream' in options) {
+        return `${key}:${options.upstream}`;
+      }
       if (options && 'count' in options && 'branch' in options) {
         return `${key}:${options.branch}:${options.count}`;
       }
@@ -36,14 +39,16 @@ vi.mock('@/utils/notifications', () => ({
   showInfoNotification: vi.fn(),
 }));
 
-const mockStatus: WorktreeIntegrationStatus = {
+const mockStatus: TaskGitStatus = {
   currentBranch: 'task-123',
-  baseBranch: 'main',
-  targetBranch: 'main',
-  aheadCommits: { count: 1, commits: ['commit1'] },
   uncommittedFiles: { count: 0, files: [] },
-  predictedConflicts: { hasConflicts: false, conflictingFiles: [] },
   rebaseState: { inProgress: false, hasUnmergedPaths: false },
+  worktree: {
+    baseBranch: 'main',
+    targetBranch: 'main',
+    aheadCommits: { count: 1, commits: ['commit1'] },
+    predictedConflicts: { hasConflicts: false, conflictingFiles: [] },
+  },
 };
 
 const defaultProps = {
@@ -64,8 +69,14 @@ const defaultProps = {
 describe('GitBranchesButton', () => {
   let mockApi: ReturnType<typeof createMockApi>;
 
+  afterEach(() => {
+    vi.restoreAllMocks();
+    vi.useRealTimers();
+  });
+
   beforeEach(() => {
     vi.clearAllMocks();
+    vi.spyOn(document, 'hasFocus').mockReturnValue(true);
     mockApi = createMockApi({
       listGitBranches: vi.fn().mockResolvedValue([
         { name: 'task-123', isCurrent: true, hasWorktree: true, isRemote: false },
@@ -96,6 +107,68 @@ describe('GitBranchesButton', () => {
     });
   });
 
+  describe('Smart Checkout', () => {
+    beforeEach(() => {
+      localStorage.clear();
+    });
+
+    const selectMain = async () => {
+      fireEvent.click(await screen.findByRole('button', { name: /task-123/i }));
+      fireEvent.click(await screen.findByText('main', { selector: 'span.truncate' }));
+      fireEvent.click(await screen.findByText('git.checkoutBranch:main'));
+    };
+
+    it('offers Smart Checkout and leaves changes untouched when cancelled', async () => {
+      mockApi.checkoutGitBranch.mockResolvedValue({ requiresSmartCheckout: true });
+      render(<GitBranchesButton {...defaultProps} status={mockStatus} />);
+
+      await selectMain();
+
+      expect(await screen.findByText('git.smartCheckoutMessage:main')).toBeInTheDocument();
+      fireEvent.click(screen.getByRole('button', { name: 'common.cancel' }));
+      expect(mockApi.checkoutGitBranch).toHaveBeenCalledTimes(1);
+      expect(mockApi.checkoutGitBranch).toHaveBeenCalledWith('/project', 'task-123', 'main', false, false, false);
+      expect(screen.queryByText('git.smartCheckoutMessage:main')).not.toBeInTheDocument();
+      expect(showErrorNotification).not.toHaveBeenCalled();
+    });
+
+    it('retries with Smart Checkout only after confirmation', async () => {
+      mockApi.checkoutGitBranch.mockResolvedValueOnce({ requiresSmartCheckout: true }).mockResolvedValueOnce({});
+      render(<GitBranchesButton {...defaultProps} status={mockStatus} />);
+
+      await selectMain();
+      fireEvent.click(await screen.findByRole('button', { name: 'git.smartCheckout' }));
+
+      await waitFor(() => expect(mockApi.checkoutGitBranch).toHaveBeenCalledTimes(2));
+      expect(mockApi.checkoutGitBranch).toHaveBeenLastCalledWith('/project', 'task-123', 'main', false, false, true);
+      expect(screen.queryByText('git.smartCheckoutMessage:main')).not.toBeInTheDocument();
+    });
+
+    it('leaves conflicts to the existing message and actions without opening another dialog', async () => {
+      let completeCheckout: (result: { conflictedFiles: string[]; backupRef: string }) => void = () => {};
+      mockApi.checkoutGitBranch.mockResolvedValueOnce({ requiresSmartCheckout: true }).mockImplementationOnce(
+        () =>
+          new Promise((resolve) => {
+            completeCheckout = resolve;
+          }),
+      );
+      render(<GitBranchesButton {...defaultProps} status={mockStatus} />);
+
+      await selectMain();
+      fireEvent.click(await screen.findByRole('button', { name: 'git.smartCheckout' }));
+      await waitFor(() => expect(mockApi.checkoutGitBranch).toHaveBeenCalledTimes(2));
+      mockApi.listGitBranches.mockClear();
+      completeCheckout({ conflictedFiles: ['file.txt'], backupRef: 'backup-hash' });
+
+      await waitFor(() => expect(mockApi.listGitBranches).toHaveBeenCalled());
+      expect(screen.queryByRole('dialog')).not.toBeInTheDocument();
+      expect(screen.queryByRole('heading')).not.toBeInTheDocument();
+      expect(showInfoNotification).not.toHaveBeenCalled();
+      expect(showErrorNotification).not.toHaveBeenCalled();
+      expect(defaultProps.onResolveConflictsWithAgent).not.toHaveBeenCalled();
+    });
+  });
+
   describe('local mode', () => {
     it('queries getSyncCommits with undefined targetBranch and uses git sync tooltip labels', async () => {
       mockApi.listGitBranches = vi.fn().mockResolvedValue([{ name: 'main', isCurrent: true, hasWorktree: false, isRemote: false }]);
@@ -109,6 +182,99 @@ describe('GitBranchesButton', () => {
   });
 
   describe('push action', () => {
+    it.each([false, true])('pushes to the worktree base upstream with force=%s even without outgoing commits', async (force) => {
+      mockApi.listGitBranches = vi.fn().mockResolvedValue([
+        { name: 'task-123', isCurrent: true, hasWorktree: true, upstream: 'origin/task-123' },
+        { name: 'main', isCurrent: false, hasWorktree: false, upstream: 'github/pr-branch' },
+      ]);
+      mockApi.getSyncCommits = vi.fn().mockResolvedValue({ outgoing: { count: 0, commits: [] }, incoming: { count: 0, commits: [] } });
+      render(<GitBranchesButton {...defaultProps} worktreePath="/worktree" status={mockStatus} />);
+      await waitFor(() => expect(mockApi.getSyncCommits).toHaveBeenCalled());
+
+      fireEvent.click(screen.getByRole('button', { name: /task-123/i }));
+      fireEvent.click(screen.getByRole('button', { name: 'git.push...' }));
+      expect(screen.getAllByRole('checkbox').every((checkbox) => !(checkbox as HTMLInputElement).checked)).toBe(true);
+      expect(screen.getByText('git.force').compareDocumentPosition(screen.getByText('git.pushToBaseUpstream')) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+      fireEvent.click(screen.getByText('git.pushToBaseUpstream'));
+      expect(screen.getByText('git.confirmPushToBaseMessage:github/pr-branch')).toBeInTheDocument();
+      expect(screen.getByText('git.pushToBaseDestination:github/pr-branch')).toBeInTheDocument();
+      expect(screen.queryByText('git.confirmPushMessage:0')).not.toBeInTheDocument();
+      if (force) {
+        fireEvent.click(screen.getByText('git.force'));
+      }
+      fireEvent.click(screen.getByRole('button', { name: 'git.push' }));
+
+      await waitFor(() => expect(mockApi.gitPush).toHaveBeenCalledWith('/project', 'task-123', force, false, true));
+    });
+
+    it('resets push options when reopening the dialog and preserves normal task pushing', async () => {
+      mockApi.listGitBranches = vi.fn().mockResolvedValue([
+        { name: 'task-123', isCurrent: true, hasWorktree: true },
+        { name: 'main', isCurrent: false, hasWorktree: false, upstream: 'github/pr-branch' },
+      ]);
+      render(<GitBranchesButton {...defaultProps} worktreePath="/worktree" status={mockStatus} />);
+      await waitFor(() => expect(mockApi.getSyncCommits).toHaveBeenCalled());
+      fireEvent.click(screen.getByRole('button', { name: /task-123/i }));
+      fireEvent.click(screen.getByRole('button', { name: 'git.push...' }));
+      fireEvent.click(screen.getByText('git.pushToBaseUpstream'));
+      fireEvent.click(screen.getByText('git.force'));
+      fireEvent.click(screen.getByRole('button', { name: 'common.cancel' }));
+      fireEvent.click(screen.getByRole('button', { name: /task-123/i }));
+      fireEvent.click(screen.getByRole('button', { name: 'git.push...' }));
+      expect(screen.getAllByRole('checkbox').every((checkbox) => !(checkbox as HTMLInputElement).checked)).toBe(true);
+      fireEvent.click(screen.getByRole('button', { name: 'git.push' }));
+      await waitFor(() => expect(mockApi.gitPush).toHaveBeenCalledWith('/project', 'task-123', false, true));
+    });
+
+    it('does not advise pulling the task branch when a base push is rejected', async () => {
+      mockApi.listGitBranches = vi.fn().mockResolvedValue([
+        { name: 'task-123', isCurrent: true, hasWorktree: true },
+        { name: 'main', isCurrent: false, hasWorktree: false, upstream: 'github/pr-branch' },
+      ]);
+      mockApi.gitPush = vi.fn().mockRejectedValue(new Error('non-fast-forward'));
+      render(<GitBranchesButton {...defaultProps} worktreePath="/worktree" status={mockStatus} />);
+      await waitFor(() => expect(mockApi.getSyncCommits).toHaveBeenCalled());
+      fireEvent.click(screen.getByRole('button', { name: /task-123/i }));
+      fireEvent.click(screen.getByRole('button', { name: 'git.push...' }));
+      fireEvent.click(screen.getByText('git.pushToBaseUpstream'));
+      fireEvent.click(screen.getByRole('button', { name: 'git.push' }));
+
+      await waitFor(() => expect(showErrorNotification).toHaveBeenCalledWith('non-fast-forward'));
+      expect(showErrorNotification).not.toHaveBeenCalledWith('git.pushRejectedPullFirst');
+    });
+
+    it('hides the worktree base option if the base has no upstream', async () => {
+      render(<GitBranchesButton {...defaultProps} worktreePath="/worktree" status={mockStatus} />);
+      await waitFor(() => expect(mockApi.getSyncCommits).toHaveBeenCalled());
+      fireEvent.click(screen.getByRole('button', { name: /task-123/i }));
+      fireEvent.click(screen.getByRole('button', { name: 'git.push...' }));
+
+      expect(screen.queryByText('git.pushToBaseUpstream')).not.toBeInTheDocument();
+      expect(screen.queryByText('git.pushToBaseNoUpstream')).not.toBeInTheDocument();
+      expect(screen.getAllByRole('checkbox')).toHaveLength(1);
+      expect(screen.getByText('git.force')).toBeInTheDocument();
+      expect(screen.getByRole('checkbox')).toBeEnabled();
+    });
+
+    it('supports a remote-tracking worktree base', async () => {
+      mockApi.listGitBranches = vi.fn().mockResolvedValue([
+        { name: 'task-123', isCurrent: true, hasWorktree: true },
+        { name: 'github/pr-branch', isCurrent: false, hasWorktree: false, isRemote: true },
+      ]);
+      render(
+        <GitBranchesButton
+          {...defaultProps}
+          worktreePath="/worktree"
+          status={{ ...mockStatus, worktree: { ...mockStatus.worktree!, baseBranch: 'github/pr-branch' } }}
+        />,
+      );
+      await waitFor(() => expect(mockApi.getSyncCommits).toHaveBeenCalled());
+      fireEvent.click(screen.getByRole('button', { name: /task-123/i }));
+      fireEvent.click(screen.getByRole('button', { name: 'git.push...' }));
+      expect(screen.getByText('git.pushToBaseUpstream')).toBeInTheDocument();
+      expect(screen.getAllByRole('checkbox')[1]).toBeEnabled();
+    });
+
     it('disables push button when outgoing commit count is 0', async () => {
       mockApi.listGitBranches = vi.fn().mockResolvedValue([{ name: 'main', isCurrent: true, hasWorktree: false, isRemote: false, upstream: 'origin/main' }]);
       mockApi.getSyncCommits = vi.fn().mockResolvedValue({
@@ -531,63 +697,244 @@ describe('GitBranchesButton', () => {
   });
 
   describe('background refresh', () => {
-    it('refreshes sync commits on an interval', async () => {
+    beforeEach(() => {
       vi.useFakeTimers();
-      try {
-        render(<GitBranchesButton {...defaultProps} />);
-
-        await act(async () => {
-          await vi.advanceTimersByTimeAsync(0);
-        });
-        expect(mockApi.getSyncCommits).toHaveBeenCalledTimes(1);
-
-        await act(async () => {
-          await vi.advanceTimersByTimeAsync(30_000);
-        });
-        expect(mockApi.getSyncCommits).toHaveBeenCalledTimes(2);
-      } finally {
-        vi.useRealTimers();
-      }
     });
 
-    it('refreshes branches and sync commits when the window regains focus', async () => {
+    const advance = async (ms = 0) => {
+      await act(async () => {
+        await vi.advanceTimersByTimeAsync(ms);
+      });
+    };
+
+    it('polls sync commits without repeatedly loading branches', async () => {
+      render(<GitBranchesButton {...defaultProps} status={mockStatus} />);
+      await advance();
+      expect(mockApi.getSyncCommits).toHaveBeenCalledTimes(1);
+      expect(mockApi.listGitBranches).toHaveBeenCalledTimes(1);
+      await advance(30_000);
+      expect(mockApi.getSyncCommits).toHaveBeenCalledTimes(2);
+      expect(mockApi.listGitBranches).toHaveBeenCalledTimes(1);
+    });
+
+    it('does not refresh fresh data on repeated focus and visibility events', async () => {
       render(<GitBranchesButton {...defaultProps} />);
-
-      await waitFor(() => {
-        expect(mockApi.getSyncCommits).toHaveBeenCalledTimes(1);
-        expect(mockApi.listGitBranches).toHaveBeenCalledTimes(1);
-      });
-
-      act(() => {
-        fireEvent.focus(window);
-      });
-
-      await waitFor(() => {
-        expect(mockApi.getSyncCommits).toHaveBeenCalledTimes(2);
-        expect(mockApi.listGitBranches).toHaveBeenCalledTimes(2);
-      });
+      await advance();
+      fireEvent.focus(window);
+      fireEvent(document, new Event('visibilitychange'));
+      fireEvent.focus(window);
+      await advance();
+      expect(mockApi.getSyncCommits).toHaveBeenCalledTimes(1);
+      expect(mockApi.listGitBranches).toHaveBeenCalledTimes(1);
     });
 
-    it('skips refresh on focus while the document is hidden', async () => {
-      const visibilitySpy = vi.spyOn(document, 'visibilityState', 'get').mockReturnValue('hidden');
+    it('pauses while unfocused and refreshes stale sync data once on return', async () => {
+      render(<GitBranchesButton {...defaultProps} />);
+      await advance();
+      vi.mocked(document.hasFocus).mockReturnValue(false);
+      fireEvent.blur(window);
+      await advance(90_000);
+      expect(mockApi.getSyncCommits).toHaveBeenCalledTimes(1);
+      vi.mocked(document.hasFocus).mockReturnValue(true);
+      fireEvent.focus(window);
+      fireEvent(document, new Event('visibilitychange'));
+      await advance();
+      expect(mockApi.getSyncCommits).toHaveBeenCalledTimes(2);
+      expect(mockApi.listGitBranches).toHaveBeenCalledTimes(1);
+      await advance(30_000);
+      expect(mockApi.getSyncCommits).toHaveBeenCalledTimes(3);
+    });
 
-      try {
-        render(<GitBranchesButton {...defaultProps} />);
+    it('does not fetch on mount or poll while the document is hidden', async () => {
+      const visibility = vi.spyOn(document, 'visibilityState', 'get').mockReturnValue('hidden');
+      render(<GitBranchesButton {...defaultProps} />);
+      fireEvent.focus(window);
+      await advance(90_000);
+      expect(mockApi.getSyncCommits).not.toHaveBeenCalled();
+      expect(mockApi.listGitBranches).not.toHaveBeenCalled();
+      visibility.mockReturnValue('visible');
+      fireEvent(document, new Event('visibilitychange'));
+      await advance();
+      expect(mockApi.getSyncCommits).toHaveBeenCalledTimes(1);
+      expect(mockApi.listGitBranches).toHaveBeenCalledTimes(1);
+    });
 
-        await waitFor(() => {
-          expect(mockApi.getSyncCommits).toHaveBeenCalledTimes(1);
-          expect(mockApi.listGitBranches).toHaveBeenCalledTimes(1);
-        });
+    it('pauses polling when a visible document becomes hidden', async () => {
+      const visibility = vi.spyOn(document, 'visibilityState', 'get').mockReturnValue('visible');
+      render(<GitBranchesButton {...defaultProps} />);
+      await advance();
+      visibility.mockReturnValue('hidden');
+      fireEvent(document, new Event('visibilitychange'));
+      await advance(90_000);
+      expect(mockApi.getSyncCommits).toHaveBeenCalledTimes(1);
+      visibility.mockReturnValue('visible');
+      fireEvent(document, new Event('visibilitychange'));
+      await advance();
+      expect(mockApi.getSyncCommits).toHaveBeenCalledTimes(2);
+    });
 
-        act(() => {
-          fireEvent.focus(window);
-        });
+    it('does not fetch for inactive tasks and preserves fresh data across task switches', async () => {
+      const { rerender } = render(<GitBranchesButton {...defaultProps} isActive={false} />);
+      fireEvent.focus(window);
+      await advance(90_000);
+      expect(mockApi.getSyncCommits).not.toHaveBeenCalled();
+      expect(mockApi.listGitBranches).not.toHaveBeenCalled();
+      rerender(<GitBranchesButton {...defaultProps} isActive />);
+      await advance();
+      expect(mockApi.getSyncCommits).toHaveBeenCalledTimes(1);
+      rerender(<GitBranchesButton {...defaultProps} isActive={false} />);
+      await advance(10_000);
+      rerender(<GitBranchesButton {...defaultProps} isActive />);
+      await advance();
+      expect(mockApi.getSyncCommits).toHaveBeenCalledTimes(1);
+      expect(mockApi.listGitBranches).toHaveBeenCalledTimes(1);
+      rerender(<GitBranchesButton {...defaultProps} isActive={false} />);
+      await advance(90_000);
+      fireEvent.focus(window);
+      expect(mockApi.getSyncCommits).toHaveBeenCalledTimes(1);
+      rerender(<GitBranchesButton {...defaultProps} isActive />);
+      await advance();
+      expect(mockApi.getSyncCommits).toHaveBeenCalledTimes(2);
+      expect(mockApi.listGitBranches).toHaveBeenCalledTimes(1);
+    });
 
-        expect(mockApi.getSyncCommits).toHaveBeenCalledTimes(1);
-        expect(mockApi.listGitBranches).toHaveBeenCalledTimes(1);
-      } finally {
-        visibilitySpy.mockRestore();
-      }
+    it('shares pending refreshes between timer, focus, visibility and menu opening', async () => {
+      let resolveSync: (value: GitSyncCommits) => void = () => {};
+      let resolveBranches: (value: BranchInfo[]) => void = () => {};
+      mockApi.getSyncCommits.mockImplementation(
+        () =>
+          new Promise((resolve) => {
+            resolveSync = resolve;
+          }),
+      );
+      mockApi.listGitBranches.mockImplementation(
+        () =>
+          new Promise((resolve) => {
+            resolveBranches = resolve;
+          }),
+      );
+      render(<GitBranchesButton {...defaultProps} status={mockStatus} />);
+      await advance(60_000);
+      fireEvent.focus(window);
+      fireEvent(document, new Event('visibilitychange'));
+      fireEvent.click(screen.getByRole('button', { name: /task-123/i }));
+      await advance();
+      expect(mockApi.getSyncCommits).toHaveBeenCalledTimes(1);
+      expect(mockApi.listGitBranches).toHaveBeenCalledTimes(1);
+      await act(async () => {
+        resolveSync({ outgoing: { count: 0, commits: [] }, incoming: { count: 0, commits: [] } });
+        resolveBranches([]);
+      });
+      fireEvent.focus(window);
+      await advance();
+      expect(mockApi.getSyncCommits).toHaveBeenCalledTimes(1);
+    });
+
+    it('reloads branches on menu opening without refreshing fresh sync data', async () => {
+      render(<GitBranchesButton {...defaultProps} />);
+      await advance();
+      fireEvent.click(screen.getByRole('button', { name: /task-123/i }));
+      await advance();
+      expect(mockApi.listGitBranches).toHaveBeenCalledTimes(2);
+      expect(mockApi.getSyncCommits).toHaveBeenCalledTimes(1);
+    });
+
+    it('refreshes after branch changes even when sync data is fresh', async () => {
+      const { rerender } = render(<GitBranchesButton {...defaultProps} status={mockStatus} />);
+      await advance();
+      rerender(<GitBranchesButton {...defaultProps} status={{ ...mockStatus, currentBranch: 'main' }} />);
+      await advance();
+      expect(mockApi.getSyncCommits).toHaveBeenCalledTimes(2);
+      expect(mockApi.listGitBranches).toHaveBeenCalledTimes(2);
+    });
+
+    it('ignores an old comparison response after the worktree base changes', async () => {
+      let resolveOld: (value: GitSyncCommits) => void = () => {};
+      mockApi.getSyncCommits.mockImplementationOnce(
+        () =>
+          new Promise((resolve) => {
+            resolveOld = resolve;
+          }),
+      );
+      const { rerender } = render(<GitBranchesButton {...defaultProps} worktreePath="/worktree" status={mockStatus} />);
+      await advance();
+      rerender(
+        <GitBranchesButton {...defaultProps} worktreePath="/worktree" status={{ ...mockStatus, worktree: { ...mockStatus.worktree!, baseBranch: 'other' } }} />,
+      );
+      await advance();
+      expect(mockApi.getSyncCommits).toHaveBeenLastCalledWith('/project', 'task-123', 'other');
+      await act(async () => {
+        resolveOld({ outgoing: { count: 99, commits: ['obsolete commit'] }, incoming: { count: 99, commits: [] } });
+      });
+      act(() => {
+        invokeAction('git.push');
+      });
+      expect(screen.queryByText('obsolete commit')).not.toBeInTheDocument();
+      expect(screen.getByText('hash1 feat: ahead 1')).toBeInTheDocument();
+    });
+
+    it('retries a failed sync refresh rather than treating it as fresh', async () => {
+      mockApi.getSyncCommits.mockRejectedValueOnce(new Error('Git unavailable'));
+      render(<GitBranchesButton {...defaultProps} />);
+      await advance();
+      fireEvent.focus(window);
+      await advance();
+      expect(mockApi.getSyncCommits).toHaveBeenCalledTimes(2);
+    });
+
+    it('keeps the polling deadline when focus returns with fresh data', async () => {
+      render(<GitBranchesButton {...defaultProps} />);
+      await advance();
+      await advance(10_000);
+      fireEvent.focus(window);
+      await advance(20_000);
+      expect(mockApi.getSyncCommits).toHaveBeenCalledTimes(2);
+    });
+
+    it('invalidates fresh data when a rebase ends in an inactive task', async () => {
+      const rebasingStatus = { ...mockStatus, rebaseState: { inProgress: true, hasUnmergedPaths: false } };
+      const { rerender } = render(<GitBranchesButton {...defaultProps} status={rebasingStatus} />);
+      await advance();
+      rerender(<GitBranchesButton {...defaultProps} isActive={false} status={mockStatus} />);
+      await advance(10_000);
+      expect(mockApi.getSyncCommits).toHaveBeenCalledTimes(1);
+      rerender(<GitBranchesButton {...defaultProps} status={mockStatus} />);
+      await advance();
+      expect(mockApi.getSyncCommits).toHaveBeenCalledTimes(2);
+      expect(mockApi.listGitBranches).toHaveBeenCalledTimes(2);
+    });
+
+    it('refreshes again after push rather than reusing a pre-push sync request', async () => {
+      render(<GitBranchesButton {...defaultProps} />);
+      await advance();
+      let resolvePending: (value: GitSyncCommits) => void = () => {};
+      mockApi.getSyncCommits.mockImplementationOnce(
+        () =>
+          new Promise((resolve) => {
+            resolvePending = resolve;
+          }),
+      );
+      await advance(30_000);
+      act(() => {
+        invokeAction('git.push');
+      });
+      fireEvent.click(screen.getByRole('button', { name: 'git.push' }));
+      await advance();
+      expect(mockApi.gitPush).toHaveBeenCalled();
+      expect(mockApi.getSyncCommits).toHaveBeenCalledTimes(2);
+      await act(async () => {
+        resolvePending({ outgoing: { count: 99, commits: [] }, incoming: { count: 99, commits: [] } });
+      });
+      expect(mockApi.getSyncCommits).toHaveBeenCalledTimes(3);
+    });
+
+    it('removes polling and focus listeners on unmount', async () => {
+      const { unmount } = render(<GitBranchesButton {...defaultProps} />);
+      await advance();
+      unmount();
+      fireEvent.focus(window);
+      await advance(90_000);
+      expect(mockApi.getSyncCommits).toHaveBeenCalledTimes(1);
     });
   });
 });

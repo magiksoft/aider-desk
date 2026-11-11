@@ -8,6 +8,7 @@ import { hotkeysCoreFeature, propMemoizationFeature, syncDataLoaderFeature } fro
 import { clsx } from 'clsx';
 
 import { normalizePath, INDENT_PX } from './types';
+import { FileRenameBadge } from './FileRenameBadge';
 
 import type { TreeItem, GroupTree } from './types';
 import type { ItemInstance } from '@headless-tree/core';
@@ -45,6 +46,11 @@ export const SidebarGroupTree = ({
   onToggleFileSelection,
   onToggleFolderSelection,
 }: SidebarGroupTreeProps) => {
+  // useTree keeps a mutable instance whose results (tree.getItems(), item.isExpanded())
+  // React Compiler cannot track — memoizing this component defers expand/collapse
+  // re-commits until an unrelated prop change busts the cache.
+  // eslint-disable-next-line react-compiler/react-compiler
+  'use no memo';
   const { t } = useTranslation();
   const { treeData, files } = groupTree;
   const [expandedItems, setExpandedItems] = useState<string[]>([]);
@@ -171,6 +177,7 @@ export const SidebarGroupTree = ({
         >
           {payload.data}
         </span>
+        {!isFolder && <FileRenameBadge previousPath={matchedFile?.previousPath} />}
         {!isFolder && matchedFile && (matchedFile.additions > 0 || matchedFile.deletions > 0) && (
           <span className="text-4xs text-text-muted-dark flex-shrink-0 flex items-center gap-0.5 ml-auto pl-2">
             {matchedFile.additions > 0 && <span className="text-success">+{matchedFile.additions}</span>}

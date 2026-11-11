@@ -1,9 +1,11 @@
 import { DatabaseSync } from 'node:sqlite';
+import { performance } from 'node:perf_hooks';
 
 import { UsageReportData, UsageDataRow } from '@common/types';
 
 import logger from '@/logger';
-import { DB_FILE_PATH } from '@/constants';
+import { DB_FILE_PATH, DB_JOURNAL_MODE, DB_SYNCHRONOUS } from '@/constants';
+import { isDiagnosticsEnabled, recordDbWrite } from '@/diagnostics';
 
 /**
  * Manages the application's database connection and structure.
@@ -21,6 +23,20 @@ export class DataManager {
     // Initialize the database connection.
     // The verbose option logs all SQL statements to the console, which is useful for debugging.
     this.db = new DatabaseSync(DB_FILE_PATH);
+
+    // WAL mode keeps readers from blocking the single synchronous writer and avoids the
+    // per-commit rollback-journal create/fsync/delete cycle. synchronous=NORMAL drops the
+    // per-commit fsync (checkpoints still fsync), which is safe in WAL: committed
+    // transactions survive application crashes and the database cannot corrupt; only the
+    // last few transactions may be lost on OS crash/power loss, which the agent-execution
+    // journal's checkpoint/replay recovery already tolerates.
+    //
+    // Both pragmas are overridable (AIDER_DESK_DB_JOURNAL_MODE / AIDER_DESK_DB_SYNCHRONOUS)
+    // for diagnostics only, e.g. reverting to DELETE/FULL to approximate slow-I/O platforms.
+    // The values are validated against an allowlist in constants before reaching here.
+    this.db.exec(`PRAGMA journal_mode = ${DB_JOURNAL_MODE}`);
+    this.db.exec(`PRAGMA synchronous = ${DB_SYNCHRONOUS}`);
+    logger.info('Database pragmas applied', { journalMode: DB_JOURNAL_MODE, synchronous: DB_SYNCHRONOUS });
   }
 
   public init() {
@@ -41,6 +57,16 @@ export class DataManager {
           cache_read_tokens    INTEGER,
           cost                 REAL,
           message_content_json TEXT
+        );
+
+        CREATE TABLE IF NOT EXISTS agent_execution_journal
+        (
+          project TEXT NOT NULL,
+          task_id TEXT NOT NULL,
+          prompt_context_id TEXT NOT NULL,
+          state_json TEXT NOT NULL,
+          updated_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+          PRIMARY KEY (project, task_id, prompt_context_id)
         );
 
         CREATE TABLE IF NOT EXISTS extension_state
@@ -73,6 +99,31 @@ export class DataManager {
       this.db.exec('ALTER TABLE messages ADD COLUMN task_id TEXT');
       logger.info("Added 'task_id' column to 'messages' table");
     }
+  }
+
+  public getAgentExecutions(project: string, taskId: string): string[] {
+    const rows = this.db.prepare('SELECT state_json FROM agent_execution_journal WHERE project = ? AND task_id = ?').all(project, taskId) as {
+      state_json: string;
+    }[];
+    return rows.map((row) => row.state_json);
+  }
+
+  public saveAgentExecution(project: string, taskId: string, promptContextId: string, state: string): void {
+    const start = isDiagnosticsEnabled() ? performance.now() : 0;
+    this.db
+      .prepare(
+        `INSERT INTO agent_execution_journal (project, task_id, prompt_context_id, state_json)
+      VALUES (?, ?, ?, ?) ON CONFLICT(project, task_id, prompt_context_id)
+      DO UPDATE SET state_json = excluded.state_json, updated_at = CURRENT_TIMESTAMP`,
+      )
+      .run(project, taskId, promptContextId, state);
+    if (start) {
+      recordDbWrite('agent_execution', state.length, performance.now() - start);
+    }
+  }
+
+  public deleteAgentExecution(project: string, taskId: string, promptContextId: string): void {
+    this.db.prepare('DELETE FROM agent_execution_journal WHERE project = ? AND task_id = ? AND prompt_context_id = ?').run(project, taskId, promptContextId);
   }
 
   /**
@@ -114,6 +165,8 @@ export class DataManager {
         message_content_json: content,
       });
 
+      const contentJson = JSON.stringify(content);
+      const start = isDiagnosticsEnabled() ? performance.now() : 0;
       this.db
         .prepare(sql)
         .run(
@@ -127,8 +180,11 @@ export class DataManager {
           usageReport?.cacheWriteTokens ?? null,
           usageReport?.cacheReadTokens ?? null,
           usageReport?.messageCost ?? null,
-          JSON.stringify(content),
+          contentJson,
         );
+      if (start) {
+        recordDbWrite('message', contentJson.length, performance.now() - start);
+      }
     } catch (error) {
       logger.error('Failed to save message:', error);
     }

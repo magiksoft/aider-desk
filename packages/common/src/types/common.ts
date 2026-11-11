@@ -19,7 +19,7 @@ import {
 } from '@common/agent';
 import { z } from 'zod';
 
-import { ContextFile, ContextMemoryMode, ContextMessage, PromptContext, UsageReportData } from './context';
+import { JSONValue, ContextFile, ContextMemoryMode, ContextMessage, PromptContext, UsageReportData } from './context';
 
 // Worktree schema definition
 export const WorktreeSchema = z.object({
@@ -45,17 +45,17 @@ export const MergeStateSchema = z.object({
 
 export type MergeState = z.infer<typeof MergeStateSchema>;
 
-export interface WorktreeAheadCommits {
+export interface GitAheadCommits {
   count: number;
   commits: string[];
 }
 
 export interface GitSyncCommits {
-  outgoing: WorktreeAheadCommits;
-  incoming: WorktreeAheadCommits;
+  outgoing: GitAheadCommits;
+  incoming: GitAheadCommits;
 }
 
-export interface WorktreeUncommittedFiles {
+export interface UncommittedFiles {
   count: number;
   files: string[];
 }
@@ -74,12 +74,10 @@ export interface ConflictResolutionFileContext {
   current?: string;
 }
 
-export interface WorktreeIntegrationStatus {
-  currentBranch: string;
+export interface TaskGitWorktreeStatus {
   baseBranch: string;
   targetBranch: string;
-  aheadCommits: WorktreeAheadCommits;
-  uncommittedFiles: WorktreeUncommittedFiles;
+  aheadCommits: GitAheadCommits;
   predictedConflicts: {
     hasConflicts: boolean;
     conflictingFiles?: string[];
@@ -89,20 +87,26 @@ export interface WorktreeIntegrationStatus {
     };
     canAutoMerge?: boolean;
   };
-  rebaseState: RebaseState;
 }
 
-export interface WorktreeIntegrationStatusUpdatedData {
+export interface TaskGitStatus {
+  currentBranch: string;
+  uncommittedFiles: UncommittedFiles;
+  rebaseState: RebaseState;
+  worktree?: TaskGitWorktreeStatus;
+}
+
+export interface TaskGitStatusUpdatedData {
   baseDir: string;
   taskId: string;
-  status: WorktreeIntegrationStatus | null;
+  status: TaskGitStatus | null;
 }
 
 export interface ModeDefinition {
   name: Mode;
   label: string;
   description?: string;
-  /** Icon name from react-icons (e.g., 'GoCodeReview', 'FiLayers') */
+  /** Full react-icons component name including pack prefix (e.g., 'FiTerminal', 'GoCodeReview') */
   icon?: string;
 }
 
@@ -271,14 +275,22 @@ export interface CommandOutputData {
 
 export type LogLevel = 'info' | 'warning' | 'error' | 'loading';
 
+export interface LogAction {
+  id: string;
+  data?: JSONValue;
+  alternativeActions?: LogAction[];
+}
+
 export interface LogData {
+  id?: string;
+  persistent?: boolean;
   baseDir: string;
   taskId: string;
   level: LogLevel;
   message?: string;
   finished?: boolean;
   promptContext?: PromptContext;
-  actionIds?: string[];
+  actions?: LogAction[];
   timestamp?: number;
 }
 
@@ -326,6 +338,7 @@ export interface ContextFilesUpdatedData {
 
 export interface UpdatedFile {
   path: string;
+  previousPath?: string;
   additions: number;
   deletions: number;
   diff?: string;
@@ -338,6 +351,7 @@ export interface UpdatedFile {
 export interface UpdatedFilesUpdatedData {
   baseDir: string;
   taskId: string;
+  taskDir: string;
   files: UpdatedFile[];
 }
 
@@ -419,7 +433,23 @@ export interface WindowState {
   isMaximized: boolean;
 }
 
+export const AiderSettingsSchema = z.object({
+  options: z.string(),
+  environmentVariables: z.string(),
+  addRuleFiles: z.boolean(),
+  autoCommits: z.boolean(),
+  cachingEnabled: z.boolean(),
+  watchFiles: z.boolean(),
+  confirmBeforeEdit: z.boolean(),
+  mainModel: z.string().nullable().optional(),
+  weakModel: z.string().nullable().optional(),
+  architectModel: z.string().nullable().optional(),
+});
+
+export type AiderSettingsData = z.infer<typeof AiderSettingsSchema>;
+
 export const ProjectSettingsSchema = z.object({
+  aider: AiderSettingsSchema.partial().optional(),
   // @deprecated: These properties are deprecated in favor of task-level settings
   // They are kept for backward compatibility and as defaults for new tasks
   mainModel: z.string(),
@@ -461,6 +491,7 @@ export interface ReadonlyDisplaySettings {
   renderMarkdown: boolean;
   fullMessageRendering: boolean;
   messageViewMode?: MessageViewMode;
+  showMessageMap?: boolean;
   enableExtensionUi: boolean;
 }
 
@@ -497,6 +528,12 @@ export interface ModelsData {
   editFormat?: EditFormat;
   info?: RawModelInfo;
   error?: string;
+}
+
+export enum ToolRecoveryMode {
+  Forget = 'forget',
+  Safe = 'safe',
+  Notify = 'notify',
 }
 
 export enum ToolApprovalState {
@@ -564,6 +601,7 @@ export interface AgentProfile {
   temperature?: number; // overrides model temperature when set
   enabledServers: string[];
   toolApprovals: Record<string, ToolApprovalState>;
+  toolRecoveryModes?: Record<string, ToolRecoveryMode>;
   toolSettings: Record<string, ToolSettings>;
   includeContextFiles: boolean;
   includeRepoMap: boolean;
@@ -574,6 +612,7 @@ export interface AgentProfile {
   useTaskTools: boolean;
   useMemoryTools: boolean;
   useSkillsTools: boolean;
+  useAgentMemoryScope?: boolean; // when true, memory tools use a per-agent scope instead of the project directory
   useExtensionTools: boolean;
   disabledExtensionTools: string[]; // Array of extension IDs whose tools are disabled
   customInstructions: string;
@@ -735,7 +774,11 @@ export interface TaskSettings {
   taskNameModel?: string | null;
   taskStateModel?: string | null;
   commitMessageModel?: string | null;
+  compactionModel?: string | null;
+  handoffModel?: string | null;
   defaultWorkingMode: WorkingMode;
+  defaultTaskMode?: Mode | 'last';
+  defaultProjectMode?: Mode;
   worktreeBranchPrefix: string;
   renameBranchOnNameGeneration: boolean;
 }
@@ -773,6 +816,7 @@ export interface SettingsData {
   onboardingFinished?: boolean;
   language: string;
   startupMode?: ProjectStartMode;
+  resumeAgentAfterRestart?: boolean;
   zoomLevel?: number;
   notificationsEnabled?: boolean;
   theme?: Theme;
@@ -783,15 +827,8 @@ export interface SettingsData {
   aiderDeskAutoUpdate: boolean;
   diffViewMode?: DiffViewMode;
   messageViewMode?: MessageViewMode;
-  aider: {
-    options: string;
-    environmentVariables: string;
-    addRuleFiles: boolean;
-    autoCommits: boolean;
-    cachingEnabled: boolean;
-    watchFiles: boolean;
-    confirmBeforeEdit: boolean;
-  };
+  showMessageMap?: boolean;
+  aider: AiderSettingsData;
   preferredModels: string[];
 
   llmProviders: {
@@ -933,6 +970,7 @@ export interface FileEdit {
 }
 
 export interface GenericTool {
+  recoveryMode?: ToolRecoveryMode;
   groupName: string;
   name: string;
   description: string;
@@ -985,7 +1023,26 @@ export enum FileWriteMode {
   CreateOnly = 'create_only',
 }
 
+export enum ModelModality {
+  Text = 'text',
+  Image = 'image',
+  Audio = 'audio',
+  Video = 'video',
+  Pdf = 'pdf',
+}
+
+export interface ModelModalities {
+  input: ModelModality[];
+  output: ModelModality[];
+}
+
+export const DEFAULT_MODEL_MODALITIES: ModelModalities = {
+  input: [ModelModality.Text],
+  output: [ModelModality.Text],
+};
+
 export interface ModelInfo {
+  modalities?: ModelModalities;
   maxInputTokens?: number;
   maxOutputTokens?: number;
   inputCostPerToken?: number;
@@ -1003,7 +1060,7 @@ export interface TaskContext {
 }
 
 export interface TaskStateData {
-  messages: (ResponseCompletedData | UserMessageData | ToolData)[];
+  messages: (ResponseCompletedData | UserMessageData | ToolData | LogData)[];
   files: ContextFile[];
   todoItems: TodoItem[];
   question: QuestionData | null;
@@ -1023,6 +1080,7 @@ export interface SwitchToLocalOptions {
 }
 
 export interface SwitchToWorktreeOptions {
+  baseBranch?: string;
   carryOverUncommittedChanges?: boolean;
   dropSourceChanges?: boolean;
 }
@@ -1127,6 +1185,8 @@ export interface UsageDataRow {
 }
 
 export interface Model {
+  modalities?: ModelModalities;
+  hasModalitiesOverride?: boolean;
   id: string;
   providerId: string;
   maxInputTokens?: number;
@@ -1138,6 +1198,8 @@ export interface Model {
   cacheWriteInputTokenCost?: number;
   cacheReadInputTokenCost?: number;
   supportsTools?: boolean;
+  disableStreaming?: boolean;
+  requireStreaming?: boolean;
   isCustom?: boolean;
   isHidden?: boolean;
   hasModelOverrides?: boolean;
@@ -1240,7 +1302,7 @@ export interface InstalledExtension {
 export interface ExtensionToolInfo {
   extensionId: string;
   extensionName: string;
-  tools: { name: string; description: string }[];
+  tools: { name: string; description: string; recoveryMode?: ToolRecoveryMode }[];
 }
 
 export interface AvailableExtension {
@@ -1297,6 +1359,10 @@ export interface ExtensionUIRefreshData {
   componentId?: string;
   taskId?: string;
   reloadComponents?: boolean;
+}
+
+export interface ExtensionsUpdatedData {
+  projectDir?: string;
 }
 
 export type OpenDialogProperty = 'openFile' | 'openDirectory' | 'multiSelections';

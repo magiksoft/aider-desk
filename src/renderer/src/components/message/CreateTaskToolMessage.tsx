@@ -4,9 +4,11 @@ import { CgSpinner } from 'react-icons/cg';
 import { MdAssignmentAdd } from 'react-icons/md';
 import { AutonomyMode, TaskExecutionMode, ToolMessage } from '@common/types';
 
-import { CodeInline } from '@/components/common/CodeInline';
-import { ExpandableMessageBlock } from '@/components/message/ExpandableMessageBlock';
+import { getTruncatedToolResult } from './truncated-tool-result';
+import { TruncatedToolResultContent } from './TruncatedToolResultContent';
+
 import { Tooltip } from '@/components/ui/Tooltip';
+import { ExpandableMessageBlock } from '@/components/message/ExpandableMessageBlock';
 
 type Props = {
   message: ToolMessage;
@@ -43,6 +45,8 @@ export const CreateTaskToolMessage = ({ message, onRemove, compact = false, onFo
     }
   };
   const content = message.content && JSON.parse(message.content);
+  const taskName = (content && typeof content === 'object' && typeof content.name === 'string' && content.name) || name;
+  const truncatedResult = getTruncatedToolResult(content);
   const isError = content && typeof content === 'string' && content.startsWith('Error creating task:');
   const isDenied = content && typeof content === 'string' && content.startsWith('Creating task denied by user.');
 
@@ -53,9 +57,7 @@ export const CreateTaskToolMessage = ({ message, onRemove, compact = false, onFo
       </div>
       <div className="text-xs text-text-primary flex gap-3 overflow-hidden">
         <span className="flex-shrink-0">{t(isSubtask ? 'toolMessage.tasks.createSubtask' : 'toolMessage.tasks.createTask')}</span>
-        <span className="overflow-hidden text-ellipsis max-w-[600px]">
-          <CodeInline className="bg-bg-primary-light whitespace-nowrap">{prompt}</CodeInline>
-        </span>
+        <span className="text-text-tertiary truncate max-w-[600px]">{taskName || prompt}</span>
       </div>
       {!content && <CgSpinner className="animate-spin w-3 h-3 text-text-muted-light flex-shrink-0" />}
       {content &&
@@ -101,6 +103,7 @@ export const CreateTaskToolMessage = ({ message, onRemove, compact = false, onFo
     return (
       <div className="px-4 py-1 text-2xs text-text-tertiary bg-bg-secondary">
         <div className="space-y-3">
+          {truncatedResult && <TruncatedToolResultContent result={truncatedResult} />}
           <div className="border border-border-dark-light rounded bg-bg-primary-light px-3 py-2 space-y-1">
             <pre className="whitespace-pre-wrap text-3xs text-text-primary max-h-[200px] overflow-y-auto scrollbar-thin scrollbar-track-bg-primary-light scrollbar-thumb-bg-secondary-light hover:scrollbar-thumb-bg-fourth">
               {prompt}
@@ -110,12 +113,14 @@ export const CreateTaskToolMessage = ({ message, onRemove, compact = false, onFo
           {/* Task Details */}
           <div className="space-y-2">
             <div className="border border-border-dark-light rounded bg-bg-primary-light px-3 py-2 space-y-1">
-              <div className="text-3xs">
-                <span className="text-text-muted">{t('toolMessage.tasks.taskId')}:</span> {content.id}
-              </div>
-              {name && (
+              {!truncatedResult && (
                 <div className="text-3xs">
-                  <span className="text-text-muted">{t('toolMessage.tasks.name')}:</span> {name}
+                  <span className="text-text-muted">{t('toolMessage.tasks.taskId')}:</span> {content.id}
+                </div>
+              )}
+              {taskName && (
+                <div className="text-3xs">
+                  <span className="text-text-muted">{t('toolMessage.tasks.name')}:</span> {taskName}
                 </div>
               )}
               {parentTaskId !== undefined && (

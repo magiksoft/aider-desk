@@ -7,7 +7,7 @@ import path from 'path';
 import { EditFormat, ModelsData } from '@common/types';
 import { fileExists } from '@common/utils';
 import treeKill from 'tree-kill';
-import { DEFAULT_AIDER_MAIN_MODEL } from '@common/agent';
+import { resolveAiderSettings } from '@common/aider';
 
 import { AIDER_DESK_CONNECTOR_DIR, AIDER_DESK_PROJECT_RULES_DIR, AIDER_DESK_TASKS_DIR, PID_FILES_DIR, PYTHON_COMMAND, SERVER_PORT } from '@/constants';
 import { Connector } from '@/connector';
@@ -16,7 +16,7 @@ import logger from '@/logger';
 import { Store } from '@/store';
 import { ModelManager } from '@/models';
 import { EventManager } from '@/events';
-import { getEnvironmentVariablesForAider } from '@/utils';
+import { determineMainModel, getEnvironmentVariablesForAider } from '@/utils';
 import { Task } from '@/task/task';
 import { PythonDependenciesInstaller } from '@/python-dependencies-installer';
 import { getNetworkEnvVars } from '@/network-manager';
@@ -52,15 +52,23 @@ export class AiderManager {
 
     await this.checkAndCleanupPidFile();
 
-    // Set aiderStarting to true when starting aider
+    const projectSettings = this.store.getProjectSettings(this.task.getProjectDir());
+    const settings = resolveAiderSettings(this.store.getSettings(), projectSettings.aider);
+    let mainModel = this.task.task.mainModel;
+    if (!mainModel) {
+      const providerModels = await this.modelManager.getProviderModels();
+      mainModel = determineMainModel(settings, this.modelManager.getProviders(), providerModels.models || [], this.task.getProjectDir());
+      if (!mainModel) {
+        throw new Error('No Aider model available. Configure a provider or select a Main model in Aider settings.');
+      }
+      await this.task.updateTask({ mainModel });
+    }
+
     this.aiderStartError = null;
     this.aiderStarting = true;
     this.eventManager.sendAiderConnectorStatus({ state: 'starting-connector' }, this.task.getProjectDir(), this.task.taskId);
 
-    const settings = this.store.getSettings();
-    const projectSettings = this.store.getProjectSettings(this.task.getProjectDir());
-    const mainModel = this.task.task.mainModel || DEFAULT_AIDER_MAIN_MODEL;
-    const weakModel = this.task.task.weakModel;
+    const weakModel = this.task.task.weakModel || mainModel;
     const modelEditFormats = projectSettings.modelEditFormats;
     const reasoningEffort = this.task.task.reasoningEffort;
     const thinkingTokens = this.task.task.thinkingTokens;
@@ -69,9 +77,11 @@ export class AiderManager {
     const mainModelMapping = this.modelManager.getAiderModelMapping(mainModel, this.task.getProjectDir());
     const mainModelName = mainModelMapping.modelName;
     const envFromMain = mainModelMapping.environmentVariables;
+    const architectModel = this.task.task.architectModel;
+    const envFromArchitect = architectModel ? this.modelManager.getAiderModelMapping(architectModel, this.task.getProjectDir()).environmentVariables : {};
 
     let envFromWeak = {};
-    let weakModelName: string | null = null;
+    let weakModelName: string | null = mainModelName;
     if (weakModel) {
       const weakModelMapping = this.modelManager.getAiderModelMapping(weakModel, this.task.getProjectDir());
       weakModelName = weakModelMapping.modelName;
@@ -104,9 +114,9 @@ export class AiderManager {
     const processedOptionsArgs: string[] = [];
     for (let i = 0; i < rawOptionsArgs.length; i++) {
       const arg = rawOptionsArgs[i];
-      if (arg === '--model') {
+      if (arg === '--model' || arg === '--weak-model' || arg === '--editor-model') {
         i++; // Skip the model value
-      } else {
+      } else if (!/^(?:--model|--weak-model|--editor-model)=/.test(arg)) {
         processedOptionsArgs.push(arg.startsWith('"') && arg.endsWith('"') ? arg.slice(1, -1) : arg);
       }
     }
@@ -166,6 +176,7 @@ export class AiderManager {
       ...environmentVariables,
       ...envFromMain,
       ...envFromWeak,
+      ...envFromArchitect,
       ...networkEnvVars,
       PYTHONPATH: AIDER_DESK_CONNECTOR_DIR,
       PYTHONUTF8: process.env.AIDER_DESK_OMIT_PYTHONUTF8 ? undefined : '1',
@@ -401,7 +412,7 @@ export class AiderManager {
   }
 
   public updateAiderModels(modelsData: ModelsData): void {
-    const mainModel = this.task.task.mainModel || DEFAULT_AIDER_MAIN_MODEL;
+    const mainModel = this.task.task.mainModel;
     const mainModelParts = mainModel.split('/');
     const weakModelParts = this.task.task.weakModel?.split('/') || modelsData.weakModel?.split('/');
     const architectModelParts = this.task.task.architectModel?.split('/') || modelsData.architectModel?.split('/');
@@ -437,7 +448,7 @@ export class AiderManager {
     const envFromMain = mainModelMapping.environmentVariables;
 
     let envFromWeak = {};
-    let weakModelName: string | null = null;
+    let weakModelName: string | null = mainModelName;
     if (weakModel) {
       const weakModelMapping = this.modelManager.getAiderModelMapping(weakModel, this.task.getProjectDir());
       weakModelName = weakModelMapping.modelName;
@@ -483,6 +494,10 @@ export class AiderManager {
   }
 
   public setArchitectModel(architectModel: string): void {
+    if (architectModel) {
+      const mapping = this.modelManager.getAiderModelMapping(architectModel, this.task.getProjectDir());
+      this.sendUpdateEnvVars(mapping.environmentVariables);
+    }
     logger.info('Setting architect model', {
       architectModel,
     });
@@ -493,7 +508,7 @@ export class AiderManager {
   }
 
   public getArchitectModel(): string | null {
-    return this.task.task.architectModel || this.store.getProjectSettings(this.task.getProjectDir()).architectModel || null;
+    return this.task.task.architectModel || this.task.task.mainModel || null;
   }
 
   public getAiderModelsData(): ModelsData | null {

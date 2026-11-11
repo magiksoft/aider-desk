@@ -1,7 +1,18 @@
 import fs from 'fs/promises';
 import path from 'path';
 
-import { AgentProfile, BranchInfo, CreateTaskParams, DefaultTaskState, ModeDefinition, ProjectSettings, SettingsData, TaskData } from '@common/types';
+import { resolveAiderSettings } from '@common/aider';
+import {
+  AgentProfile,
+  BranchInfo,
+  ContextMessage,
+  CreateTaskParams,
+  DefaultTaskState,
+  ModeDefinition,
+  ProjectSettings,
+  SettingsData,
+  TaskData,
+} from '@common/types';
 import { fileExists } from '@common/utils';
 import { v4 as uuidv4 } from 'uuid';
 
@@ -22,7 +33,7 @@ import { PromptsManager } from '@/prompts';
 import { ExtensionManager } from '@/extensions/extension-manager';
 import { AIDER_DESK_TASKS_DIR, AIDER_DESK_WATCH_FILES_LOCK } from '@/constants';
 import { PythonDependenciesInstaller } from '@/python-dependencies-installer';
-import { determineMainModel, determineWeakModel } from '@/utils';
+import { determineMainModel } from '@/utils';
 import { FileWatcherManager } from '@/file-watcher-manager';
 
 export class Project {
@@ -73,6 +84,12 @@ export class Project {
 
         await this.extensionManager.dispatchEvent('onProjectStarted', { baseDir: this.baseDir }, this);
         this.eventManager.sendProjectStarted(this.baseDir);
+        await this.tasksLoadingPromise;
+        for (const task of this.tasks.values()) {
+          void task.recoverDurableExecutions().catch((error) => {
+            logger.error('Failed to recover durable task', { taskId: task.taskId, error });
+          });
+        }
       })();
     }
     return this.startPromise;
@@ -108,17 +125,21 @@ export class Project {
     }
 
     const sourceTask = parentTask || this.getMostRecentTask();
-    const defaultWorkingMode = this.store.getSettings().taskSettings.defaultWorkingMode || 'local';
+    const taskSettings = this.store.getSettings().taskSettings;
+    const defaultWorkingMode = taskSettings.defaultWorkingMode || 'local';
+    const defaultProjectMode = taskSettings.defaultProjectMode ?? 'agent';
+    const defaultTaskMode = taskSettings.defaultTaskMode ?? 'last';
     let initialTaskData: Partial<TaskData>;
 
     if (sourceTask) {
+      const inheritedMode = parentTask ? parentTask.task.currentMode : defaultTaskMode === 'last' ? sourceTask.task.currentMode : defaultTaskMode;
       initialTaskData = {
         mainModel: sourceTask.task.mainModel,
         weakModel: sourceTask.task.weakModel,
         architectModel: sourceTask.task.architectModel,
         reasoningEffort: sourceTask.task.reasoningEffort,
         thinkingTokens: sourceTask.task.thinkingTokens,
-        currentMode: sourceTask.task.currentMode,
+        currentMode: inheritedMode,
         agentProfileId: parentTask?.task.agentProfileId,
         provider: parentTask?.task.provider,
         model: parentTask?.task.model,
@@ -133,12 +154,22 @@ export class Project {
         ...normalizedParams,
       };
     } else {
+      initialTaskData = {
+        currentMode: defaultProjectMode,
+        workingMode: defaultWorkingMode,
+        ...normalizedParams,
+      };
+    }
+
+    if (!parentTask) {
+      const settings = resolveAiderSettings(this.store.getSettings(), this.store.getProjectSettings(this.baseDir).aider);
       const providerModels = await this.modelManager.getProviderModels();
       initialTaskData = {
-        mainModel: determineMainModel(this.store.getSettings(), this.modelManager.getProviders(), providerModels.models || [], this.baseDir),
-        weakModel: determineWeakModel(this.baseDir),
-        currentMode: 'agent',
-        workingMode: defaultWorkingMode,
+        ...initialTaskData,
+        mainModel: determineMainModel(settings, this.modelManager.getProviders(), providerModels.models || [], this.baseDir),
+        weakModel: settings.aider.weakModel ?? null,
+        weakModelLocked: Boolean(settings.aider.weakModel),
+        architectModel: settings.aider.architectModel ?? null,
         ...normalizedParams,
       };
     }
@@ -445,6 +476,7 @@ export class Project {
     }
 
     await task.close();
+    task.durabilityManager.clear();
     this.tasks.delete(taskId);
     this.eventManager.sendTaskDeleted(task.task);
 
@@ -549,13 +581,29 @@ export class Project {
       throw new Error(`Task with id ${taskId} not found`);
     }
 
+    return this.createFork(sourceTask, messageId);
+  }
+
+  public async forkTaskFromCheckpoint(taskId: string, checkpointId: string): Promise<TaskData> {
+    const sourceTask = this.tasks.get(taskId);
+    if (!sourceTask) {
+      throw new Error(`Task with id ${taskId} not found`);
+    }
+    const messages = await sourceTask.readCompactionCheckpoint(checkpointId);
+    if (!messages) {
+      throw new Error('Compaction checkpoint is missing or unreadable');
+    }
+    return this.createFork(sourceTask, messages, checkpointId);
+  }
+
+  private async createFork(sourceTask: Task, forkPoint: string | ContextMessage[], checkpointId?: string): Promise<TaskData> {
     const newTask = await this.prepareTask(undefined, {
       ...sourceTask.task,
       parentId: sourceTask.task.parentId || sourceTask.task.id,
       state: sourceTask.task.state === DefaultTaskState.InProgress ? DefaultTaskState.Todo : sourceTask.task.state,
     });
     await newTask.init();
-    await newTask.forkFrom(sourceTask, messageId);
+    await newTask.forkFrom(sourceTask, forkPoint, checkpointId);
     this.eventManager.sendTaskCreated(newTask.task, true);
 
     return newTask.task;
@@ -662,9 +710,32 @@ export class Project {
     this.agentProfileManager.removeProject(this.baseDir);
     this.mcpConfigManager.removeProject(this.baseDir);
     await this.promptsManager.unwatchProject(this.baseDir);
-    this.extensionManager.stopProjectWatcher(this.baseDir);
-    await Promise.all(Array.from(this.tasks.values()).map((task) => task.close()));
-    await this.gitManager.close(this.baseDir);
+    await this.extensionManager.stopProjectWatcher(this.baseDir);
+    const tasks = Array.from(this.tasks.values());
+    const results = await Promise.allSettled(tasks.map((task) => Promise.resolve().then(() => task.close())));
+    const errors: unknown[] = [];
+    results.forEach((result, index) => {
+      if (result.status === 'rejected') {
+        const error: unknown = result.reason;
+        errors.push(error);
+        logger.error('Failed to close task', {
+          baseDir: this.baseDir,
+          taskId: tasks[index].taskId,
+          error: error instanceof Error ? error.message : String(error),
+          stack: error instanceof Error ? error.stack : undefined,
+        });
+      }
+    });
+    try {
+      await this.gitManager.close(this.baseDir);
+    } catch (error) {
+      errors.push(error);
+      logger.error('Failed to close project Git manager', {
+        baseDir: this.baseDir,
+        error: error instanceof Error ? error.message : String(error),
+        stack: error instanceof Error ? error.stack : undefined,
+      });
+    }
 
     // Remove watch-files lock file if it exists
     const lockFilePath = path.join(this.baseDir, AIDER_DESK_WATCH_FILES_LOCK);
@@ -676,6 +747,9 @@ export class Project {
       if ((error as NodeJS.ErrnoException).code !== 'ENOENT') {
         logger.warn('Failed to remove watch-files lock file', { lockFilePath, error });
       }
+    }
+    if (errors.length) {
+      throw new AggregateError(errors, `Failed to close project ${this.baseDir}`);
     }
   }
 }

@@ -11,6 +11,8 @@ AiderDesk leverages OpenTelemetry to provide detailed tracing and telemetry for 
 
 Langfuse is an open-source LLM engineering platform that helps you to observe, evaluate, and improve your LLM applications.
 
+Agent tracing uses the Langfuse JS/TS SDK v6 and sends spans to `/api/public/otel/v1/traces`, rather than the retired legacy ingestion API. Langfuse Cloud is supported; self-hosted deployments should run Langfuse v4.59.0 or later, as required by SDK v6. See [Langfuse's compatibility guide](https://langfuse.com/docs/compatibility). Existing `LANGFUSE_HOST` configuration remains supported.
+
 To integrate AiderDesk with Langfuse, you need to provide your Langfuse API keys and host. These can be set as environment variables in two ways:
 
 ### 1. System-wide Environment Variables

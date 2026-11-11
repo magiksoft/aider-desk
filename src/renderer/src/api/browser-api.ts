@@ -31,6 +31,7 @@ import {
   OpenDialogResult,
   OS,
   ProjectData,
+  ProjectCheckResult,
   ProjectSettings,
   ProjectStartedData,
   ProviderModelsData,
@@ -43,6 +44,7 @@ import {
   ResponseCompletedData,
   SettingsData,
   TaskData,
+  TaskExecutionMode,
   CreateTaskParams,
   TaskStateData,
   TerminalData,
@@ -60,11 +62,12 @@ import {
   MemoryEmbeddingProgress,
   BranchInfo,
   GitSyncCommits,
+  GitCheckoutResult,
   SwitchToLocalOptions,
   SwitchToWorktreeOptions,
-  WorktreeIntegrationStatus,
-  WorktreeIntegrationStatusUpdatedData,
-  WorktreeUncommittedFiles,
+  TaskGitStatus,
+  TaskGitStatusUpdatedData,
+  UncommittedFiles,
   TaskCreatedData,
   UpdatedFilesUpdatedData,
   QueuedPromptsUpdatedData,
@@ -73,6 +76,7 @@ import {
   ExtensionConfigComponent,
   ExtensionToolInfo,
   ExtensionUIComponent,
+  ExtensionsUpdatedData,
   ModalOverlayUrlData,
   InputPromptData,
   AiderConnectorStatus,
@@ -112,9 +116,10 @@ type EventDataMap = {
   'provider-models-updated': ProviderModelsData;
   'providers-updated': ProvidersUpdatedData;
   'project-settings-updated': { baseDir: string; settings: ProjectSettings };
-  'worktree-integration-status-updated': WorktreeIntegrationStatusUpdatedData;
+  'task-git-status-updated': TaskGitStatusUpdatedData;
   'agent-profiles-updated': AgentProfilesUpdatedData;
   'mcp-servers-updated': McpServersData;
+  'extensions-updated': ExtensionsUpdatedData;
   'updated-files-updated': UpdatedFilesUpdatedData;
   'skills-updated': SkillsUpdatedData;
   notification: NotificationData;
@@ -140,6 +145,7 @@ interface ListenerEntry<T> {
   callback: EventCallback<T>;
   baseDir?: string;
   taskId?: string;
+  taskDir?: string;
 }
 
 class UnsupportedError extends Error {
@@ -153,6 +159,7 @@ const TERMINAL_WRITE_FLUSH_INTERVAL_MS = 25;
 
 export class BrowserApi implements ApplicationAPI {
   private readonly socket: Socket;
+  private readonly reconnectListeners = new Set<() => void>();
   private readonly listeners: {
     [K in keyof EventDataMap]: Map<string, ListenerEntry<EventDataMap[K]>>;
   };
@@ -197,7 +204,7 @@ export class BrowserApi implements ApplicationAPI {
       'input-history-updated': new Map(),
       'clear-task': new Map(),
       'project-started': new Map(),
-      'worktree-integration-status-updated': new Map(),
+      'task-git-status-updated': new Map(),
       'provider-models-updated': new Map(),
       'providers-updated': new Map(),
       'updated-files-updated': new Map(),
@@ -212,6 +219,7 @@ export class BrowserApi implements ApplicationAPI {
       'task-cancelled': new Map(),
       'agent-profiles-updated': new Map(),
       'mcp-servers-updated': new Map(),
+      'extensions-updated': new Map(),
       notification: new Map(),
       'message-removed': new Map(),
       'terminal-data': new Map(),
@@ -251,6 +259,10 @@ export class BrowserApi implements ApplicationAPI {
       // eslint-disable-next-line no-console
       console.log('Disconnected from Socket.IO server');
     });
+    // 'reconnect' is only emitted on the Manager (socket.io does not forward it to the Socket)
+    this.socket.io.on('reconnect', () => {
+      this.reconnectListeners.forEach((callback) => callback());
+    });
     this.socket.on('connect_error', (error) => {
       // eslint-disable-next-line no-console
       console.error('Socket.IO connection error:', error);
@@ -272,6 +284,12 @@ export class BrowserApi implements ApplicationAPI {
 
           // Filter by taskId for task-level events
           if (entry.taskId && taskId && entry.taskId !== taskId) {
+            return;
+          }
+
+          // Filter by taskDir for directory-scoped events (paths compared cross-platform)
+          const taskDir = (typedData as { taskDir?: string })?.taskDir;
+          if (entry.taskDir && taskDir && !compareBaseDirs(entry.taskDir, taskDir, this.appOS || undefined)) {
             return;
           }
 
@@ -311,11 +329,17 @@ export class BrowserApi implements ApplicationAPI {
     });
   }
 
-  private addListener<T extends keyof EventDataMap>(eventType: T, callback: EventCallback<EventDataMap[T]>, baseDir?: string, taskId?: string): () => void {
+  private addListener<T extends keyof EventDataMap>(
+    eventType: T,
+    callback: EventCallback<EventDataMap[T]>,
+    baseDir?: string,
+    taskId?: string,
+    taskDir?: string,
+  ): () => void {
     void this.ensureSocketConnected();
     const eventListeners = this.listeners[eventType];
     const id = uuidv4();
-    eventListeners.set(id, { callback, baseDir, taskId });
+    eventListeners.set(id, { callback, baseDir, taskId, taskDir });
 
     return () => {
       eventListeners.delete(id);
@@ -389,8 +413,33 @@ export class BrowserApi implements ApplicationAPI {
   restartAiderConnector(baseDir: string, taskId: string): void {
     this.post('/project/tasks/restart-aider-connector', { projectDir: baseDir, taskId });
   }
+  private async submitTaskOperation(endpoint: string, baseDir: string, taskId: string, body: Record<string, unknown> = {}): Promise<void> {
+    try {
+      await this.post(endpoint, {
+        ...body,
+        projectDir: baseDir,
+        taskId,
+        requestId: uuidv4(),
+        executionMode: TaskExecutionMode.RunInBackground,
+      });
+    } catch (error) {
+      const data: LogData = {
+        baseDir,
+        taskId,
+        level: 'error',
+        message: error instanceof Error ? error.message : String(error),
+        finished: true,
+      };
+      this.listeners.log.forEach((entry) => {
+        if ((!entry.baseDir || compareBaseDirs(entry.baseDir, baseDir, this.appOS || undefined)) && (!entry.taskId || entry.taskId === taskId)) {
+          entry.callback(data);
+        }
+      });
+    }
+  }
+
   runPrompt(baseDir: string, taskId: string, prompt: string, mode?: Mode, images?: string[]): void {
-    this.post('/run-prompt', { projectDir: baseDir, taskId, prompt, mode, images });
+    void this.submitTaskOperation('/run-prompt', baseDir, taskId, { prompt, mode, images });
   }
   savePrompt(baseDir: string, taskId: string, prompt: string): Promise<void> {
     return this.post('/save-prompt', { projectDir: baseDir, taskId, prompt });
@@ -466,6 +515,9 @@ export class BrowserApi implements ApplicationAPI {
   }
   getOpenProjects(): Promise<ProjectData[]> {
     return this.get('/projects');
+  }
+  checkProject(baseDir: string): Promise<ProjectCheckResult> {
+    return this.post('/project/check', { projectDir: baseDir });
   }
   addOpenProject(baseDir: string): Promise<ProjectData[]> {
     return this.post('/project/add-open', { projectDir: baseDir });
@@ -546,24 +598,35 @@ export class BrowserApi implements ApplicationAPI {
   getUpdatedFiles(baseDir: string, taskId: string): Promise<{ path: string; additions: number; deletions: number }[]> {
     return this.post('/get-updated-files', { projectDir: baseDir, taskId });
   }
-  getUpdatedFileDiff(baseDir: string, taskId: string, filePath: string, commitHash?: string): Promise<string> {
-    return this.post<{ projectDir: string; taskId: string; filePath: string; commitHash?: string }, { diff: string }>('/get-updated-file-diff', {
-      projectDir: baseDir,
-      taskId,
-      filePath,
-      commitHash,
-    }).then((res) => res.diff);
-  }
-  getUpdatedFileContents(baseDir: string, taskId: string, filePath: string, commitHash?: string): Promise<{ oldContent: string; newContent: string }> {
-    return this.post<{ projectDir: string; taskId: string; filePath: string; commitHash?: string }, { oldContent: string; newContent: string }>(
-      '/get-updated-file-contents',
+  getUpdatedFileDiff(baseDir: string, taskId: string, filePath: string, commitHash?: string, previousPath?: string): Promise<string> {
+    return this.post<{ projectDir: string; taskId: string; filePath: string; commitHash?: string; previousPath?: string }, { diff: string }>(
+      '/get-updated-file-diff',
       {
         projectDir: baseDir,
         taskId,
         filePath,
         commitHash,
+        previousPath,
       },
-    );
+    ).then((res) => res.diff);
+  }
+  getUpdatedFileContents(
+    baseDir: string,
+    taskId: string,
+    filePath: string,
+    commitHash?: string,
+    previousPath?: string,
+  ): Promise<{ oldContent: string; newContent: string }> {
+    return this.post<
+      { projectDir: string; taskId: string; filePath: string; commitHash?: string; previousPath?: string },
+      { oldContent: string; newContent: string }
+    >('/get-updated-file-contents', {
+      projectDir: baseDir,
+      taskId,
+      filePath,
+      commitHash,
+      previousPath,
+    });
   }
   async generateCommitMessage(baseDir: string, taskId: string, filePaths?: string[]): Promise<string> {
     const res = await this.post<{ projectDir: string; taskId: string; filePaths?: string[] }, { message: string }>(
@@ -576,12 +639,13 @@ export class BrowserApi implements ApplicationAPI {
     );
     return res.message;
   }
-  async commitChanges(baseDir: string, taskId: string, message: string, amend: boolean, filePaths?: string[]): Promise<void> {
+  async commitChanges(baseDir: string, taskId: string, message: string, amend: boolean, skipGitHooks: boolean, filePaths?: string[]): Promise<void> {
     await this.post('/project/worktree/commit-changes', {
       projectDir: baseDir,
       taskId,
       message,
       amend,
+      skipGitHooks,
       filePaths,
     });
   }
@@ -644,7 +708,7 @@ export class BrowserApi implements ApplicationAPI {
     });
   }
   initProjectRulesFile(baseDir: string, taskId: string, args?: string): Promise<void> {
-    return this.post('/project/init-rules', { projectDir: baseDir, taskId, args });
+    return this.submitTaskOperation('/project/init-rules', baseDir, taskId, { args });
   }
   getSkills(baseDir: string, taskId: string): Promise<SkillDefinition[]> {
     return this.get('/skills', { projectDir: baseDir, taskId });
@@ -751,6 +815,9 @@ export class BrowserApi implements ApplicationAPI {
       messageId,
     });
   }
+  forkTaskFromCheckpoint(baseDir: string, taskId: string, checkpointId: string): Promise<TaskData> {
+    return this.post('/project/tasks/fork-from-checkpoint', { projectDir: baseDir, taskId, checkpointId });
+  }
   getTasks(baseDir: string): Promise<TaskData[]> {
     return this.get('/project/tasks', { projectDir: baseDir });
   }
@@ -818,12 +885,7 @@ export class BrowserApi implements ApplicationAPI {
     await this.deleteWithBody('/project/remove-messages-up-to', { projectDir: baseDir, taskId, messageId });
   }
   compactConversation(baseDir: string, taskId: string, mode: Mode, customInstructions?: string): void {
-    this.post('/project/compact-conversation', {
-      projectDir: baseDir,
-      taskId,
-      mode,
-      customInstructions,
-    });
+    void this.submitTaskOperation('/project/compact-conversation', baseDir, taskId, { mode, customInstructions });
   }
 
   async smartCompactConversation(baseDir: string, taskId: string): Promise<void> {
@@ -833,20 +895,17 @@ export class BrowserApi implements ApplicationAPI {
     });
   }
 
-  async undoContextChange(baseDir: string, taskId: string): Promise<boolean> {
-    const result = await this.post<{ projectDir: string; taskId: string }, { undone: boolean }>('/project/undo-context-change', {
+  async undoContextChange(baseDir: string, taskId: string, checkpointId?: string): Promise<boolean> {
+    const result = await this.post<{ projectDir: string; taskId: string; checkpointId?: string }, { undone: boolean }>('/project/undo-context-change', {
       projectDir: baseDir,
       taskId,
+      checkpointId,
     });
     return result?.undone ?? false;
   }
 
   async handoffConversation(baseDir: string, taskId: string, focus?: string): Promise<void> {
-    await this.post('/project/handoff-conversation', {
-      projectDir: baseDir,
-      taskId,
-      focus,
-    });
+    await this.submitTaskOperation('/project/handoff-conversation', baseDir, taskId, { focus });
   }
 
   runCodeChangeRequests(baseDir: string, taskId: string, requests: ChangeRequestItem[], createNewTask?: boolean): void {
@@ -929,8 +988,8 @@ export class BrowserApi implements ApplicationAPI {
   addContextInfoUpdatedListener(baseDir: string, taskId: string, callback: (data: ContextInfoData) => void): () => void {
     return this.addListener('context-info-updated', callback, baseDir, taskId);
   }
-  addUpdatedFilesUpdatedListener(baseDir: string, taskId: string, callback: (data: UpdatedFilesUpdatedData) => void): () => void {
-    return this.addListener('updated-files-updated', callback, baseDir, taskId);
+  addUpdatedFilesUpdatedListener(baseDir: string, taskDir: string, callback: (data: UpdatedFilesUpdatedData) => void): () => void {
+    return this.addListener('updated-files-updated', callback, baseDir, undefined, taskDir);
   }
   addSkillsUpdatedListener(baseDir: string, taskId: string, callback: (data: SkillsUpdatedData) => void): () => void {
     return this.addListener('skills-updated', callback, baseDir, taskId);
@@ -987,6 +1046,14 @@ export class BrowserApi implements ApplicationAPI {
     return () => {};
   }
 
+  addSocketReconnectListener(callback: () => void): () => void {
+    void this.ensureSocketConnected();
+    this.reconnectListeners.add(callback);
+    return () => {
+      this.reconnectListeners.delete(callback);
+    };
+  }
+
   addProviderModelsUpdatedListener(callback: (data: ProviderModelsData) => void): () => void {
     return this.addListener('provider-models-updated', callback);
   }
@@ -1003,12 +1070,16 @@ export class BrowserApi implements ApplicationAPI {
     return this.addListener('mcp-servers-updated', callback);
   }
 
+  addExtensionsUpdatedListener(callback: (data: ExtensionsUpdatedData) => void): () => void {
+    return this.addListener('extensions-updated', callback);
+  }
+
   addProjectSettingsUpdatedListener(baseDir: string, callback: (data: { baseDir: string; settings: ProjectSettings }) => void): () => void {
     return this.addListener('project-settings-updated', callback, baseDir);
   }
 
-  addWorktreeIntegrationStatusUpdatedListener(baseDir: string, taskId: string, callback: (data: WorktreeIntegrationStatusUpdatedData) => void): () => void {
-    return this.addListener('worktree-integration-status-updated', callback, baseDir, taskId);
+  addTaskGitStatusUpdatedListener(baseDir: string, taskId: string, callback: (data: TaskGitStatusUpdatedData) => void): () => void {
+    return this.addListener('task-git-status-updated', callback, baseDir, taskId);
   }
 
   // Task lifecycle event listeners
@@ -1061,18 +1132,11 @@ export class BrowserApi implements ApplicationAPI {
       extensionCommands: response.extensionCommands,
     };
   }
-  getCustomModes(baseDir: string): Promise<ModeDefinition[]> {
-    return this.get<ModeDefinition[]>('/project/custom-modes', { projectDir: baseDir });
+  getCustomModes(baseDir?: string): Promise<ModeDefinition[]> {
+    return this.get<ModeDefinition[]>('/project/custom-modes', baseDir ? { projectDir: baseDir } : {});
   }
   runCustomCommand(baseDir: string, taskId: string, commandName: string, args: string[], mode: Mode, images?: string[]): Promise<void> {
-    return this.post('/project/custom-commands', {
-      projectDir: baseDir,
-      taskId,
-      commandName,
-      args,
-      mode,
-      images,
-    });
+    return this.submitTaskOperation('/project/custom-commands', baseDir, taskId, { commandName, args, mode, images });
   }
   isTerminalSupported(): boolean {
     return true;
@@ -1207,12 +1271,13 @@ export class BrowserApi implements ApplicationAPI {
     return this.post('/project/switch-to-worktree-working-mode', {
       projectDir: baseDir,
       taskId,
+      baseBranch: options?.baseBranch,
       carryOverUncommittedChanges: options?.carryOverUncommittedChanges,
       dropSourceChanges: options?.dropSourceChanges,
     });
   }
 
-  getLocalUncommittedFiles(baseDir: string, taskId: string): Promise<WorktreeUncommittedFiles> {
+  getLocalUncommittedFiles(baseDir: string, taskId: string): Promise<UncommittedFiles> {
     return this.get('/project/local-uncommitted-files', {
       projectDir: baseDir,
       taskId,
@@ -1241,11 +1306,12 @@ export class BrowserApi implements ApplicationAPI {
     });
   }
 
-  restoreFile(baseDir: string, taskId: string, filePath: string): Promise<void> {
+  restoreFile(baseDir: string, taskId: string, filePath: string, previousPath?: string): Promise<void> {
     return this.post('/project/worktree/restore-file', {
       projectDir: baseDir,
       taskId,
       filePath,
+      previousPath,
     });
   }
 
@@ -1299,13 +1365,21 @@ export class BrowserApi implements ApplicationAPI {
     });
   }
 
-  async checkoutGitBranch(baseDir: string, taskId: string, branch: string, createTracking?: boolean, takeOver?: boolean): Promise<void> {
-    await this.post('/project/git/branch/checkout', {
+  async checkoutGitBranch(
+    baseDir: string,
+    taskId: string,
+    branch: string,
+    createTracking?: boolean,
+    takeOver?: boolean,
+    smartCheckout?: boolean,
+  ): Promise<GitCheckoutResult> {
+    return this.post('/project/git/branch/checkout', {
       projectDir: baseDir,
       taskId,
       branch,
       createTracking,
       takeOver,
+      smartCheckout,
     });
   }
 
@@ -1364,23 +1438,22 @@ export class BrowserApi implements ApplicationAPI {
     });
   }
 
-  gitPush(baseDir: string, taskId: string, force?: boolean): Promise<{ output: string }> {
+  gitPush(baseDir: string, taskId: string, force?: boolean, setUpstream?: boolean, pushToBase?: boolean): Promise<{ output: string }> {
     return this.post('/project/git/push', {
       projectDir: baseDir,
       taskId,
       force,
+      setUpstream,
+      pushToBase,
     });
   }
 
   resolveGitErrorWithAgent(baseDir: string, taskId: string): Promise<void> {
-    return this.post('/project/git/resolve-error-with-agent', {
-      projectDir: baseDir,
-      taskId,
-    });
+    return this.submitTaskOperation('/project/git/resolve-error-with-agent', baseDir, taskId);
   }
 
-  getWorktreeIntegrationStatus(baseDir: string, taskId: string, targetBranch?: string): Promise<WorktreeIntegrationStatus> {
-    return this.get('/project/worktree/status', {
+  getTaskGitStatus(baseDir: string, taskId: string, targetBranch?: string): Promise<TaskGitStatus> {
+    return this.get('/project/git/status', {
       projectDir: baseDir,
       taskId,
       targetBranch,
@@ -1395,22 +1468,22 @@ export class BrowserApi implements ApplicationAPI {
     });
   }
 
-  abortWorktreeRebase(baseDir: string, taskId: string): Promise<void> {
-    return this.post('/project/worktree/abort-rebase', {
+  abortRebase(baseDir: string, taskId: string): Promise<void> {
+    return this.post('/project/git/abort-rebase', {
       projectDir: baseDir,
       taskId,
     });
   }
 
-  continueWorktreeRebase(baseDir: string, taskId: string): Promise<void> {
-    return this.post('/project/worktree/continue-rebase', {
+  continueRebase(baseDir: string, taskId: string): Promise<void> {
+    return this.post('/project/git/continue-rebase', {
       projectDir: baseDir,
       taskId,
     });
   }
 
-  resolveWorktreeConflictsWithAgent(baseDir: string, taskId: string): Promise<void> {
-    return this.post('/project/worktree/resolve-conflicts-with-agent', {
+  resolveConflictsWithAgent(baseDir: string, taskId: string): Promise<void> {
+    return this.post('/project/git/resolve-conflicts-with-agent', {
       projectDir: baseDir,
       taskId,
     });
@@ -1442,10 +1515,10 @@ export class BrowserApi implements ApplicationAPI {
     return this.get('/memories/embedding-progress');
   }
 
-  async deleteProjectMemories(projectId: string): Promise<number> {
+  async deleteScopeMemories(scopeId: string): Promise<number> {
     const { data } = await this.apiClient.delete<{ deletedCount: number }>('/memories', {
       data: {
-        projectId,
+        scopeId,
       },
     });
     return data.deletedCount;
@@ -1477,6 +1550,21 @@ export class BrowserApi implements ApplicationAPI {
     const response = await fetch(dataUrl);
     const blob = await response.blob();
     await navigator.clipboard.write([new ClipboardItem({ 'image/png': blob })]);
+  }
+
+  async downloadFile(path: string): Promise<void> {
+    const response = await this.apiClient.post<Blob>('/system/download-file', { path }, { responseType: 'blob' });
+    const url = window.URL.createObjectURL(response.data);
+    const link = document.createElement('a');
+    link.href = url;
+    link.download = path.replace(/\\/g, '/').split('/').pop() || 'download';
+    document.body.appendChild(link);
+    try {
+      link.click();
+    } finally {
+      link.remove();
+      setTimeout(() => window.URL.revokeObjectURL(url), 1000);
+    }
   }
 
   async openPath(): Promise<boolean> {

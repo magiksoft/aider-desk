@@ -9,12 +9,17 @@ import {
   ConnectorMessage,
   ContextFile,
   ContextMessage,
+  ContextLogMessage,
   ContextToolMessage,
+  LogData,
+  LogAction,
+  LogLevel,
   MessageRole,
   ResponseCompletedData,
   TaskContext,
   ToolData,
   UsageReportData,
+  PromptContext,
   UserMessageData,
 } from '@common/types';
 import { extractServerNameToolName, extractTextContent, fileExists, isMessageEmpty, isTextContent } from '@common/utils';
@@ -23,11 +28,34 @@ import { AIDER_TOOL_GROUP_NAME, AIDER_TOOL_RUN_PROMPT, SUBAGENTS_TOOL_GROUP_NAME
 import logger from '@/logger';
 import { Task } from '@/task';
 import { isDirectory, isFileIgnored, withLock } from '@/utils';
+import { atomicWriteJsonFile, cleanupStaleTempFiles } from '@/utils/atomic-write';
 import { extractPromptContextFromToolResult } from '@/agent/utils';
+import { getSubagentMessages, getSubagentFinalText } from '@/agent/message-preparation/tool-results';
 import { migrateContextV1toV2 } from '@/task/migrations/v1-to-v2';
 import { AIDER_DESK_TASKS_DIR } from '@/constants';
 
 const CURRENT_CONTEXT_VERSION = 2;
+
+export const BACKUP_PATTERNS = [/^context\.pre-compaction\.(\d+)\.json$/, /^context\.backup\.(\d+)\.json$/];
+
+export const getBackupSequence = (file: string): number => {
+  for (const pattern of BACKUP_PATTERNS) {
+    const match = pattern.exec(file);
+    if (match) {
+      return parseInt(match[1], 10);
+    }
+  }
+  return -1;
+};
+
+export const getPreCompactionBackupFiles = async (dir: string): Promise<string[]> => {
+  try {
+    const files = await fs.readdir(dir);
+    return files.filter((file) => getBackupSequence(file) > 0).sort((a, b) => getBackupSequence(a) - getBackupSequence(b));
+  } catch {
+    return [];
+  }
+};
 
 export class ContextManager {
   private messages: ContextMessage[];
@@ -109,6 +137,31 @@ export class ContextManager {
     }
 
     this.autosave();
+  }
+
+  addPersistentLogMessage(
+    level: LogLevel,
+    content: string,
+    promptContext?: PromptContext,
+    actions?: LogAction[],
+    timestamp?: number,
+    id = uuidv4(),
+  ): ContextLogMessage {
+    const message: ContextLogMessage = {
+      id,
+      role: 'log',
+      level,
+      content,
+      promptContext,
+      actions,
+      timestamp: timestamp ?? Date.now(),
+    };
+
+    this.messages.push(message);
+    logger.debug(`Task ${this.taskId}: Added persistent log message. Total messages: ${this.messages.length}`);
+
+    this.autosave();
+    return message;
   }
 
   private async isFileIgnored(contextFile: ContextFile): Promise<boolean> {
@@ -290,6 +343,9 @@ export class ContextManager {
           ...msg,
           content: msg.content.map((part) => ({ ...part })),
         };
+      }
+      if (msg.role === 'log') {
+        return { ...msg };
       }
       return {
         ...msg,
@@ -637,17 +693,9 @@ export class ContextManager {
               },
             ];
 
-            if (part.output.value && Array.isArray(part.output.value) && part.output.value.length > 0) {
-              const lastMessage = part.output.value[part.output.value.length - 1];
-              if (lastMessage && typeof lastMessage === 'object' && 'role' in lastMessage && lastMessage.role === MessageRole.Assistant) {
-                const content = extractTextContent(lastMessage.content);
-                if (content) {
-                  messages.push({
-                    role: MessageRole.Assistant,
-                    content: content,
-                  });
-                }
-              }
+            const content = getSubagentFinalText(part.output.value);
+            if (content) {
+              messages.push({ role: MessageRole.Assistant, content });
             }
 
             return messages;
@@ -670,9 +718,6 @@ export class ContextManager {
     // Serialize writes so concurrent saves cannot interleave and corrupt the file
     await withLock(`context-save-${this.taskId}`, async () => {
       try {
-        const dir = path.dirname(this.storagePath);
-        await fs.mkdir(dir, { recursive: true });
-
         const contextData: TaskContext = {
           version: CURRENT_CONTEXT_VERSION,
           contextMessages: this.messages,
@@ -680,14 +725,11 @@ export class ContextManager {
         };
 
         // Remove temp files orphaned by a crash between writeFile and rename
-        await this.cleanupStaleTempFiles(dir);
+        await cleanupStaleTempFiles(this.storagePath);
 
         // Write atomically: write to a temp file, then rename over the target so a
         // crash mid-write never leaves context.json half-written.
-        const baseName = path.basename(this.storagePath);
-        const temporaryPath = path.join(dir, `${baseName}.${Date.now()}.${Math.random().toString(36).slice(2)}.tmp`);
-        await fs.writeFile(temporaryPath, JSON.stringify(contextData, null, 2), 'utf8');
-        await fs.rename(temporaryPath, this.storagePath);
+        await atomicWriteJsonFile(this.storagePath, contextData);
 
         logger.debug(`Task context saved to ${this.storagePath}`, {
           taskId: this.taskId,
@@ -703,55 +745,78 @@ export class ContextManager {
   }
 
   /**
-   * Removes temp files orphaned by a crash between writeFile and rename.
-   * Only safe to call while holding the save lock for this task's storage path.
+   * Creates a snapshot of the current context.json file before a destructive operation
+   * (e.g., compaction). Snapshots are named context.pre-compaction.001.json, context.pre-compaction.002.json, etc.,
+   * higher numbers mean newer snapshots. They are kept in the task directory so the agent
+   * can read the full pre-compaction conversation history when needed.
    */
-  private async cleanupStaleTempFiles(dir: string): Promise<void> {
+  getSnapshotDir(): string {
+    return path.dirname(this.storagePath);
+  }
+
+  async backupContext(): Promise<string> {
+    return withLock(`context-backup-${this.taskId}`, async () => {
+      const dir = path.dirname(this.storagePath);
+      const existingBackups = await getPreCompactionBackupFiles(dir);
+      const maxNumber = existingBackups.reduce((max, file) => Math.max(max, getBackupSequence(file)), 0);
+      const nextNumber = String(maxNumber + 1).padStart(3, '0');
+      const checkpointId = `context.pre-compaction.${nextNumber}.json`;
+      await atomicWriteJsonFile(path.join(dir, checkpointId), {
+        version: CURRENT_CONTEXT_VERSION,
+        contextMessages: this.messages,
+        contextFiles: this.files,
+      } satisfies TaskContext);
+      return checkpointId;
+    });
+  }
+
+  async readCompactionCheckpoint(checkpointId: string): Promise<ContextMessage[] | null> {
+    if (!/^context\.pre-compaction\.\d+\.json$/.test(checkpointId)) {
+      return null;
+    }
     try {
-      const baseName = path.basename(this.storagePath);
-      const prefix = `${baseName}.`;
-      const files = await fs.readdir(dir);
-      for (const file of files) {
-        if (file.startsWith(prefix) && file.endsWith('.tmp')) {
-          await fs.unlink(path.join(dir, file)).catch(() => undefined);
-        }
+      const data: unknown = JSON.parse(await fs.readFile(path.join(path.dirname(this.storagePath), checkpointId), 'utf8'));
+      if (!data || typeof data !== 'object' || !('contextMessages' in data) || !Array.isArray(data.contextMessages)) {
+        return null;
       }
+      if ('version' in data && (typeof data.version !== 'number' || data.version > CURRENT_CONTEXT_VERSION)) {
+        return null;
+      }
+      if (
+        !data.contextMessages.every((message: unknown) => {
+          if (
+            !message ||
+            typeof message !== 'object' ||
+            !('id' in message) ||
+            typeof message.id !== 'string' ||
+            !('role' in message) ||
+            !('content' in message)
+          ) {
+            return false;
+          }
+          if (message.role === 'log') {
+            return typeof message.content === 'string' && 'level' in message && ['info', 'warning', 'error'].includes(String(message.level));
+          }
+          return ['user', 'assistant', 'tool'].includes(String(message.role)) && (typeof message.content === 'string' || Array.isArray(message.content));
+        })
+      ) {
+        return null;
+      }
+      const context = await this.migrateContext(data);
+      return context.contextMessages;
     } catch (error) {
-      logger.error('Failed to clean up stale task context temp files:', {
-        error,
-        taskId: this.taskId,
-      });
+      logger.error('Failed to read compaction checkpoint', { error, checkpointId, taskId: this.taskId });
+      return null;
     }
   }
 
-  /**
-   * Creates a backup of the current context.json file before a destructive operation
-   * (e.g., smart compaction). Backups are named context.backup.001.json, context.backup.002.json, etc.
-   * For debugging purposes only.
-   */
-  async backupContext(): Promise<void> {
-    try {
-      const dir = path.dirname(this.storagePath);
-      const files = await fs.readdir(dir);
-      const backupPattern = /^context\.backup\.(\d+)\.json$/;
-      let maxNumber = 0;
-      for (const file of files) {
-        const match = backupPattern.exec(file);
-        if (match) {
-          const num = parseInt(match[1], 10);
-          if (num > maxNumber) {
-            maxNumber = num;
-          }
-        }
+  async copyCompactionCheckpointsFrom(source: ContextManager, checkpointId: string): Promise<void> {
+    const files = await getPreCompactionBackupFiles(source.getSnapshotDir());
+    await fs.mkdir(this.getSnapshotDir(), { recursive: true });
+    for (const file of files) {
+      if (getBackupSequence(file) <= getBackupSequence(checkpointId)) {
+        await fs.copyFile(path.join(source.getSnapshotDir(), file), path.join(this.getSnapshotDir(), file));
       }
-
-      const nextNumber = String(maxNumber + 1).padStart(3, '0');
-      const backupPath = path.join(dir, `context.backup.${nextNumber}.json`);
-      await fs.copyFile(this.storagePath, backupPath);
-
-      logger.debug(`Task context backed up to ${backupPath}`, { taskId: this.taskId });
-    } catch (error) {
-      logger.error('Failed to backup task context:', { error, taskId: this.taskId });
     }
   }
 
@@ -899,14 +964,7 @@ export class ContextManager {
     try {
       const dir = path.dirname(this.storagePath);
       const files = await fs.readdir(dir);
-      const backupPattern = /^context\.backup\.(\d+)\.json$/;
-      const backups = files
-        .filter((file) => backupPattern.test(file))
-        .sort((a, b) => {
-          const numA = parseInt(backupPattern.exec(a)![1], 10);
-          const numB = parseInt(backupPattern.exec(b)![1], 10);
-          return numB - numA;
-        });
+      const backups = files.filter((file) => getBackupSequence(file) > 0).sort((a, b) => getBackupSequence(b) - getBackupSequence(a));
 
       if (backups.length > 0) {
         const backupPath = path.join(dir, backups[0]);
@@ -966,17 +1024,22 @@ export class ContextManager {
     await this.cleanupContext();
   }
 
-  async loadMessages(messages: ContextMessage[], updateTaskState = true): Promise<void> {
+  async loadMessages(messages: ContextMessage[], updateTaskState = true, executionId?: string, createSnapshot = false): Promise<void> {
+    this.task.durabilityManager.checkpointTaskConversation(messages, executionId);
     // Clear all current messages
-    await this.task.clearContext(false, false, updateTaskState, false);
+    await this.task.clearContext(false, false, updateTaskState, createSnapshot, true);
 
     this.messages = messages;
+    await this.save();
 
     // Get the messages data and send them to the UI
     const messagesData = this.getContextMessagesData(messages);
 
     for (const messageData of messagesData) {
-      if (messageData.type === 'user') {
+      if ('level' in messageData) {
+        // LogData - replay as log event
+        this.task.sendLog(messageData);
+      } else if (messageData.type === 'user') {
         // UserMessageData
         this.task.sendUserMessage(messageData);
       } else if (messageData.type === 'response-completed') {
@@ -1024,14 +1087,16 @@ export class ContextManager {
     }
   }
 
-  public getContextMessagesData(contextMessages: ContextMessage[] = this.messages): (UserMessageData | ResponseCompletedData | ToolData)[] {
-    const messagesData: (UserMessageData | ResponseCompletedData | ToolData)[] = [];
+  public getContextMessagesData(contextMessages: ContextMessage[] = this.messages): (UserMessageData | ResponseCompletedData | ToolData | LogData)[] {
+    const messagesData: (UserMessageData | ResponseCompletedData | ToolData | LogData)[] = [];
 
     for (const message of contextMessages) {
       const processToolResult = (part: ToolResultPart) => {
         const [serverName, toolName] = extractServerNameToolName(part.toolName);
         const promptContext = extractPromptContextFromToolResult(part.output.value) || message.promptContext;
-        const toolMessage = messagesData.find((message) => message.type === 'tool' && message.id === part.toolCallId) as ToolData | undefined;
+        const toolMessage = messagesData.find((message) => 'type' in message && message.type === 'tool' && message.id === part.toolCallId) as
+          | ToolData
+          | undefined;
 
         if (toolMessage) {
           toolMessage.response = JSON.stringify(part.output.value);
@@ -1063,7 +1128,7 @@ export class ContextManager {
                 commitMessage: response.commitMessage,
                 diff: response.diff,
                 usageReport: response.usageReport,
-                promptContext: message.promptContext,
+                promptContext,
                 timestamp: message.timestamp,
               };
               messagesData.push(responseCompletedData);
@@ -1072,14 +1137,8 @@ export class ContextManager {
         }
 
         // Handle agent tool results - process all messages from subagent
-        if (
-          serverName === SUBAGENTS_TOOL_GROUP_NAME &&
-          toolName === SUBAGENTS_TOOL_RUN_TASK &&
-          part.output?.value &&
-          typeof part.output.value === 'object' &&
-          'messages' in part.output.value
-        ) {
-          const messages = part.output.value.messages as unknown as ContextMessage[];
+        if (serverName === SUBAGENTS_TOOL_GROUP_NAME && toolName === SUBAGENTS_TOOL_RUN_TASK && getSubagentMessages(part.output?.value) !== undefined) {
+          const messages = getSubagentMessages(part.output.value);
           if (Array.isArray(messages)) {
             messages.forEach((subMessage: ContextMessage) => {
               if (subMessage.role === 'assistant') {
@@ -1155,10 +1214,12 @@ export class ContextManager {
               } else if (subMessage.role === 'tool') {
                 for (const subPart of subMessage.content) {
                   if (subPart.type === 'tool-result') {
-                    const toolMessage = messagesData.find((message) => message.type === 'tool' && message.id === subPart.toolCallId) as ToolData | undefined;
-                    if (toolMessage) {
-                      toolMessage.response = JSON.stringify(subPart.output.value);
-                      toolMessage.finished = true;
+                    const subToolMessage = messagesData.find((message) => 'type' in message && message.type === 'tool' && message.id === subPart.toolCallId) as
+                      | ToolData
+                      | undefined;
+                    if (subToolMessage) {
+                      subToolMessage.response = JSON.stringify(subPart.output.value);
+                      subToolMessage.finished = true;
                     }
                   }
                 }
@@ -1243,7 +1304,7 @@ export class ContextManager {
 
           // Now update tool messages with their responses from tool-results
           for (const [toolCallId, toolResultData] of toolResultsMap.entries()) {
-            const toolMessage = messagesData.find((msg) => msg.type === 'tool' && msg.id === toolCallId) as ToolData | undefined;
+            const toolMessage = messagesData.find((msg) => 'type' in msg && msg.type === 'tool' && msg.id === toolCallId) as ToolData | undefined;
 
             if (toolMessage) {
               toolMessage.response = JSON.stringify(toolResultData.output);
@@ -1307,6 +1368,20 @@ export class ContextManager {
           timestamp: message.timestamp,
         };
         messagesData.push(userMessageData);
+      } else if (message.role === 'log') {
+        const logData: LogData = {
+          id: message.id,
+          baseDir: this.task.getProjectDir(),
+          taskId: this.taskId,
+          level: message.level,
+          message: message.content,
+          finished: message.finished,
+          promptContext: message.promptContext,
+          actions: message.actions,
+          timestamp: message.timestamp,
+          persistent: true,
+        };
+        messagesData.push(logData);
       } else if (message.role === 'tool' && Array.isArray(message.content)) {
         for (const part of message.content) {
           if (part.type === 'tool-result') {
@@ -1330,6 +1405,8 @@ export class ContextManager {
         if (content) {
           markdown += `${content}\n\n`;
         }
+      } else if (message.role === 'log') {
+        markdown += `*(${message.level})* ${message.content}\n\n`;
       } else if (message.role === 'tool') {
         if (Array.isArray(message.content)) {
           for (const part of message.content) {

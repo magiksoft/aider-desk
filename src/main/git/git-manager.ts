@@ -1,4 +1,5 @@
 import os from 'os';
+import { randomUUID } from 'crypto';
 import path, { join } from 'path';
 import fs, { mkdir, rm, lstat, symlink } from 'fs/promises';
 import { existsSync, lstatSync } from 'fs';
@@ -7,14 +8,15 @@ import {
   BranchInfo,
   ConflictResolutionFileContext,
   GitSyncCommits,
+  GitCheckoutResult,
   MergeState,
   RebaseState,
   UpdatedFile,
   UpdatedFilesGroupMode,
   WorkingMode,
   Worktree,
-  WorktreeAheadCommits,
-  WorktreeUncommittedFiles,
+  GitAheadCommits,
+  UncommittedFiles,
 } from '@common/types';
 // @ts-expect-error istextorbinary library does not provide TypeScript definitions
 import { isBinary } from 'istextorbinary';
@@ -130,6 +132,21 @@ export class GitManager {
           await execWithShellPath('git init', { cwd: projectPath });
         }
 
+        let selectedBaseCommit: string | undefined;
+        if (baseBranch !== 'HEAD') {
+          const refs = await simpleGit(projectPath).raw(['for-each-ref', '--format=%(refname)', 'refs/heads/', 'refs/remotes/']);
+          const candidates = refs.trim().split('\n');
+          const baseRef = candidates.find((ref) => ref === `refs/heads/${baseBranch}`) || candidates.find((ref) => ref === `refs/remotes/${baseBranch}`);
+          if (!baseRef) {
+            throw new Error(`Base branch '${baseBranch}' does not exist`);
+          }
+          selectedBaseCommit = (await simpleGit(projectPath).raw(['rev-parse', '--verify', '--end-of-options', `${baseRef}^{commit}`])).trim();
+        }
+
+        if (selectedBaseCommit && branch) {
+          branch = await this.findUniqueBranchName(projectPath, branch);
+        }
+
         // 2. Clean up stale worktree registrations (e.g. the directory was deleted out-of-band)
         try {
           await execWithShellPath('git worktree prune', { cwd: projectPath });
@@ -175,7 +192,7 @@ export class GitManager {
           let branchExists = false;
           try {
             // Check if it's an actual branch (not just a commit SHA)
-            await execWithShellPath(`git show-ref --verify --quiet refs/heads/${branch}`, { cwd: projectPath });
+            await execWithShellPath(['git', 'show-ref', '--verify', '--quiet', `refs/heads/${branch}`], { cwd: projectPath });
             branchExists = true;
           } catch (error) {
             // Branch doesn't exist, it will be created from baseRef
@@ -189,14 +206,14 @@ export class GitManager {
               // git refuses to check out a branch that is already used by another worktree;
               // fall back to a unique sibling branch created from the original branch's tip
               branchToAdd = await this.findUniqueBranchName(projectPath, branch);
-              await execWithShellPath(`git worktree add -b ${branchToAdd} "${worktreePath}" ${branch}`, { cwd: projectPath });
+              await execWithShellPath(['git', 'worktree', 'add', '-b', branchToAdd, worktreePath, branch], { cwd: projectPath });
             } else {
-              await execWithShellPath(`git worktree add "${worktreePath}" ${branch}`, { cwd: projectPath });
+              await execWithShellPath(['git', 'worktree', 'add', worktreePath, branch], { cwd: projectPath });
             }
 
             // Get the base commit (the tip of the existing branch)
             baseCommit = (
-              await execWithShellPath(`git rev-parse ${branchToAdd}`, {
+              await execWithShellPath(['git', 'rev-parse', '--verify', '--end-of-options', branchToAdd], {
                 cwd: projectPath,
               })
             ).stdout.trim();
@@ -204,35 +221,26 @@ export class GitManager {
           } else {
             // A2. Create new branch from baseRef (which defaults to 'HEAD')
 
-            // Verify that the base branch exists if specified and is a branch name
-            if (baseBranch !== 'HEAD') {
-              try {
-                await execWithShellPath(`git show-ref --verify --quiet refs/heads/${baseBranch}`, { cwd: projectPath });
-              } catch {
-                throw new Error(`Base branch '${baseBranch}' does not exist`);
-              }
-            }
+            baseCommit =
+              selectedBaseCommit ||
+              (
+                await execWithShellPath(['git', 'rev-parse', '--verify', '--end-of-options', baseRef], {
+                  cwd: projectPath,
+                })
+              ).stdout.trim();
 
-            // Capture the base commit before creating the worktree
-            baseCommit = (
-              await execWithShellPath(`git rev-parse ${baseRef}`, {
-                cwd: projectPath,
-              })
-            ).stdout.trim();
-
-            // Create the new branch and checkout the worktree
-            await execWithShellPath(`git worktree add -b ${branch} "${worktreePath}" ${baseRef}`, { cwd: projectPath });
+            await execWithShellPath(['git', 'worktree', 'add', '-b', branch, worktreePath, selectedBaseCommit || baseRef], { cwd: projectPath });
             newBranchName = branch; // Use the newly created branch name
           }
         } else {
           // B. No branch name provided: Create detached worktree from current HEAD (or specified baseRef)
 
           // Note: git worktree add <path> defaults to current HEAD
-          await execWithShellPath(`git worktree add "${worktreePath}" ${baseRef}`, { cwd: projectPath });
+          await execWithShellPath(['git', 'worktree', 'add', worktreePath, selectedBaseCommit || baseRef], { cwd: projectPath });
 
           // Capture the base commit (the commit it's detached at)
           baseCommit = (
-            await execWithShellPath(`git rev-parse ${baseRef}`, {
+            await execWithShellPath(['git', 'rev-parse', '--verify', '--end-of-options', baseRef], {
               cwd: projectPath,
             })
           ).stdout.trim();
@@ -613,12 +621,12 @@ export class GitManager {
     }
   }
 
-  async checkoutBranch(projectPath: string, branch: string, createTracking = false, takeOver = false): Promise<void> {
+  async checkoutBranch(projectPath: string, branch: string, createTracking = false, takeOver = false, smartCheckout = false): Promise<GitCheckoutResult> {
     if (!(await this.ensureGitRepository(projectPath, 'checkout branch'))) {
-      return;
+      return {};
     }
 
-    return await withLock(`git-checkout-${projectPath}`, async () => {
+    return await withLock(`git-mutation-${projectPath}`, async () => {
       let command: string;
 
       if (createTracking) {
@@ -642,11 +650,15 @@ export class GitManager {
 
       try {
         await execWithShellPath(command, { cwd: projectPath });
+        return {};
       } catch (error: unknown) {
         const gitError = this.wrapGitError(error, [command], projectPath);
 
         if (gitError.gitOutput?.includes('would be overwritten by checkout')) {
-          gitError.message = `Cannot checkout '${branch}': you have uncommitted changes that would be overwritten. Commit or stash them first.`;
+          if (!smartCheckout) {
+            return { requiresSmartCheckout: true };
+          }
+          return await this.performSmartCheckout(projectPath, command, branch);
         } else if (/already used by worktree|already checked out at/.test(gitError.gitOutput || '')) {
           gitError.message = `Cannot checkout '${branch}': it is already checked out in another worktree.`;
         }
@@ -654,6 +666,76 @@ export class GitManager {
         throw gitError;
       }
     });
+  }
+
+  private async performSmartCheckout(projectPath: string, command: string, branch: string): Promise<GitCheckoutResult> {
+    const git = simpleGit(projectPath);
+    if ((await git.status()).conflicted.length > 0) {
+      throw new GitError('Resolve existing conflicts before using Smart Checkout.');
+    }
+
+    const originalHead = (await git.revparse(['HEAD'])).trim();
+    const originalBranch = (await git.revparse(['--symbolic-full-name', 'HEAD'])).trim();
+    const marker = `aiderdesk-smart-checkout-${randomUUID()}`;
+    try {
+      await execWithShellPath(['git', 'stash', 'push', '--include-untracked', '-m', marker], { cwd: projectPath });
+    } catch (error) {
+      const gitError = this.wrapGitError(error, ['git stash push --include-untracked'], projectPath);
+      gitError.message = `Smart Checkout could not save and clean your changes. Checkout was not attempted. Check git status and git stash list for recovery snapshot '${marker}'.`;
+      throw gitError;
+    }
+    const backupRef = (await git.raw(['rev-parse', '--verify', 'refs/stash'])).trim();
+    const subject = await git.raw(['log', '-1', '--format=%s', backupRef]);
+    if (!subject.includes(marker)) {
+      throw new GitError('Could not verify the Smart Checkout backup. Checkout was not attempted.');
+    }
+
+    try {
+      await execWithShellPath(command, { cwd: projectPath });
+    } catch (error) {
+      const gitError = this.wrapGitError(error, [command], projectPath);
+      const currentHead = (await git.revparse(['HEAD'])).trim();
+      const currentBranch = (await git.revparse(['--symbolic-full-name', 'HEAD'])).trim();
+      if (currentHead !== originalHead || currentBranch !== originalBranch) {
+        gitError.message = `Checkout reported a failure after changing HEAD. Your changes remain in recovery stash: ${backupRef}. Check the current branch before restoring them.`;
+        throw gitError;
+      }
+      try {
+        await execWithShellPath(['git', 'stash', 'apply', '--index', backupRef], { cwd: projectPath });
+        gitError.message = `Cannot checkout '${branch}'. Your original changes were restored. Recovery stash: ${backupRef}.`;
+      } catch (restoreError) {
+        gitError.message = `Cannot checkout '${branch}' and could not fully restore your changes. Recovery stash: ${backupRef}. ${String(restoreError)}`;
+      }
+      throw gitError;
+    }
+
+    try {
+      await execWithShellPath(['git', 'stash', 'apply', backupRef], { cwd: projectPath });
+      const conflictedFiles = (await git.status()).conflicted;
+      if (conflictedFiles.length > 0) {
+        return { conflictedFiles, backupRef };
+      }
+    } catch (error) {
+      const conflictedFiles = (await git.status()).conflicted;
+      if (conflictedFiles.length > 0) {
+        return { conflictedFiles, backupRef };
+      }
+      const gitError = this.wrapGitError(error, [`git stash apply ${backupRef}`], projectPath);
+      gitError.message = `Switched to '${branch}', but could not fully restore your changes. Recovery stash: ${backupRef}.`;
+      throw gitError;
+    }
+
+    try {
+      const stashes = await git.raw(['stash', 'list', '--format=%gd %H']);
+      const entry = stashes.split('\n').find((line) => line.endsWith(` ${backupRef}`));
+      if (entry) {
+        await git.raw(['stash', 'drop', entry.split(' ')[0]]);
+      }
+    } catch (error) {
+      logger.warn('Smart Checkout succeeded, but the recovery stash could not be removed:', error);
+      return { backupRef };
+    }
+    return {};
   }
 
   private async detachBranchFromOtherWorktrees(projectPath: string, branch: string): Promise<void> {
@@ -710,7 +792,7 @@ export class GitManager {
       return {};
     }
 
-    return await withLock(`git-merge-into-current-${projectPath}`, async () => {
+    return await withLock(`git-mutation-${projectPath}`, async () => {
       const command = `git merge --no-edit ${this.quoteArg(branch)}`;
 
       try {
@@ -737,7 +819,7 @@ export class GitManager {
       return {};
     }
 
-    return await withLock(`git-rebase-onto-${projectPath}`, async () => {
+    return await withLock(`git-mutation-${projectPath}`, async () => {
       if (await this.hasUncommittedChanges(projectPath)) {
         throw new GitError(`Cannot rebase onto '${branch}': you have uncommitted changes. Commit or stash them first.`);
       }
@@ -884,7 +966,7 @@ export class GitManager {
 
   async getCommitHash(worktreePath: string, ref: string): Promise<string | undefined> {
     try {
-      const { stdout } = await execWithShellPath(`git rev-parse ${ref}`, { cwd: worktreePath });
+      const { stdout } = await execWithShellPath(['git', 'rev-parse', '--verify', '--end-of-options', ref], { cwd: worktreePath });
       return stdout.trim();
     } catch {
       return undefined;
@@ -983,7 +1065,7 @@ export class GitManager {
       // Use cross-platform approach
       let stdout = '0';
       try {
-        const result = await execWithShellPath(`git rev-list --count HEAD..${mainBranch}`, { cwd: worktreePath });
+        const result = await execWithShellPath(['git', 'rev-list', '--count', `HEAD..${mainBranch}`, '--'], { cwd: worktreePath });
         stdout = result.stdout;
       } catch {
         // Error checking, assume no changes
@@ -1014,13 +1096,13 @@ export class GitManager {
       }
 
       // Get the merge base
-      const { stdout: mergeBase } = await execWithShellPath(`git merge-base HEAD ${mainBranch}`, { cwd: worktreePath });
+      const { stdout: mergeBase } = await execWithShellPath(['git', 'merge-base', 'HEAD', mainBranch], { cwd: worktreePath });
       const base = mergeBase.trim();
 
       // Try a dry-run merge to detect conflicts
       // We use merge-tree to check for conflicts without modifying the working tree
       try {
-        const { stdout: mergeTreeOutput } = await execWithShellPath(`git merge-tree ${base} HEAD ${mainBranch}`, { cwd: worktreePath });
+        const { stdout: mergeTreeOutput } = await execWithShellPath(['git', 'merge-tree', base, 'HEAD', mainBranch], { cwd: worktreePath });
 
         // Parse merge-tree output for conflicts
         const conflictMarkers = mergeTreeOutput.match(/<<<<<<< /g);
@@ -1034,7 +1116,7 @@ export class GitManager {
             .split('\n')
             .filter((f) => f);
 
-          const { stdout: theirDiffOutput } = await execWithShellPath(`git diff --name-only ${base}...${mainBranch}`, { cwd: worktreePath });
+          const { stdout: theirDiffOutput } = await execWithShellPath(['git', 'diff', '--name-only', `${base}...${mainBranch}`, '--'], { cwd: worktreePath });
           const theirFiles = theirDiffOutput
             .trim()
             .split('\n')
@@ -1045,7 +1127,7 @@ export class GitManager {
 
           // Get commit info for better error reporting
           const { stdout: ourCommits } = await execWithShellPath(`git log --oneline ${base}..HEAD`, { cwd: worktreePath });
-          const { stdout: theirCommits } = await execWithShellPath(`git log --oneline ${base}..${mainBranch}`, { cwd: worktreePath });
+          const { stdout: theirCommits } = await execWithShellPath(['git', 'log', '--oneline', `${base}..${mainBranch}`, '--'], { cwd: worktreePath });
 
           logger.info(`Found conflicts in files: ${conflictingFiles.join(', ')}`);
 
@@ -1080,7 +1162,7 @@ export class GitManager {
           .split('\n')
           .filter((f) => f);
 
-        const { stdout: theirDiffOutput } = await execWithShellPath(`git diff --name-only ${base}...${mainBranch}`, { cwd: worktreePath });
+        const { stdout: theirDiffOutput } = await execWithShellPath(['git', 'diff', '--name-only', `${base}...${mainBranch}`, '--'], { cwd: worktreePath });
         const theirFiles = theirDiffOutput
           .trim()
           .split('\n')
@@ -1092,7 +1174,7 @@ export class GitManager {
         if (conflictingFiles.length > 0) {
           // Get commit info
           const { stdout: ourCommits } = await execWithShellPath(`git log --oneline ${base}..HEAD`, { cwd: worktreePath });
-          const { stdout: theirCommits } = await execWithShellPath(`git log --oneline ${base}..${mainBranch}`, { cwd: worktreePath });
+          const { stdout: theirCommits } = await execWithShellPath(['git', 'log', '--oneline', `${base}..${mainBranch}`, '--'], { cwd: worktreePath });
 
           logger.info(`Potential conflicts in files: ${conflictingFiles.join(', ')}`);
 
@@ -1204,9 +1286,12 @@ export class GitManager {
         // This avoids carrying over base branch commits that aren't in the target branch
         const command = effectiveBaseCommit ? `git rebase --onto ${mainBranch} ${effectiveBaseCommit}` : `git rebase ${mainBranch}`;
         executedCommands.push(`${command} (in ${worktreePath})`);
-        const rebaseResult = await execWithShellPath(command, {
-          cwd: worktreePath,
-        });
+        const rebaseResult = await execWithShellPath(
+          effectiveBaseCommit ? ['git', 'rebase', '--onto', mainBranch, effectiveBaseCommit] : ['git', 'rebase', mainBranch],
+          {
+            cwd: worktreePath,
+          },
+        );
         lastOutput = rebaseResult.stdout || rebaseResult.stderr || '';
 
         // 4. If rebase succeeds AND we had uncommitted changes, reset to uncommitted state
@@ -1241,33 +1326,35 @@ export class GitManager {
   }
 
   async abortRebase(worktreePath: string): Promise<void> {
-    try {
-      // Check if we're in the middle of a rebase
-      const statusCommand = 'git status --porcelain=v1';
-      await execWithShellPath(statusCommand, { cwd: worktreePath });
+    await withLock(`git-rebase-${worktreePath}`, async () => {
+      try {
+        // Check if we're in the middle of a rebase
+        const statusCommand = 'git status --porcelain=v1';
+        await execWithShellPath(statusCommand, { cwd: worktreePath });
 
-      // Abort the rebase
-      const command = 'git rebase --abort';
-      const { stderr } = await execWithShellPath(command, {
-        cwd: worktreePath,
-      });
+        // Abort the rebase
+        const command = 'git rebase --abort';
+        const { stdout: abortStdout, stderr: abortStderr } = await execWithShellPath(command, {
+          cwd: worktreePath,
+        });
 
-      if (stderr && !stderr.includes('No rebase in progress')) {
-        throw new Error(`Failed to abort rebase: ${stderr}`);
+        if (abortStderr && !abortStderr.includes('No rebase in progress')) {
+          throw new Error(`Failed to abort rebase: ${abortStderr}`);
+        }
+
+        // Always try to reset temporary commit if it exists
+        await this.resetTempCommitIfExists(worktreePath);
+        logger.info(`Successfully aborted rebase: ${abortStdout}`);
+      } catch (error: unknown) {
+        const err = error as Error;
+        logger.error('Error aborting rebase:', err);
+        throw new Error(`Failed to abort rebase: ${err.message}`);
       }
-
-      // Always try to reset temporary commit if it exists
-      await this.resetTempCommitIfExists(worktreePath);
-      logger.info('Successfully handled temporary commit after abort rebase');
-    } catch (error: unknown) {
-      const err = error as Error;
-      logger.error('Error aborting rebase:', err);
-      throw new Error(`Failed to abort rebase: ${err.message}`);
-    }
+    });
   }
 
   async continueRebase(worktreePath: string): Promise<{ ontoCommit?: string; ontoBranch?: string }> {
-    return await withLock(`git-rebase-continue-${worktreePath}`, async () => {
+    return await withLock(`git-rebase-${worktreePath}`, async () => {
       const executedCommands: string[] = [];
       let lastOutput = '';
 
@@ -1341,7 +1428,7 @@ export class GitManager {
 
       // Check if there are any changes to merge (before rebase)
       command = `git log --oneline ${mainBranch}..HEAD`;
-      const { stdout: commits, stderr: stderr2 } = await execWithShellPath(command, { cwd: worktreePath });
+      const { stdout: commits, stderr: stderr2 } = await execWithShellPath(['git', 'log', '--oneline', `${mainBranch}..HEAD`, '--'], { cwd: worktreePath });
       lastOutput = commits || stderr2 || '';
       if (!commits.trim()) {
         return;
@@ -1366,9 +1453,12 @@ export class GitManager {
       command = effectiveBaseCommit ? `git rebase --onto ${mainBranch} ${effectiveBaseCommit}` : `git rebase ${mainBranch}`;
       executedCommands.push(`${command} (in ${worktreePath})`);
       try {
-        const rebaseWorktreeResult = await execWithShellPath(command, {
-          cwd: worktreePath,
-        });
+        const rebaseWorktreeResult = await execWithShellPath(
+          effectiveBaseCommit ? ['git', 'rebase', '--onto', mainBranch, effectiveBaseCommit] : ['git', 'rebase', mainBranch],
+          {
+            cwd: worktreePath,
+          },
+        );
         lastOutput = rebaseWorktreeResult.stdout || rebaseWorktreeResult.stderr || '';
         logger.debug(`Successfully rebased worktree onto ${mainBranch} before squashing`);
       } catch (error: unknown) {
@@ -1409,11 +1499,13 @@ export class GitManager {
         const { stdout: worktreeTree } = await execWithShellPath(`git rev-parse '${worktreeCommitHash}^{tree}'`, { cwd: worktreePath });
         const treeHash = worktreeTree.trim();
 
-        const { stdout: targetHead } = await execWithShellPath(`git rev-parse ${mainBranch}`, { cwd: projectPath });
+        const { stdout: targetHead } = await execWithShellPath(['git', 'rev-parse', '--verify', '--end-of-options', mainBranch], { cwd: projectPath });
         const targetHeadHash = targetHead.trim();
 
         // No-op check: nothing to squash if the trees are identical
-        const { stdout: targetTree } = await execWithShellPath(`git rev-parse '${mainBranch}^{tree}'`, { cwd: projectPath });
+        const { stdout: targetTree } = await execWithShellPath(['git', 'rev-parse', '--verify', '--end-of-options', `${mainBranch}^{tree}`], {
+          cwd: projectPath,
+        });
         if (treeHash === targetTree.trim()) {
           logger.info('No changes to squash merge (worktree tree is identical to target branch tree)');
           return;
@@ -1422,9 +1514,8 @@ export class GitManager {
         const commitMessageFile = join(os.tmpdir(), `aiderdesk-squash-message-${Date.now()}.txt`);
         await fs.writeFile(commitMessageFile, commitMessage, 'utf-8');
         try {
-          command = `git commit-tree ${treeHash} -p ${targetHeadHash} -F "${commitMessageFile}"`;
           executedCommands.push(`git commit-tree ${treeHash} -p ${targetHeadHash} -F <message-file> (in ${projectPath})`);
-          const commitResult = await execWithShellPath(command, {
+          const commitResult = await execWithShellPath(['git', 'commit-tree', treeHash, '-p', targetHeadHash, '-F', commitMessageFile], {
             cwd: projectPath,
           });
           lastOutput = commitResult.stdout || commitResult.stderr || '';
@@ -1432,7 +1523,7 @@ export class GitManager {
 
           command = `git update-ref refs/heads/${mainBranch} ${newCommitHash} ${targetHeadHash}`;
           executedCommands.push(`git update-ref refs/heads/${mainBranch} ${newCommitHash} <old-hash> (in ${projectPath})`);
-          await execWithShellPath(command, {
+          await execWithShellPath(['git', 'update-ref', `refs/heads/${mainBranch}`, newCommitHash, targetHeadHash], {
             cwd: projectPath,
           });
 
@@ -1446,7 +1537,7 @@ export class GitManager {
       // Switch to main branch in the main repository
       command = `git checkout ${mainBranch}`;
       executedCommands.push(`git checkout ${mainBranch} (in ${projectPath})`);
-      const checkoutResult = await execWithShellPath(command, {
+      const checkoutResult = await execWithShellPath(['git', 'checkout', mainBranch], {
         cwd: projectPath,
       });
       lastOutput = checkoutResult.stdout || checkoutResult.stderr || '';
@@ -1480,11 +1571,9 @@ export class GitManager {
       }
 
       // Commit the squashed changes with the provided message
-      const escapedMessage = commitMessage.replace(/"/g, '\\"');
-      command = `git commit -m "${escapedMessage}"`;
       executedCommands.push(`git commit -m "..." (in ${projectPath})`);
       try {
-        const commitResult = await execWithShellPath(command, {
+        const commitResult = await execWithShellPath(['git', 'commit', '-m', commitMessage], {
           cwd: projectPath,
         });
         lastOutput = commitResult.stdout || commitResult.stderr || '';
@@ -1544,7 +1633,7 @@ export class GitManager {
 
       // Check if there are any changes to merge
       command = `git log --oneline ${mainBranch}..HEAD`;
-      const { stdout: commits, stderr: stderr2 } = await execWithShellPath(command, { cwd: worktreePath });
+      const { stdout: commits, stderr: stderr2 } = await execWithShellPath(['git', 'log', '--oneline', `${mainBranch}..HEAD`, '--'], { cwd: worktreePath });
       lastOutput = commits || stderr2 || '';
       if (!commits.trim()) {
         return;
@@ -1554,7 +1643,7 @@ export class GitManager {
       command = `git rebase ${mainBranch}`;
       executedCommands.push(`git rebase ${mainBranch} (in ${worktreePath})`);
       try {
-        const rebaseWorktreeResult = await execWithShellPath(command, {
+        const rebaseWorktreeResult = await execWithShellPath(['git', 'rebase', mainBranch], {
           cwd: worktreePath,
         });
         lastOutput = rebaseWorktreeResult.stdout || rebaseWorktreeResult.stderr || '';
@@ -1594,7 +1683,7 @@ export class GitManager {
         // the project directory is on a different branch, and git guarantees the target
         // branch cannot be checked out in any other worktree
         try {
-          await execWithShellPath(`git merge-base --is-ancestor ${mainBranch} ${worktreeCommitHash}`, {
+          await execWithShellPath(['git', 'merge-base', '--is-ancestor', mainBranch, worktreeCommitHash], {
             cwd: projectPath,
           });
         } catch {
@@ -1604,10 +1693,10 @@ export class GitManager {
           );
         }
 
-        const { stdout: targetHead } = await execWithShellPath(`git rev-parse ${mainBranch}`, { cwd: projectPath });
+        const { stdout: targetHead } = await execWithShellPath(['git', 'rev-parse', '--verify', '--end-of-options', mainBranch], { cwd: projectPath });
         command = `git update-ref refs/heads/${mainBranch} ${worktreeCommitHash} ${targetHead.trim()}`;
         executedCommands.push(`git update-ref refs/heads/${mainBranch} ${worktreeCommitHash} <old-hash> (in ${projectPath})`);
-        await execWithShellPath(command, {
+        await execWithShellPath(['git', 'update-ref', `refs/heads/${mainBranch}`, worktreeCommitHash, targetHead.trim()], {
           cwd: projectPath,
         });
 
@@ -1618,7 +1707,7 @@ export class GitManager {
       // Switch to main branch in the main repository
       command = `git checkout ${mainBranch}`;
       executedCommands.push(`git checkout ${mainBranch} (in ${projectPath})`);
-      const checkoutResult = await execWithShellPath(command, {
+      const checkoutResult = await execWithShellPath(['git', 'checkout', mainBranch], {
         cwd: projectPath,
       });
       lastOutput = checkoutResult.stdout || checkoutResult.stderr || '';
@@ -1716,14 +1805,20 @@ export class GitManager {
     }
   }
 
-  async gitPush(worktreePath: string, force?: boolean, setUpstream?: boolean): Promise<{ output: string }> {
+  async gitPush(worktreePath: string, force?: boolean, setUpstream?: boolean, baseBranch?: string): Promise<{ output: string }> {
     if (!(await this.ensureGitRepository(worktreePath, 'push'))) {
       return { output: '' };
     }
 
     try {
-      let command = force ? 'git push --force' : 'git push';
-      if (setUpstream) {
+      let command: string | string[] = force ? 'git push --force' : 'git push';
+      if (baseBranch) {
+        if ((await this.getRebaseState(worktreePath)).inProgress) {
+          throw new Error('Cannot push to the base branch while a rebase is in progress. Continue or abort the rebase first.');
+        }
+        const { remote, ref } = await this.getBaseBranchPushTarget(worktreePath, baseBranch);
+        command = ['git', 'push', ...(force ? ['--force'] : []), '--', remote, `HEAD:${ref}`];
+      } else if (setUpstream) {
         const { stdout: branchOut } = await execWithShellPath('git rev-parse --abbrev-ref HEAD', {
           cwd: worktreePath,
         });
@@ -1748,6 +1843,98 @@ export class GitManager {
       gitError.workingDirectory = worktreePath;
       throw gitError;
     }
+  }
+
+  private async getBaseBranchPushTarget(repoPath: string, baseBranch: string): Promise<{ remote: string; ref: string }> {
+    const { stdout } = await execWithShellPath(
+      [
+        'git',
+        'for-each-ref',
+        '--format=%(refname)%09%(upstream:remotename)%09%(upstream:remoteref)',
+        '--',
+        `refs/heads/${baseBranch}`,
+        `refs/remotes/${baseBranch}`,
+      ],
+      { cwd: repoPath },
+    );
+    const refs = stdout
+      .trim()
+      .split('\n')
+      .map((line) => line.split('\t'));
+    const localRef = refs.find(([ref]) => ref === `refs/heads/${baseBranch}`);
+    if (localRef) {
+      const [, remote, ref] = localRef;
+      if (remote && remote !== '.' && ref?.startsWith('refs/heads/')) {
+        return { remote, ref };
+      }
+    } else if (refs.some(([ref]) => ref === `refs/remotes/${baseBranch}`)) {
+      return await this.resolveFetchRefspecPushTarget(repoPath, `refs/remotes/${baseBranch}`);
+    }
+    throw new Error(`Base branch '${baseBranch}' has no remote upstream configured.`);
+  }
+
+  private matchFetchRefspec(pattern: string, ref: string): string | undefined {
+    const wildcard = pattern.indexOf('*');
+    if (wildcard === -1) {
+      return pattern === ref ? '' : undefined;
+    }
+    const prefix = pattern.slice(0, wildcard);
+    const suffix = pattern.slice(wildcard + 1);
+    return ref.startsWith(prefix) && ref.endsWith(suffix) && ref.length >= prefix.length + suffix.length
+      ? ref.slice(prefix.length, ref.length - suffix.length)
+      : undefined;
+  }
+
+  private async resolveFetchRefspecPushTarget(repoPath: string, trackingRef: string): Promise<{ remote: string; ref: string }> {
+    const { stdout } = await execWithShellPath('git remote', { cwd: repoPath });
+    const targets = new Map<string, { remote: string; ref: string }>();
+    for (const remote of stdout.trim().split('\n').filter(Boolean)) {
+      let fetchOutput: string;
+      try {
+        fetchOutput = (await execWithShellPath(['git', 'config', '--get-all', `remote.${remote}.fetch`], { cwd: repoPath })).stdout;
+      } catch (error) {
+        if ((error as { code?: number }).code === 1) {
+          continue;
+        }
+        throw error;
+      }
+      const refspecs = fetchOutput.trim().split('\n').filter(Boolean);
+      const excludedSources = refspecs.filter((spec) => spec.startsWith('^')).map((spec) => spec.slice(1));
+      if (excludedSources.some((source) => !source.startsWith('refs/') || source.includes(':') || source.split('*').length > 2)) {
+        throw new Error(`Cannot resolve push destination: unsupported negative fetch refspec for remote '${remote}'.`);
+      }
+      for (const spec of refspecs.filter((value) => !value.startsWith('^'))) {
+        const parts = spec.replace(/^\+/, '').split(':');
+        const [source, destination] = parts;
+        const sourceWildcards = source.split('*').length - 1;
+        const destinationWildcards = destination?.split('*').length - 1;
+        if (
+          parts.length !== 2 ||
+          !source.startsWith('refs/') ||
+          !destination?.startsWith('refs/') ||
+          sourceWildcards > 1 ||
+          sourceWildcards !== destinationWildcards
+        ) {
+          throw new Error(`Cannot resolve push destination: unsupported fetch refspec for remote '${remote}'.`);
+        }
+        const match = this.matchFetchRefspec(destination, trackingRef);
+        if (match === undefined) {
+          continue;
+        }
+        const ref = source.replace('*', () => match);
+        if (excludedSources.some((pattern) => this.matchFetchRefspec(pattern, ref) !== undefined)) {
+          continue;
+        }
+        if (!ref.startsWith('refs/heads/')) {
+          throw new Error(`Cannot resolve push destination: '${trackingRef}' does not map to a remote branch.`);
+        }
+        targets.set(JSON.stringify([remote, ref]), { remote, ref });
+      }
+    }
+    if (targets.size !== 1) {
+      throw new Error(`Cannot resolve a unique push destination for '${trackingRef}' from configured fetch refspecs.`);
+    }
+    return targets.values().next().value!;
   }
 
   private async getDefaultRemote(repoPath: string): Promise<string> {
@@ -1894,7 +2081,7 @@ export class GitManager {
       const mainBranch = targetBranch || (await this.getProjectMainBranch(projectPath));
 
       // Check if there are any commits in worktree that are not in main
-      const { stdout: commits } = await execWithShellPath(`git log --oneline ${mainBranch}..HEAD`, { cwd: worktreePath });
+      const { stdout: commits } = await execWithShellPath(['git', 'log', '--oneline', `${mainBranch}..HEAD`, '--'], { cwd: worktreePath });
 
       if (!commits.trim()) {
         // No commits in worktree, return empty string
@@ -2147,6 +2334,13 @@ export class GitManager {
     }
   }
 
+  private async requireLocalIntegrationTarget(projectPath: string, branch: string): Promise<void> {
+    const localRefs = await simpleGit(projectPath).raw(['for-each-ref', '--format=%(refname)', 'refs/heads/']);
+    if (!localRefs.trim().split('\n').includes(`refs/heads/${branch}`)) {
+      throw new Error(`Select an existing local branch as the integration target; '${branch}' is not a local branch`);
+    }
+  }
+
   /**
    * Merge worktree to main branch with uncommitted changes support
    * Returns MergeState for potential revert
@@ -2161,7 +2355,7 @@ export class GitManager {
     symlinkFolders: string[] = [],
     baseCommit?: string,
   ): Promise<MergeState> {
-    return await withLock(`git-merge-worktree-${worktreePath}`, async () => {
+    return await withLock(`git-mutation-${projectPath}`, async () => {
       const timestamp = Date.now();
       const worktreeStashId = `worktree-${taskId.length > 24 ? taskId.substring(24) : taskId}-merge-${timestamp}`;
       const mainStashId = `main-${taskId.length > 24 ? taskId.substring(24) : taskId}-merge-${timestamp}`;
@@ -2171,6 +2365,7 @@ export class GitManager {
       let mergeStarted = false;
 
       const mainBranch = targetBranch || (await this.getProjectMainBranch(projectPath));
+      await this.requireLocalIntegrationTarget(projectPath, mainBranch);
 
       // If the project directory is on a different branch, update the target branch ref directly
       // without checking it out (the working tree is left untouched)
@@ -2181,7 +2376,7 @@ export class GitManager {
         logger.info(`Starting ${squash ? 'squash' : 'merge'} operation with uncommitted changes support`);
 
         // 1. Track initial state
-        const { stdout: mainCommit } = await execWithShellPath(`git rev-parse ${mainBranch}`, { cwd: projectPath });
+        const { stdout: mainCommit } = await execWithShellPath(['git', 'rev-parse', '--verify', '--end-of-options', mainBranch], { cwd: projectPath });
         beforeMergeCommitHash = mainCommit.trim();
 
         const { stdout: worktreeCommit } = await execWithShellPath('git rev-parse HEAD', { cwd: worktreePath });
@@ -2264,7 +2459,7 @@ export class GitManager {
             // Checkoutless merge never touched the project working tree - only move the ref back
             if (beforeMergeCommitHash) {
               try {
-                await execWithShellPath(`git update-ref refs/heads/${mainBranch} ${beforeMergeCommitHash}`, { cwd: projectPath });
+                await execWithShellPath(['git', 'update-ref', `refs/heads/${mainBranch}`, beforeMergeCommitHash], { cwd: projectPath });
                 logger.info('Reverted target branch ref to pre-merge state');
               } catch (recoveryError) {
                 logger.error('Failed to reset target branch ref to pre-merge state:', { error: recoveryError });
@@ -2372,7 +2567,7 @@ export class GitManager {
       let unmergedCommits: string[] = [];
 
       try {
-        const { stdout: commits } = await execWithShellPath(`git log --oneline ${effectiveTargetBranch}..HEAD`, { cwd: worktreePath });
+        const { stdout: commits } = await execWithShellPath(['git', 'log', '--oneline', `${effectiveTargetBranch}..HEAD`, '--'], { cwd: worktreePath });
         const commitLines = commits
           .trim()
           .split('\n')
@@ -2407,8 +2602,8 @@ export class GitManager {
     }
   }
 
-  async getAheadCommits(worktreePath: string, targetBranch: string): Promise<WorktreeAheadCommits> {
-    const { stdout } = await execWithShellPath(`git log --oneline ${targetBranch}..HEAD`, { cwd: worktreePath });
+  async getAheadCommits(worktreePath: string, targetBranch: string): Promise<GitAheadCommits> {
+    const { stdout } = await execWithShellPath(['git', 'log', '--oneline', `${targetBranch}..HEAD`, '--'], { cwd: worktreePath });
     const commits = stdout
       .trim()
       .split('\n')
@@ -2459,8 +2654,8 @@ export class GitManager {
         .filter((l) => l.length > 0);
 
     const [outgoing, incoming] = await Promise.all([
-      execWithShellPath(`git log --oneline ${baseRef}..HEAD`, { cwd: repoPath }),
-      execWithShellPath(`git log --oneline HEAD..${baseRef}`, { cwd: repoPath }),
+      execWithShellPath(['git', 'log', '--oneline', `${baseRef}..HEAD`, '--'], { cwd: repoPath }),
+      execWithShellPath(['git', 'log', '--oneline', `HEAD..${baseRef}`, '--'], { cwd: repoPath }),
     ]);
 
     const outgoingCommits = parseCommits(outgoing.stdout);
@@ -2486,7 +2681,7 @@ export class GitManager {
     }
   }
 
-  async getUncommittedFiles(worktreePath: string): Promise<WorktreeUncommittedFiles> {
+  async getUncommittedFiles(worktreePath: string): Promise<UncommittedFiles> {
     if (!(await this.ensureGitRepository(worktreePath, 'get uncommitted files'))) {
       return { count: 0, files: [] };
     }
@@ -2564,8 +2759,18 @@ export class GitManager {
       const filesWithUntrackedFiles = await this.includeUntrackedFiles(worktreePath, files);
       return await this.markConflictingFiles(worktreePath, filesWithUntrackedFiles);
     } catch (error) {
-      logger.warn('Failed to get updated files:', error);
+      if (!existsSync(worktreePath)) {
+        logger.debug('Skipping updated files refresh: working directory no longer exists', { worktreePath });
+      } else {
+        logger.warn('Failed to get updated files:', { worktreePath, error });
+      }
       return [];
+    }
+  }
+
+  private rethrowGitProcessError(error: unknown): void {
+    if (error && typeof error === 'object' && 'code' in error && typeof error.code === 'string') {
+      throw error;
     }
   }
 
@@ -2591,6 +2796,7 @@ export class GitManager {
 
       return updatedFiles;
     } catch (error) {
+      this.rethrowGitProcessError(error);
       logger.warn('Failed to get untracked files:', error);
       return files;
     }
@@ -2654,6 +2860,30 @@ export class GitManager {
     return /[\s"\\]/.test(filePath) ? JSON.stringify(filePath) : filePath;
   }
 
+  private parseUpdatedFileNumstat(worktreePath: string, output: string): UpdatedFile[] {
+    const entries = output.split('\0');
+    const files: UpdatedFile[] = [];
+    for (let index = 0; index < entries.length; index++) {
+      const parts = entries[index].split('\t');
+      if (parts.length < 3) {
+        continue;
+      }
+      const additions = parts[0] === '-' ? 0 : Number.parseInt(parts[0], 10);
+      const deletions = parts[1] === '-' ? 0 : Number.parseInt(parts[1], 10);
+      let filePath = parts.slice(2).join('\t');
+      let previousPath: string | undefined;
+      if (!filePath) {
+        previousPath = entries[++index];
+        filePath = entries[++index];
+      }
+      if (!filePath || !Number.isFinite(additions) || !Number.isFinite(deletions) || this.isSymlinkPath(worktreePath, filePath)) {
+        continue;
+      }
+      files.push({ path: filePath, ...(previousPath ? { previousPath } : {}), additions, deletions, diff: '' });
+    }
+    return files;
+  }
+
   /**
    * Worktree mode: separate committed (per-commit) and uncommitted file diffs.
    */
@@ -2663,7 +2893,9 @@ export class GitManager {
     // 1. Get commits in order (oldest first) between mainBranch and HEAD
     const commits: Array<{ hash: string; message: string }> = [];
     try {
-      const { stdout: logOutput } = await execWithShellPath(`git log --reverse --pretty=format:'%H|%s' ${mainBranch}..HEAD`, { cwd: worktreePath });
+      const { stdout: logOutput } = await execWithShellPath(['git', 'log', '--reverse', '--pretty=format:%H|%s', `${mainBranch}..HEAD`, '--'], {
+        cwd: worktreePath,
+      });
 
       for (const line of logOutput.split('\n')) {
         const trimmed = line.trim();
@@ -2674,50 +2906,21 @@ export class GitManager {
         commits.push({ hash, message });
       }
     } catch (logError) {
+      this.rethrowGitProcessError(logError);
       logger.warn('Failed to get commit list for worktree updated files:', logError);
     }
 
     // 2. For each commit, get its files (diffs are lazy loaded via getFileDiff)
     for (const commit of commits) {
       try {
-        // Get numstat for this specific commit
-        const { stdout: numstatOutput } = await execWithShellPath(`git diff-tree --no-commit-id -r --numstat ${commit.hash}`, { cwd: worktreePath });
-
-        // Build a map of filePath -> {additions, deletions} from numstat
-        const fileStats = new Map<string, { additions: number; deletions: number }>();
-        for (const line of numstatOutput.split('\n')) {
-          const trimmed = line.trim();
-          if (!trimmed) {
-            continue;
-          }
-          const parts = trimmed.split('\t');
-          if (parts.length >= 3) {
-            const additions = parts[0] === '-' ? 0 : parseInt(parts[0], 10);
-            const deletions = parts[1] === '-' ? 0 : parseInt(parts[1], 10);
-            const filePath = parts.slice(2).join('\t');
-            if (filePath) {
-              fileStats.set(filePath, { additions, deletions });
-            }
-          }
-        }
-
-        // Emit one UpdatedFile per file in this commit (diff not included - lazy loaded via getFileDiff)
-        for (const [filePath, stats] of fileStats.entries()) {
-          // Skip symlink paths (worktree infrastructure artifacts)
-          if (this.isSymlinkPath(worktreePath, filePath)) {
-            continue;
-          }
-
-          files.push({
-            path: filePath,
-            additions: stats.additions,
-            deletions: stats.deletions,
-            diff: '',
-            commitHash: commit.hash,
-            commitMessage: commit.message,
-          });
+        const { stdout: numstatOutput } = await execWithShellPath(['git', 'diff-tree', '--no-commit-id', '-r', '-M', '--numstat', '-z', commit.hash, '--'], {
+          cwd: worktreePath,
+        });
+        for (const file of this.parseUpdatedFileNumstat(worktreePath, numstatOutput)) {
+          files.push({ ...file, commitHash: commit.hash, commitMessage: commit.message });
         }
       } catch (commitError) {
+        this.rethrowGitProcessError(commitError);
         logger.warn(`Failed to get files for commit ${commit.hash}:`, commitError);
       }
     }
@@ -2726,38 +2929,19 @@ export class GitManager {
     try {
       // Check if HEAD exists (no commits yet in worktree)
       await execWithShellPath('git rev-parse HEAD', { cwd: worktreePath });
-    } catch {
+    } catch (error) {
+      this.rethrowGitProcessError(error);
       return files.concat(await this.getNoHeadUpdatedFiles(worktreePath));
     }
 
     try {
-      const { stdout: uncommittedNumstat } = await execWithShellPath('git diff --numstat -z HEAD', {
+      const { stdout: uncommittedNumstat } = await execWithShellPath('git diff --numstat -z -M HEAD', {
         cwd: worktreePath,
       });
 
-      const entries = uncommittedNumstat.split('\0').filter((entry) => entry.trim() !== '');
-
-      for (const entry of entries) {
-        const parts = entry.split('\t');
-        if (parts.length < 3) {
-          continue;
-        }
-
-        const additions = parts[0] === '-' ? 0 : parseInt(parts[0], 10);
-        const deletions = parts[1] === '-' ? 0 : parseInt(parts[1], 10);
-        const filePath = parts.slice(2).join('\t');
-        if (!filePath) {
-          continue;
-        }
-
-        // Skip symlink paths (worktree infrastructure artifacts)
-        if (this.isSymlinkPath(worktreePath, filePath)) {
-          continue;
-        }
-
-        files.push({ path: filePath, additions, deletions, diff: '' });
-      }
+      files.push(...this.parseUpdatedFileNumstat(worktreePath, uncommittedNumstat));
     } catch (uncommittedError) {
+      this.rethrowGitProcessError(uncommittedError);
       logger.warn('Failed to get uncommitted changes:', uncommittedError);
     }
 
@@ -2775,44 +2959,25 @@ export class GitManager {
     // yet in this branch don't show up as reverse diffs.
     let base = mainBranch;
     try {
-      const { stdout: mergeBase } = await execWithShellPath(`git merge-base HEAD ${mainBranch}`, { cwd: worktreePath });
+      const { stdout: mergeBase } = await execWithShellPath(['git', 'merge-base', 'HEAD', mainBranch], { cwd: worktreePath });
       if (mergeBase.trim()) {
         base = mergeBase.trim();
       }
-    } catch {
+    } catch (error) {
+      this.rethrowGitProcessError(error);
       // No HEAD or unrelated histories: fall back to mainBranch
     }
 
     try {
       // git diff (without ...) compares the base directly to the working tree,
       // including both committed and uncommitted changes.
-      const { stdout: numstatOutput } = await execWithShellPath(`git diff --numstat -z ${base}`, {
+      const { stdout: numstatOutput } = await execWithShellPath(['git', 'diff', '--numstat', '-z', '-M', base, '--'], {
         cwd: worktreePath,
       });
 
-      const entries = numstatOutput.split('\0').filter((entry) => entry.trim() !== '');
-
-      for (const entry of entries) {
-        const parts = entry.split('\t');
-        if (parts.length < 3) {
-          continue;
-        }
-
-        const additions = parts[0] === '-' ? 0 : parseInt(parts[0], 10);
-        const deletions = parts[1] === '-' ? 0 : parseInt(parts[1], 10);
-        const filePath = parts.slice(2).join('\t');
-        if (!filePath) {
-          continue;
-        }
-
-        // Skip symlink paths (worktree infrastructure artifacts)
-        if (this.isSymlinkPath(worktreePath, filePath)) {
-          continue;
-        }
-
-        files.push({ path: filePath, additions, deletions, diff: '' });
-      }
+      files.push(...this.parseUpdatedFileNumstat(worktreePath, numstatOutput));
     } catch (baseDiffError) {
+      this.rethrowGitProcessError(baseDiffError);
       logger.warn('Failed to get base diff for worktree:', baseDiffError);
     }
 
@@ -2825,38 +2990,16 @@ export class GitManager {
   private async getNonWorktreeUpdatedFiles(worktreePath: string): Promise<UpdatedFile[]> {
     try {
       await execWithShellPath('git rev-parse HEAD', { cwd: worktreePath });
-    } catch {
+    } catch (error) {
+      this.rethrowGitProcessError(error);
       return await this.getNoHeadUpdatedFiles(worktreePath);
     }
 
-    const { stdout } = await execWithShellPath('git diff --numstat -z HEAD', {
+    const { stdout } = await execWithShellPath('git diff --numstat -z -M HEAD', {
       cwd: worktreePath,
     });
 
-    const entries = stdout.split('\0').filter((entry) => entry.trim() !== '');
-    const files: UpdatedFile[] = [];
-
-    for (const entry of entries) {
-      const parts = entry.split('\t');
-      if (parts.length >= 3) {
-        const additions = parts[0] === '-' ? 0 : parseInt(parts[0], 10);
-        const deletions = parts[1] === '-' ? 0 : parseInt(parts[1], 10);
-        const filePath = parts.slice(2).join('\t');
-
-        if (!filePath) {
-          continue;
-        }
-
-        // Skip symlink paths (worktree infrastructure artifacts)
-        if (this.isSymlinkPath(worktreePath, filePath)) {
-          continue;
-        }
-
-        files.push({ path: filePath, additions, deletions, diff: '' });
-      }
-    }
-
-    return files;
+    return this.parseUpdatedFileNumstat(worktreePath, stdout);
   }
 
   /**
@@ -2871,32 +3014,13 @@ export class GitManager {
     const files: UpdatedFile[] = [];
 
     try {
-      const { stdout } = await execWithShellPath(`git diff --numstat -z ${EMPTY_TREE_HASH}`, {
+      const { stdout } = await execWithShellPath(`git diff --numstat -z -M ${EMPTY_TREE_HASH}`, {
         cwd: worktreePath,
       });
 
-      const entries = stdout.split('\0').filter((entry) => entry.trim() !== '');
-
-      for (const entry of entries) {
-        const parts = entry.split('\t');
-        if (parts.length < 3) {
-          continue;
-        }
-
-        const additions = parts[0] === '-' ? 0 : parseInt(parts[0], 10);
-        const deletions = parts[1] === '-' ? 0 : parseInt(parts[1], 10);
-        const filePath = parts.slice(2).join('\t');
-        if (!filePath) {
-          continue;
-        }
-
-        if (this.isSymlinkPath(worktreePath, filePath)) {
-          continue;
-        }
-
-        files.push({ path: filePath, additions, deletions, diff: '' });
-      }
+      files.push(...this.parseUpdatedFileNumstat(worktreePath, stdout));
     } catch (error) {
+      this.rethrowGitProcessError(error);
       logger.warn('Failed to get updated files for repo with no commits:', {
         error: error instanceof Error ? error.message : String(error),
       });
@@ -2912,7 +3036,14 @@ export class GitManager {
    * - No commitHash: untracked file diff (synthesized) or file diff against HEAD,
    *   merge-base (worktree flat mode) or the empty tree hash (no commits yet).
    */
-  async getFileDiff(worktreePath: string, workingMode?: WorkingMode, mainBranch?: string, filePath?: string, commitHash?: string): Promise<string> {
+  async getFileDiff(
+    worktreePath: string,
+    workingMode?: WorkingMode,
+    mainBranch?: string,
+    filePath?: string,
+    commitHash?: string,
+    previousPath?: string,
+  ): Promise<string> {
     if (!(await this.ensureGitRepository(worktreePath, 'get file diff'))) {
       return '';
     }
@@ -2922,13 +3053,13 @@ export class GitManager {
     }
 
     try {
-      const escapedPath = filePath.replace(/"/g, '\\"');
+      const paths = previousPath ? [previousPath, filePath] : [filePath];
 
       if (commitHash) {
         if (await this.checkBinaryOrSkip(worktreePath, filePath)) {
           return '';
         }
-        const { stdout } = await execWithShellPath(`git diff-tree -p -r --unified=3 ${commitHash} -- "${escapedPath}"`, {
+        const { stdout } = await execWithShellPath(['git', 'diff-tree', '-p', '-r', '-M', '--unified=3', commitHash, '--', ...paths], {
           cwd: worktreePath,
           maxBuffer: 10 * 1024 * 1024,
         });
@@ -2938,7 +3069,7 @@ export class GitManager {
       // Untracked file: synthesize the diff from the file content
       let isTracked = false;
       try {
-        await execWithShellPath(`git ls-files --error-unmatch -- "${escapedPath}"`, { cwd: worktreePath });
+        await execWithShellPath(['git', 'ls-files', '--error-unmatch', '--', filePath], { cwd: worktreePath });
         isTracked = true;
       } catch {
         isTracked = false;
@@ -2952,7 +3083,7 @@ export class GitManager {
       let base = 'HEAD';
       if (workingMode === 'worktree' && mainBranch) {
         try {
-          const { stdout: mergeBase } = await execWithShellPath(`git merge-base HEAD ${mainBranch}`, { cwd: worktreePath });
+          const { stdout: mergeBase } = await execWithShellPath(['git', 'merge-base', 'HEAD', mainBranch], { cwd: worktreePath });
           if (mergeBase.trim()) {
             base = mergeBase.trim();
           } else {
@@ -2973,7 +3104,7 @@ export class GitManager {
         return '';
       }
 
-      const { stdout } = await execWithShellPath(`git diff --unified=3 ${base} -- "${escapedPath}"`, {
+      const { stdout } = await execWithShellPath(['git', 'diff', '-M', '--unified=3', base, '--', ...paths], {
         cwd: worktreePath,
         maxBuffer: 10 * 1024 * 1024,
       });
@@ -2995,6 +3126,7 @@ export class GitManager {
     mainBranch?: string,
     filePath?: string,
     commitHash?: string,
+    previousPath?: string,
   ): Promise<{ oldContent: string; newContent: string }> {
     const emptyContents = { oldContent: '', newContent: '' };
     if (!filePath) {
@@ -3002,8 +3134,6 @@ export class GitManager {
     }
 
     try {
-      const escapedPath = filePath.replace(/"/g, '\\"');
-
       if (await this.checkBinaryOrSkip(worktreePath, filePath)) {
         return emptyContents;
       }
@@ -3011,8 +3141,8 @@ export class GitManager {
       if (commitHash) {
         const { stdout: parent } = await execWithShellPath(`git rev-parse ${commitHash}^`, { cwd: worktreePath });
         const parentHash = parent.trim();
-        const newContent = await this.safeGitShow(worktreePath, `${commitHash}`, escapedPath);
-        const oldContent = await this.safeGitShow(worktreePath, parentHash, escapedPath);
+        const newContent = await this.safeGitShow(worktreePath, `${commitHash}`, filePath);
+        const oldContent = await this.safeGitShow(worktreePath, parentHash, previousPath ?? filePath);
         return { oldContent, newContent };
       }
 
@@ -3020,7 +3150,7 @@ export class GitManager {
       let base = 'HEAD';
       if (workingMode === 'worktree' && mainBranch) {
         try {
-          const { stdout: mergeBase } = await execWithShellPath(`git merge-base HEAD ${mainBranch}`, { cwd: worktreePath });
+          const { stdout: mergeBase } = await execWithShellPath(['git', 'merge-base', 'HEAD', mainBranch], { cwd: worktreePath });
           if (mergeBase.trim()) {
             base = mergeBase.trim();
           } else {
@@ -3041,7 +3171,7 @@ export class GitManager {
         .readFile(join(worktreePath, filePath))
         .then((data) => data.toString('utf8'))
         .catch(() => '');
-      const oldContent = await this.safeGitShow(worktreePath, base, escapedPath);
+      const oldContent = await this.safeGitShow(worktreePath, base, previousPath ?? filePath);
       return { oldContent, newContent };
     } catch (error) {
       logger.warn(`Failed to get file contents for ${filePath}:`, error);
@@ -3049,9 +3179,9 @@ export class GitManager {
     }
   }
 
-  private async safeGitShow(worktreePath: string, ref: string, escapedPath: string): Promise<string> {
+  private async safeGitShow(worktreePath: string, ref: string, filePath: string): Promise<string> {
     try {
-      const { stdout } = await execWithShellPath(`git show ${ref}:"${escapedPath}"`, { cwd: worktreePath, maxBuffer: 10 * 1024 * 1024 });
+      const { stdout } = await execWithShellPath(['git', 'show', `${ref}:${filePath}`], { cwd: worktreePath, maxBuffer: 10 * 1024 * 1024 });
       return stdout;
     } catch {
       return '';
@@ -3092,7 +3222,8 @@ export class GitManager {
       }
 
       return files.map((f) => (unmergedFiles.has(f.path) ? { ...f, hasConflicts: true } : f));
-    } catch {
+    } catch (error) {
+      this.rethrowGitProcessError(error);
       return files;
     }
   }
@@ -3106,12 +3237,21 @@ export class GitManager {
     // (git check-ignore is unreliable here: negation rules under an excluded parent directory,
     // e.g. .aider* + !.aider-desk/rules, report "not ignored" but git add still refuses),
     // -A stages deletions (git add fails with "pathspec did not match any files" for files removed on disk)
-    const escapedPath = filePath.replace(/(["\\$`])/g, '\\$1');
     try {
-      await execWithShellPath(`git add -- "${escapedPath}"`, { cwd: worktreePath });
+      await execWithShellPath(['git', 'add', '--', filePath], { cwd: worktreePath });
     } catch (error) {
       logger.debug(`Failed to stage ${filePath}, retrying with -A -f (file may be deleted or gitignored):`, error);
-      await execWithShellPath(`git add -A -f -- "${escapedPath}"`, { cwd: worktreePath });
+      try {
+        await execWithShellPath(['git', 'add', '-A', '-f', '--', filePath], { cwd: worktreePath });
+      } catch (retryError) {
+        if (retryError instanceof Error && retryError.message.includes('did not match any files')) {
+          // The file exists neither on disk nor in the index (e.g. an already-staged deletion):
+          // there is nothing to stage, so treat it as a no-op instead of failing
+          logger.info(`Nothing to stage for ${filePath} (file deleted and not in index), skipping`);
+          return;
+        }
+        throw retryError;
+      }
     }
   }
 
@@ -3120,8 +3260,7 @@ export class GitManager {
       return false;
     }
 
-    const escapedPath = filePath.replace(/(["\\$`])/g, '\\$1');
-    await execWithShellPath(`git add -- "${escapedPath}"`, { cwd: worktreePath });
+    await execWithShellPath(['git', 'add', '--', filePath], { cwd: worktreePath });
     return true;
   }
 
@@ -3158,19 +3297,27 @@ export class GitManager {
     return { commitHash: commitHash.trim(), commitMessage: commitMessage.trim() };
   }
 
-  async restoreFile(worktreePath: string, filePath: string): Promise<void> {
+  async restoreFile(worktreePath: string, filePath: string, previousPath?: string): Promise<void> {
     if (!(await this.ensureGitRepository(worktreePath, 'restore file'))) {
       return;
     }
 
+    if (previousPath && previousPath !== filePath) {
+      const uncommittedFiles = await this.getNonWorktreeUpdatedFiles(worktreePath);
+      const sourcePath = uncommittedFiles.find((file) => file.path === filePath)?.previousPath;
+      if (sourcePath) {
+        await execWithShellPath(['git', 'restore', '--staged', '--worktree', '--source=HEAD', '--', sourcePath, filePath], { cwd: worktreePath });
+        return;
+      }
+    }
+
     try {
       logger.info(`Restoring file: ${filePath}`, { worktreePath });
-      const escapedPath = filePath.replace(/"/g, '\\"');
 
       // Check if file exists in HEAD (committed)
       let existsInHead = false;
       try {
-        await execWithShellPath(`git cat-file -e HEAD:"${escapedPath}"`, { cwd: worktreePath });
+        await execWithShellPath(['git', 'cat-file', '-e', `HEAD:${filePath}`], { cwd: worktreePath });
         existsInHead = true;
       } catch {
         existsInHead = false;
@@ -3178,13 +3325,13 @@ export class GitManager {
 
       if (existsInHead) {
         // File exists in HEAD - restore both staged area and working tree from HEAD
-        await execWithShellPath(`git restore --staged --worktree --source=HEAD -- "${escapedPath}"`, {
+        await execWithShellPath(['git', 'restore', '--staged', '--worktree', '--source=HEAD', '--', filePath], {
           cwd: worktreePath,
         });
       } else {
         // New file not in HEAD - remove from index and delete working tree copy
         try {
-          await execWithShellPath(`git rm --cached -f -- "${escapedPath}"`, { cwd: worktreePath });
+          await execWithShellPath(['git', 'rm', '--cached', '-f', '--', filePath], { cwd: worktreePath });
         } catch {
           // File might not be in the index
         }
@@ -3212,10 +3359,10 @@ export class GitManager {
   }
 
   async getUncommittedDiff(worktreePath: string, filePaths?: string[]): Promise<string | null> {
-    const pathspecs = (filePaths ?? []).map((filePath) => ` -- "${filePath.replace(/"/g, '\\"')}"`).join('');
+    const pathspecArgs = filePaths && filePaths.length > 0 ? ['--', ...filePaths] : [];
 
     try {
-      const { stdout } = await execWithShellPath(`git diff HEAD${pathspecs}`, { cwd: worktreePath });
+      const { stdout } = await execWithShellPath(['git', 'diff', 'HEAD', ...pathspecArgs], { cwd: worktreePath });
       return stdout || null;
     } catch (error) {
       // Unborn HEAD (repository with no commits yet): fall back to diffing against the empty tree
@@ -3235,7 +3382,7 @@ export class GitManager {
 
     let diffText = '';
     try {
-      const { stdout } = await execWithShellPath(`git diff 4b825dc642cb6eb9a060e54bf8d69288fbee4904${pathspecs}`, { cwd: worktreePath });
+      const { stdout } = await execWithShellPath(['git', 'diff', '4b825dc642cb6eb9a060e54bf8d69288fbee4904', ...pathspecArgs], { cwd: worktreePath });
       diffText = stdout || '';
     } catch (error) {
       logger.warn('Failed to get diff against empty tree:', error);
@@ -3271,7 +3418,7 @@ export class GitManager {
     return true;
   }
 
-  async commitChanges(worktreePath: string, message: string, amend: boolean, filePaths?: string[]): Promise<boolean> {
+  async commitChanges(worktreePath: string, message: string, amend: boolean, skipGitHooks: boolean, filePaths?: string[]): Promise<boolean> {
     if (!(await this.ensureGitRepository(worktreePath, 'commit changes'))) {
       return false;
     }
@@ -3281,7 +3428,7 @@ export class GitManager {
     const options = { cwd: worktreePath, signal: cancelController.signal, killSignal: 'SIGINT' as const };
 
     try {
-      logger.info(`Committing changes${amend ? ' (amend)' : ''}`, { worktreePath });
+      logger.info(`Committing changes${amend ? ' (amend)' : ''}${skipGitHooks ? ' (skip git hooks)' : ''}`, { worktreePath });
 
       // Get the list of updated files (unstaged changes that are shown in the UI)
       const updatedFiles = await this.getUpdatedFiles(worktreePath);
@@ -3292,19 +3439,14 @@ export class GitManager {
         return true;
       }
 
-      // Stage updated files before committing. With a file selection the commit runs in the
-      // --only pathspec form (see below), which takes tracked files directly from the working
-      // tree — so staging is only needed for files not yet tracked (untracked, incl. ignored ones).
-      // Without a selection (full commit / amend) everything must be staged, because a plain
-      // `git commit` only takes what is in the index.
+      const usePathspecCommit = !!filePaths && (amend || selectedFiles.length < updatedFiles.length);
+
+      // Pathspec commits take tracked files directly from the working tree;
+      // only untracked files need staging. Plain index commits need everything staged.
       if (selectedFiles.length > 0) {
-        // A selection that covers all updated files is effectively a full commit — keep the
-        // plain index commit (shorter command, everything is committed anyway)
         let filesToStage = selectedFiles;
-        const usePathspecCommit = !amend && !!filePaths && selectedFiles.length < updatedFiles.length;
         if (usePathspecCommit) {
-          const selectedPathspecs = selectedFiles.map((file) => ` "${file.path.replace(/"/g, '\\"')}"`).join('');
-          const { stdout: trackedFilesOutput } = await execWithShellPath(`git ls-files -z${selectedPathspecs}`, options);
+          const { stdout: trackedFilesOutput } = await execWithShellPath(['git', 'ls-files', '-z', ...selectedFiles.map((file) => file.path)], options);
           const trackedFiles = new Set(trackedFilesOutput.split('\0').filter(Boolean));
           filesToStage = selectedFiles.filter((file) => !trackedFiles.has(file.path));
         }
@@ -3314,9 +3456,8 @@ export class GitManager {
             logger.info('Commit cancelled while staging files', { worktreePath });
             return false;
           }
-          const escapedPath = file.path.replace(/"/g, '\\"');
           try {
-            await execWithShellPath(`git add -- "${escapedPath}"`, options);
+            await execWithShellPath(['git', 'add', '--', file.path], options);
           } catch (error) {
             if (isAbortError(error)) {
               throw error;
@@ -3327,7 +3468,18 @@ export class GitManager {
             // directory-traversal exclusions like .aider* ignoring .aider-desk/rules
             // despite a negation pattern)
             logger.debug(`Failed to stage ${file.path}, retrying with -A -f (file may be deleted or gitignored):`, error);
-            await execWithShellPath(`git add -A -f -- "${escapedPath}"`, options);
+            try {
+              await execWithShellPath(['git', 'add', '-A', '-f', '--', file.path], options);
+            } catch (retryError) {
+              if (retryError instanceof Error && retryError.message.includes('did not match any files')) {
+                // The file exists neither on disk nor in the index (e.g. an already-staged
+                // deletion): there is nothing to stage, the commit picks up the staged
+                // deletion from the index, so skip instead of aborting the commit
+                logger.info(`Nothing to stage for ${file.path} (file deleted and not in index), skipping`);
+                continue;
+              }
+              throw retryError;
+            }
           }
         }
         if (filesToStage.length > 0) {
@@ -3340,20 +3492,25 @@ export class GitManager {
         return false;
       }
 
-      // Escape the commit message for shell
-      const escapedMessage = message.replace(/"/g, '\\"');
-      const amendFlag = amend ? ' --amend' : '';
-      // If amending and message is empty, use --no-edit to keep previous message
-      let commitCommand = amend && !message.trim() ? 'git commit --amend --no-edit' : `git commit${amendFlag} -m "${escapedMessage}"`;
+      // Build the commit as an argv array so arguments are passed literally (no shell),
+      // preventing command injection via the commit message or file paths.
+      // If amending and message is empty, use --no-edit to keep previous message.
+      const commitCommand = [
+        'git',
+        'commit',
+        ...(amend ? ['--amend'] : []),
+        ...(skipGitHooks ? ['--no-verify'] : []),
+        ...(amend && !message.trim() ? ['--no-edit'] : ['-m', message]),
+      ];
       // When a file selection is provided, commit only those paths (--only pathspec form).
       // Plain `git commit` would also include any other files already staged in the index,
       // which breaks partial commits when edited files are left staged.
-      if (!amend && filePaths && selectedFiles.length > 0 && selectedFiles.length < updatedFiles.length) {
-        commitCommand += selectedFiles.map((file) => ` "${file.path.replace(/"/g, '\\"')}"`).join('');
+      if (usePathspecCommit) {
+        commitCommand.push('--only', '--', ...selectedFiles.map((file) => file.path));
       }
       await execWithShellPath(commitCommand, options);
 
-      logger.info(`Successfully committed changes${amend ? ' (amended)' : ''}`);
+      logger.info(`Successfully committed changes${amend ? ' (amended)' : ''}${skipGitHooks ? ' (hooks skipped)' : ''}`);
       return true;
     } catch (error) {
       if (isAbortError(error)) {
@@ -3435,7 +3592,7 @@ export class GitManager {
 
   async getStageFileContent(worktreePath: string, stage: 1 | 2 | 3, filePath: string): Promise<string | null> {
     try {
-      const { stdout } = await execWithShellPath(`git show :${stage}:${filePath}`, { cwd: worktreePath });
+      const { stdout } = await execWithShellPath(['git', 'show', `:${stage}:${filePath}`], { cwd: worktreePath });
       return stdout;
     } catch {
       return null;
@@ -3493,7 +3650,7 @@ export class GitManager {
 
   async stageResolvedFile(worktreePath: string, filePath: string, content: string): Promise<void> {
     await fs.writeFile(`${worktreePath}/${filePath}`, content, 'utf8');
-    await execWithShellPath(`git add -- "${filePath}"`, { cwd: worktreePath });
+    await execWithShellPath(['git', 'add', '--', filePath], { cwd: worktreePath });
   }
 
   async listConflictedFiles(worktreePath: string): Promise<string[]> {
@@ -3506,11 +3663,12 @@ export class GitManager {
    * This transfers work-in-progress changes while keeping them uncommitted in both branches
    */
   async applyUncommittedChangesToMain(projectPath: string, taskId: string, worktreePath: string, symlinkFolders: string[] = []): Promise<void> {
-    return await withLock(`git-apply-uncommitted-${worktreePath}`, async () => {
+    return await withLock(`git-mutation-${projectPath}`, async () => {
       const timestamp = Date.now();
       const worktreeStashId = `worktree-${taskId.length > 24 ? taskId.substring(24) : taskId}-uncommitted-${timestamp}`;
       const projectStashId = `main-${taskId.length > 24 ? taskId.substring(24) : taskId}-uncommitted-${timestamp}`;
       let projectOriginalStashId: string | undefined;
+      let worktreeStashed = false;
 
       try {
         logger.info('Starting apply uncommitted changes operation');
@@ -3528,6 +3686,7 @@ export class GitManager {
           logger.info('No changes were stashed');
           return;
         }
+        worktreeStashed = true;
 
         const targetBranch = await this.getProjectMainBranch(projectPath);
 
@@ -3550,49 +3709,72 @@ export class GitManager {
         logger.info('Applying uncommitted changes back to worktree');
         await this.applyStash(worktreePath, worktreeStashId);
 
-        // 6. Clean up stash
-        await this.dropStash(worktreePath, worktreeStashId);
-
-        // 7. Restore project directory's original uncommitted changes if any
+        // 6. Restore project directory's original uncommitted changes if any
         if (projectOriginalStashId) {
           logger.info('Restoring project directory original uncommitted changes');
           await this.applyStash(projectPath, projectOriginalStashId);
           await this.dropStash(projectPath, projectOriginalStashId);
         }
 
+        // 7. Clean up stashes only after every risky step has succeeded, so recovery can always rely on them
+        await this.dropStash(worktreePath, worktreeStashId);
+
         logger.info(`Successfully applied uncommitted changes to ${targetBranch} branch`);
       } catch (error) {
         logger.error('Failed to apply uncommitted changes:', error);
 
-        // Recovery: clean up project directory from failed stash apply
+        // Recovery: clean up partial stash applies. The resets below can only discard copies of
+        // stashed content because both stashes are dropped last, so nothing irreplaceable is lost.
         try {
           await execWithShellPath('git reset --hard', { cwd: projectPath });
           logger.info('Cleaned up project directory after failed stash apply');
         } catch (recoveryError) {
           logger.error('Failed to clean up project directory:', { error: recoveryError });
         }
+        // Only reset the worktree if its changes were actually stashed first, otherwise this
+        // would discard uncommitted changes that were never backed up.
+        if (worktreeStashed) {
+          try {
+            await execWithShellPath('git reset --hard', { cwd: worktreePath });
+            logger.info('Cleaned up worktree after failed stash apply');
+          } catch (recoveryError) {
+            logger.error('Failed to clean up worktree:', { error: recoveryError });
+          }
+        }
 
         // Restore project directory's original uncommitted changes
+        let projectChangesRecovered = true;
         if (projectOriginalStashId) {
           try {
             await this.applyStash(projectPath, projectOriginalStashId);
             await this.dropStash(projectPath, projectOriginalStashId);
           } catch (recoveryError) {
+            projectChangesRecovered = false;
             logger.error('Failed to recover project directory stash:', recoveryError);
           }
         }
 
-        // Restore stash to worktree
-        if (worktreeStashId) {
+        // Restore worktree's uncommitted changes
+        let worktreeChangesRecovered = true;
+        if (worktreeStashed) {
           try {
             await this.applyStash(worktreePath, worktreeStashId);
             await this.dropStash(worktreePath, worktreeStashId);
           } catch (recoveryError) {
+            worktreeChangesRecovered = false;
             logger.error('Failed to recover worktree stash:', recoveryError);
           }
         }
 
-        throw new Error(`Failed to apply uncommitted changes: ${error instanceof Error ? error.message : String(error)}`);
+        let message = `Failed to apply uncommitted changes: ${error instanceof Error ? error.message : String(error)}`;
+        if (!projectChangesRecovered && projectOriginalStashId) {
+          message += ` The project directory's uncommitted changes are preserved in stash '${projectOriginalStashId}' and can be restored manually with 'git stash pop'.`;
+        }
+        if (!worktreeChangesRecovered) {
+          message += ` The worktree's uncommitted changes are preserved in stash '${worktreeStashId}' and can be restored manually with 'git stash pop'.`;
+        }
+
+        throw new Error(message);
       }
     });
   }
@@ -3602,7 +3784,7 @@ export class GitManager {
    * Restores the main branch to its pre-merge state while preserving uncommitted changes
    */
   async revertMerge(projectPath: string, taskId: string, worktreePath: string, mergeState: MergeState, symlinkFolders: string[] = []): Promise<void> {
-    return await withLock(`git-revert-merge-${worktreePath}`, async () => {
+    return await withLock(`git-mutation-${projectPath}`, async () => {
       const timestamp = Date.now();
       const currentWorktreeStashId = `worktree-${taskId.length > 24 ? taskId.substring(24) : taskId}-revert-${timestamp}`;
       const currentMainStashId = `main-${taskId.length > 24 ? taskId.substring(24) : taskId}-revert-${timestamp}`;
@@ -3614,6 +3796,7 @@ export class GitManager {
         logger.info('Starting merge revert operation', { mergeState });
 
         const targetBranch = mergeState.targetBranch || (await this.getProjectMainBranch(projectPath));
+        await this.requireLocalIntegrationTarget(projectPath, targetBranch);
         const projectCurrentBranch = await this.getProjectMainBranch(projectPath).catch(() => '');
         // For a checkoutless merge the ref is moved back directly, unless the user has since
         // checked out the target branch in the project directory
@@ -3630,14 +3813,14 @@ export class GitManager {
         if (checkoutlessRevert) {
           // 2. Move the target branch ref back to the pre-merge state without touching the project working tree
           logger.info(`Resetting ${targetBranch} branch to ${mergeState.beforeMergeCommitHash} (without checkout)`);
-          await execWithShellPath(`git update-ref refs/heads/${targetBranch} ${mergeState.beforeMergeCommitHash}`, { cwd: projectPath });
+          await execWithShellPath(['git', 'update-ref', `refs/heads/${targetBranch}`, mergeState.beforeMergeCommitHash], { cwd: projectPath });
         } else {
           // 2. Stash current uncommitted changes in main repo to clean the working directory
           // This is crucial to avoid conflicts with untracked files when applying the original stash
           mainRevertStashId = await this.stashUncommittedChanges(currentMainStashId, projectPath, 'Current uncommitted changes before revert', []);
 
           // 3. Switch to the branch we merged into, then reset it to previous state
-          await execWithShellPath(`git checkout ${targetBranch}`, {
+          await execWithShellPath(['git', 'checkout', targetBranch], {
             cwd: projectPath,
           });
 

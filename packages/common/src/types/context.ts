@@ -1,3 +1,5 @@
+import type { LogAction, LogLevel } from './common';
+
 // JSON types
 export type JSONValue = null | string | number | boolean | JSONObject | JSONArray;
 export type JSONObject = { [key: string]: JSONValue };
@@ -64,17 +66,20 @@ export type ToolResultOutput =
 
 // Content part interfaces
 export interface TextPart {
+  providerOptions?: ProviderOptions;
   type: 'text';
   text: string;
 }
 
 export interface ImagePart {
+  providerOptions?: ProviderOptions;
   type: 'image';
   image: DataContent | URL;
   mediaType?: string;
 }
 
 export interface FilePart {
+  providerOptions?: ProviderOptions;
   type: 'file';
   data: DataContent | URL;
   filename?: string;
@@ -82,11 +87,14 @@ export interface FilePart {
 }
 
 export interface ReasoningPart {
+  providerOptions?: ProviderOptions;
   type: 'reasoning';
   text: string;
 }
 
 export interface ToolCallPart {
+  providerExecuted?: boolean;
+  providerOptions?: ProviderOptions;
   type: 'tool-call';
   toolCallId: string;
   toolName: string;
@@ -94,15 +102,29 @@ export interface ToolCallPart {
 }
 
 export interface ToolResultPart {
+  providerOptions?: ProviderOptions;
   type: 'tool-result';
   toolCallId: string;
   toolName: string;
   output: ToolResultOutput;
 }
 
+export interface ReasoningFilePart {
+  type: 'reasoning-file';
+  data: DataContent | URL;
+  mediaType: string;
+  providerOptions?: ProviderOptions;
+}
+
+export interface CustomPart {
+  type: 'custom';
+  kind: string;
+  providerOptions?: ProviderOptions;
+}
+
 // Content types
 export type UserContent = string | Array<TextPart | ImagePart | FilePart>;
-export type AssistantContent = string | Array<TextPart | FilePart | ReasoningPart | ToolCallPart | ToolResultPart>;
+export type AssistantContent = string | Array<TextPart | FilePart | ReasoningPart | ReasoningFilePart | CustomPart | ToolCallPart | ToolResultPart>;
 export type ToolContent = Array<ToolResultPart>;
 
 export interface LocalizedString {
@@ -131,6 +153,10 @@ export interface UsageReportData {
 }
 
 export interface PromptContext {
+  userMessageId?: string;
+  parentPromptContextId?: string;
+  parentToolCallId?: string;
+  parentChildIndex?: number;
   id: string;
   group?: Group;
 }
@@ -142,6 +168,7 @@ export enum MessageRole {
 
 // Base interface for all context messages with usage reporting
 interface BaseContextMessage {
+  providerOptions?: ProviderOptions;
   id: string;
   timestamp?: number;
   usageReport?: UsageReportData;
@@ -171,8 +198,17 @@ export interface ContextToolMessage extends BaseContextMessage {
   content: ToolContent;
 }
 
+// Persistent log message stored in context (not sent to AI SDK)
+export interface ContextLogMessage extends BaseContextMessage {
+  role: 'log';
+  level: LogLevel;
+  content: string;
+  finished?: boolean;
+  actions?: LogAction[];
+}
+
 // Union type for enhanced context messages
-export type ContextMessage = ContextUserMessage | ContextAssistantMessage | ContextToolMessage;
+export type ContextMessage = ContextUserMessage | ContextAssistantMessage | ContextToolMessage | ContextLogMessage;
 
 export interface ConnectorMessage {
   role: MessageRole;

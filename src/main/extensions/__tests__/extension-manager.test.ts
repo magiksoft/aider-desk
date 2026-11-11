@@ -6,6 +6,9 @@ import { ExtensionManager } from '../extension-manager';
 import { ExtensionRegistry } from '../extension-registry';
 
 import type { PathLike } from 'fs';
+import type { Project } from '@/project';
+import type { Task } from '@/task';
+import type { WorktreeMergedEvent } from '@common/extensions';
 import type { Store } from '@/store';
 import type { ModelManager } from '@/models';
 import type { EventManager } from '@/events';
@@ -67,7 +70,7 @@ describe('ExtensionManager', () => {
     registerExtensionProviders: ReturnType<typeof vi.fn>;
     unregisterExtensionProviders: ReturnType<typeof vi.fn>;
   };
-  let eventManager: { sendSettingsUpdated: ReturnType<typeof vi.fn> };
+  let eventManager: { sendSettingsUpdated: ReturnType<typeof vi.fn>; sendExtensionsUpdated: ReturnType<typeof vi.fn> };
   let telemetryManager: Partial<TelemetryManager>;
 
   // Get references to mocked fs functions
@@ -100,6 +103,7 @@ describe('ExtensionManager', () => {
     };
     eventManager = {
       sendSettingsUpdated: vi.fn(),
+      sendExtensionsUpdated: vi.fn(),
     };
     telemetryManager = {
       captureExtensionsLoaded: vi.fn(),
@@ -880,6 +884,43 @@ describe('ExtensionManager', () => {
       (manager as any).initialized = true;
     });
 
+    it.each(['onWorktreeCreated', 'onWorktreeMerged'] as const)('dispatches %s to matching projects and isolates handler failures', async (eventName) => {
+      const failedHandler = vi.fn().mockRejectedValue(new Error('setup failed'));
+      const projectHandler = vi.fn().mockResolvedValue(undefined);
+      const unrelatedHandler = vi.fn();
+      const extension = (name: string, handler: typeof failedHandler, projectDir?: string) => ({
+        id: name,
+        instance: { [eventName]: handler },
+        metadata: { name, version: '1.0.0', description: 'Test', author: 'Test' },
+        filePath: `/extensions/${name}.ts`,
+        initialized: true,
+        projectDir,
+      });
+      (mockRegistry as ExtensionRegistry).getExtensions = vi
+        .fn()
+        .mockReturnValue([
+          extension('project', projectHandler, mockProject.baseDir),
+          extension('unrelated', unrelatedHandler, '/another/project'),
+          extension('global', failedHandler),
+        ]);
+      const event: WorktreeMergedEvent = {
+        task: mockTask.task as Task['task'],
+        worktree: { path: '/source', branch: 'feature' },
+        targetPath: '/target',
+        targetBranch: 'main',
+        squash: false,
+        includeUncommitted: true,
+      };
+
+      await expect(manager.dispatchEvent(eventName, event, mockProject as Project, mockTask as Task)).resolves.toEqual(event);
+
+      expect(failedHandler).toHaveBeenCalledWith(event, expect.any(Object));
+      expect(projectHandler).toHaveBeenCalledWith(event, expect.any(Object));
+      expect(unrelatedHandler).not.toHaveBeenCalled();
+      expect(failedHandler.mock.invocationCallOrder[0]).toBeLessThan(projectHandler.mock.invocationCallOrder[0]);
+      expect(logger.error).toHaveBeenCalledWith(expect.stringContaining(eventName), expect.any(Error));
+    });
+
     it('should dispatch event to all extension handlers', async () => {
       const handler1 = vi.fn().mockResolvedValue(undefined);
       const handler2 = vi.fn().mockResolvedValue(undefined);
@@ -1128,6 +1169,56 @@ describe('ExtensionManager', () => {
       await manager.dispatchEvent('onPromptStarted', event, mockProject as any, mockTask as any);
 
       expect(event.prompt).toBe(originalPrompt); // Original should not be modified
+    });
+
+    it('should dispatch onToolsetCreated and apply modified toolset', async () => {
+      const ext = {
+        instance: {
+          onToolsetCreated: vi.fn().mockResolvedValue({
+            tools: { only_tool: { description: 'kept', execute: vi.fn() } },
+          }),
+        },
+        metadata: { name: 'ext1', version: '1.0.0', description: 'Test', author: 'Test' },
+        filePath: '/path/ext1.ts',
+        initialized: true,
+      };
+
+      (mockRegistry as ExtensionRegistry).getExtensions = vi.fn().mockReturnValue([ext]);
+
+      const event = {
+        mode: 'ptc' as const,
+        agentProfile: { name: 'profile' } as any,
+        providerProfile: { name: 'provider' } as any,
+        model: 'test-model',
+        tools: { tool_a: { description: 'a' }, tool_b: { description: 'b' } },
+      };
+      const result = await manager.dispatchEvent('onToolsetCreated', event, mockProject as any, mockTask as any);
+
+      expect(result.tools).toEqual({ only_tool: { description: 'kept', execute: expect.any(Function) } });
+    });
+
+    it('should keep toolset unchanged when onToolsetCreated handler returns nothing', async () => {
+      const handler = vi.fn().mockResolvedValue(undefined);
+
+      const ext = {
+        instance: { onToolsetCreated: handler },
+        metadata: { name: 'ext1', version: '1.0.0', description: 'Test', author: 'Test' },
+        filePath: '/path/ext1.ts',
+        initialized: true,
+      };
+
+      (mockRegistry as ExtensionRegistry).getExtensions = vi.fn().mockReturnValue([ext]);
+
+      const event = {
+        mode: 'agent' as const,
+        agentProfile: { name: 'profile' } as any,
+        providerProfile: { name: 'provider' } as any,
+        model: 'test-model',
+        tools: { tool_a: { description: 'a' } },
+      };
+      const result = await manager.dispatchEvent('onToolsetCreated', event, mockProject as any, mockTask as any);
+
+      expect(result.tools).toEqual(event.tools);
     });
   });
 

@@ -13,11 +13,16 @@ export const isYesterday = (dateString: string): boolean => {
   return date.getFullYear() === yesterday.getFullYear() && date.getMonth() === yesterday.getMonth() && date.getDate() === yesterday.getDate();
 };
 
+// toLocaleString creates a new Intl formatter on every call, which is costly for long task lists
+const shortMonthFormatter = new Intl.DateTimeFormat(undefined, { month: 'short' });
+
 export const formatDateShort = (dateString: string): string => {
   const date = new Date(dateString);
-  const month = date.toLocaleString('default', { month: 'short' });
+  const month = shortMonthFormatter.format(date);
   const day = date.getDate();
-  return `${month} ${day}`;
+  const year = date.getFullYear();
+  const currentYear = new Date().getFullYear();
+  return year === currentYear ? `${month} ${day}` : `${month} ${day}, ${year}`;
 };
 
 export const getTaskDateGroup = (task: TaskData): string => {

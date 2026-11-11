@@ -1,9 +1,11 @@
-import { useState, ReactNode, useRef, useEffect, RefObject, useCallback, useMemo } from 'react';
+import { useState, useRef, useEffect, RefObject, useCallback, useMemo } from 'react';
 import { useDebounce } from '@reactuses/core';
 import { useTranslation } from 'react-i18next';
 import { FiEdit2, FiTrash2, FiPlus, FiEye, FiSliders, FiRefreshCw, FiChevronDown } from 'react-icons/fi';
 import { Model, ProviderProfile } from '@common/types';
 import { MdThermostat } from 'react-icons/md';
+
+import { ModelModalitiesCell } from './ModelModalitiesCell';
 
 import { Input } from '@/components/common/Input';
 import { Button } from '@/components/common/Button';
@@ -153,15 +155,30 @@ export const ModelTableSection = ({
           </Tooltip>
         ),
         cellClassName: 'text-xs overflow-hidden',
+        minWidth: 180,
       },
       {
         accessor: 'providerId',
         header: t('modelLibrary.provider'),
         cell: (value) => {
           const provider = providers.find((p) => p.id === value);
-          return provider ? provider.name || t(`providers.${provider.provider.name}`) : (value as ReactNode);
+          const label = provider ? provider.name || t(`providers.${provider.provider.name}`) : String(value ?? '');
+          return (
+            <Tooltip content={label} delayDuration={1000}>
+              <span className="truncate block">{label}</span>
+            </Tooltip>
+          );
         },
+        cellClassName: 'text-xs overflow-hidden',
+        minWidth: 140,
+      },
+      {
+        accessor: 'modalities',
+        header: t('modelLibrary.modalities.label'),
+        cell: (_, row) => <ModelModalitiesCell value={row.modalities} />,
         cellClassName: 'text-xs',
+        minWidth: 150,
+        maxWidth: 220,
       },
       {
         accessor: 'maxInputTokens',
@@ -292,16 +309,16 @@ export const ModelTableSection = ({
     <div className="flex flex-col flex-1 overflow-hidden">
       {/* Search and Info Header */}
       <div className="px-2 pt-2">
-        <div className="flex items-center justify-between space-x-4 pr-4">
-          <div className="flex items-center space-x-4 flex-1">
+        <div className="flex flex-wrap items-center gap-x-4 gap-y-2 pr-4">
+          <div className="flex flex-wrap items-center gap-x-4 gap-y-2 flex-1 min-w-[180px]">
             <Input
               value={search}
               onChange={(e) => setSearch(e.target.value)}
-              wrapperClassName="min-w-[250px] flex-1 max-w-md"
+              wrapperClassName="min-w-[180px] flex-1 max-w-md"
               placeholder={t('modelLibrary.searchPlaceholder')}
             />
             <Checkbox label={t('modelLibrary.showHidden')} checked={showHidden} onChange={setShowHidden} size="sm" />
-            <div className="text-2xs text-text-secondary pr-2 pl-4">
+            <div className="text-2xs text-text-secondary whitespace-nowrap">
               {selectedProviderIds.length === 0
                 ? t('modelLibrary.showingAllModels', { count: filteredModels.length })
                 : t('modelLibrary.showingModelsFromProviders', {
@@ -310,7 +327,7 @@ export const ModelTableSection = ({
                   })}
             </div>
           </div>
-          <div className="flex items-center space-x-2">
+          <div className="flex flex-wrap items-center gap-2 ml-auto">
             {selectedModelIds.length > 0 && (
               <div className="flex items-center space-x-2" ref={bulkActionsRef}>
                 <span className="text-2xs text-text-primary">{t('modelLibrary.selectedCount', { count: selectedModelIds.length })}</span>
@@ -371,7 +388,13 @@ export const ModelTableSection = ({
             </div>
           </div>
         ) : (
-          <VirtualTable key={`${visibleModelIds.length}-${tableKey}`} data={filteredModels} columns={columns} getRowClassName={getRowClassName} />
+          <VirtualTable
+            key={`${visibleModelIds.length}-${tableKey}`}
+            data={filteredModels}
+            columns={columns}
+            getRowClassName={getRowClassName}
+            minTableWidth={1260}
+          />
         )}
       </div>
     </div>

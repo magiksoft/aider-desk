@@ -2,6 +2,7 @@
 import {
   acceptCompletion,
   autocompletion,
+  completionStatus,
   type Completion,
   CompletionContext,
   type CompletionResult,
@@ -26,6 +27,8 @@ import { getSubagentId } from '@common/agent';
 
 import { QueuedPromptsList } from './QueuedPromptsList';
 import { usePromptFieldText } from './usePromptFieldText';
+import { wordCompletions } from './wordCompletions';
+import { acceptPathSegment } from './acceptPathSegment';
 
 import { useTaskQueuedPrompts } from '@/stores/taskStore';
 import { InputHistoryMenu } from '@/components/PromptField/InputHistoryMenu';
@@ -159,6 +162,7 @@ type Props = {
   runTests: (testCmd?: string) => void;
   redoLastUserPrompt: () => void;
   editUserMessage: () => void;
+  lastMessageIsUserMessage?: boolean;
   isEditingLastMessage?: boolean;
   canSaveEditedPrompt?: boolean;
   disabled?: boolean;
@@ -199,6 +203,7 @@ export const PromptField = forwardRef<PromptFieldRef, Props>(
       runTests,
       redoLastUserPrompt,
       editUserMessage,
+      lastMessageIsUserMessage = false,
       isEditingLastMessage = false,
       canSaveEditedPrompt = false,
       openModelSelector,
@@ -428,10 +433,7 @@ export const PromptField = forwardRef<PromptFieldRef, Props>(
           }
         }
 
-        return {
-          from: word.from,
-          options: [...words, ...allFiles].map((w) => ({ label: w, type: 'text' })),
-        };
+        return wordCompletions(word.from, words, allFiles);
       },
       [customCommands, extensionCommands, promptBehavior.suggestionMode, allFiles, api, baseDir, taskId, words, subagentProfiles, userInvocableSkills],
     );
@@ -613,7 +615,7 @@ export const PromptField = forwardRef<PromptFieldRef, Props>(
           }
           case '/resolve-conflicts': {
             prepareForNextPrompt();
-            void api.resolveWorktreeConflictsWithAgent(baseDir, taskId);
+            void api.resolveConflictsWithAgent(baseDir, taskId);
             break;
           }
           case '/subtask': {
@@ -1085,15 +1087,20 @@ export const PromptField = forwardRef<PromptFieldRef, Props>(
           {
             key: 'ArrowUp',
             run: () => {
-              if (historyItems.length > 0) {
-                if (historyMenuVisible) {
-                  if (highlightedHistoryItemIndex === historyItems.length - 1) {
-                    loadMoreHistory();
-                  } else {
-                    setHighlightedHistoryItemIndex((prev) => Math.min(prev + 1, historyItems.length - 1));
-                  }
+              if (historyMenuVisible) {
+                if (highlightedHistoryItemIndex === historyItems.length - 1) {
+                  loadMoreHistory();
+                } else {
+                  setHighlightedHistoryItemIndex((prev) => Math.min(prev + 1, historyItems.length - 1));
+                }
+                return true;
+              }
+              if (!text) {
+                if (lastMessageIsUserMessage) {
+                  editUserMessage();
                   return true;
-                } else if (!text) {
+                }
+                if (historyItems.length > 0) {
                   setHistoryLimit(HISTORY_MENU_CHUNK_SIZE);
                   setHistoryMenuVisible(true);
                   setHighlightedHistoryItemIndex(0);
@@ -1111,6 +1118,38 @@ export const PromptField = forwardRef<PromptFieldRef, Props>(
                 return true;
               }
               return false;
+            },
+          },
+          {
+            key: 'ArrowRight',
+            run: (view) => acceptPathSegment(view, promptBehavior.suggestionMode === SuggestionMode.MentionAtSign),
+          },
+          {
+            key: 'ArrowLeft',
+            preventDefault: true,
+            run: (view) => {
+              if (completionStatus(view.state) !== 'active') {
+                return false;
+              }
+              const state = view.state;
+              const cursor = state.selection.main.head;
+              if (cursor !== state.doc.length) {
+                return false;
+              }
+              const text = state.doc.toString();
+              const word = text.slice(0, cursor).match(/\S*$/)?.[0] ?? '';
+              const lastSlash = word.lastIndexOf('/');
+              // only strip a non-empty path segment; ignore command words like "/add"
+              if (lastSlash <= 0 || lastSlash === word.length - 1) {
+                return false;
+              }
+              const removeLength = word.length - lastSlash - 1;
+              view.dispatch({
+                changes: { from: cursor - removeLength, to: cursor, insert: '' },
+                selection: { anchor: cursor - removeLength },
+                userEvent: 'input.type',
+              });
+              return true;
             },
           },
         ]),
@@ -1131,6 +1170,8 @@ export const PromptField = forwardRef<PromptFieldRef, Props>(
         text,
         loadMoreHistory,
         promptBehavior.suggestionMode,
+        lastMessageIsUserMessage,
+        editUserMessage,
       ],
     );
 

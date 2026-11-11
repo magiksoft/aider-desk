@@ -3,8 +3,9 @@ import path from 'path';
 
 import { parse } from '@dotenvx/dotenvx';
 import YAML from 'yaml';
-import { DEFAULT_AGENT_PROFILE, DEFAULT_AIDER_MAIN_MODEL, DEFAULT_PROVIDER_MODELS } from '@common/agent';
+import { DEFAULT_AGENT_PROFILE } from '@common/agent';
 import { EnvironmentVariable, Model, ProjectSettings, ProviderProfile, SettingsData } from '@common/types';
+import { findDefaultAiderModel } from '@common/aider';
 
 import logger from '@/logger';
 import { getLangfuseEnvironmentVariables, getPostHogAiderEnvironmentVariables } from '@/telemetry';
@@ -68,6 +69,7 @@ const readApiKeyFromConfFile = (filePath: string, envVarName: string): string | 
           NEURALWATT_API_KEY: ['neuralwatt'],
           LLMAPI_API_KEY: ['llmapi'],
           ATLASCLOUD_API_KEY: ['atlascloud'],
+          OPENLLM_API_KEY: ['openllm'],
         };
 
         const providerNames = envVarToProviderName[envVarName] || [envVarName.replace(/_API_KEY$/, '').toLowerCase()];
@@ -243,35 +245,17 @@ export const determineWeakModel = (baseDir: string): string | undefined => {
 };
 
 export const determineMainModel = (settings: SettingsData, providers: ProviderProfile[], providerModels: Model[], baseDir: string): string => {
-  // Check for --model in aider options
-  const modelOptionIndex = settings.aider.options.indexOf('--model ');
-  if (modelOptionIndex !== -1) {
-    const modelStartIndex = modelOptionIndex + '--model '.length;
-    let modelEndIndex = settings.aider.options.indexOf(' ', modelStartIndex);
-    if (modelEndIndex === -1) {
-      modelEndIndex = settings.aider.options.length;
-    }
-    const modelName = settings.aider.options.substring(modelStartIndex, modelEndIndex).trim();
-    if (modelName) {
-      return modelName;
-    }
+  if (settings.aider.mainModel) {
+    return settings.aider.mainModel;
   }
 
-  const projectModel = readAiderConfProperty(baseDir, 'model');
-  if (projectModel) {
-    return projectModel;
+  if (settings.aider.mainModel === null) {
+    return findDefaultAiderModel(providers, providerModels) || '';
   }
 
-  for (const provider of providers) {
-    const models = providerModels.filter((model) => model.providerId === provider.id);
-    const defaultModel = DEFAULT_PROVIDER_MODELS[provider.provider.name];
-    if (defaultModel || models.length > 0) {
-      return `${provider.id}/${defaultModel || models[0].id}`;
-    }
-  }
-
-  // Default model if no other condition is met
-  return DEFAULT_AIDER_MAIN_MODEL;
+  const modelOption = settings.aider.options.match(/(?:^|\s)--model(?:=|\s+)(?:"([^"]+)"|'([^']+)'|([^\s]+))/);
+  const configuredModel = modelOption?.[1] ?? modelOption?.[2] ?? modelOption?.[3] ?? readAiderConfProperty(baseDir, 'model');
+  return configuredModel || findDefaultAiderModel(providers, providerModels) || '';
 };
 
 export const getEnvironmentVariablesForAider = (settings: SettingsData, baseDir: string): Record<string, unknown> => {
@@ -301,6 +285,7 @@ export const getDefaultProjectSettings = (
   if (activeProject) {
     return {
       ...activeProject.settings,
+      aider: undefined,
     };
   }
 
@@ -308,7 +293,7 @@ export const getDefaultProjectSettings = (
     mainModel: determineMainModel(store.getSettings(), providers ?? store.getProviders(), providerModels, baseDir),
     weakModel: determineWeakModel(baseDir),
     modelEditFormats: {},
-    currentMode: 'agent',
+    currentMode: store.getSettings().taskSettings.defaultProjectMode ?? 'agent',
     agentProfileId: defaultAgentProfileId,
     autonomyModeLocked: false,
     updatedFilesGroupMode: 'flat',

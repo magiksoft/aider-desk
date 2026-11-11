@@ -83,6 +83,19 @@ describe('task-utils', () => {
       expect(sorted.map((t) => t.id)).toEqual(['1', '2', '3', '4', '5']);
     });
 
+    it('should sort sibling subtasks by their own most recent descendant', () => {
+      const tasks: Partial<TaskData>[] = [
+        { id: '1', name: 'Parent', updatedAt: '2026-01-14T08:00:00Z', pinned: false, parentId: null },
+        { id: '2', name: 'Child A', updatedAt: '2026-01-14T10:00:00Z', pinned: false, parentId: '1' },
+        { id: '3', name: 'Child B', updatedAt: '2026-01-14T09:00:00Z', pinned: false, parentId: '1' },
+        { id: '4', name: 'Grandchild B1', updatedAt: '2026-01-14T11:00:00Z', pinned: false, parentId: '3' },
+        { id: '5', name: 'Child C', updatedAt: '2026-01-14T09:30:00Z', pinned: false, parentId: '1' },
+      ];
+      const sorted = getSortedVisibleTasks(tasks as TaskData[], defaultStates);
+      // Child B is ordered first because its grandchild (11:00) is newer than Child A (10:00)
+      expect(sorted.map((t) => t.id)).toEqual(['1', '3', '4', '2', '5']);
+    });
+
     it('should handle tasks without updatedAt when considering subtasks', () => {
       const tasks: Partial<TaskData>[] = [
         { id: '1', name: 'Parent A', pinned: false, parentId: null },
@@ -199,6 +212,36 @@ describe('task-utils', () => {
       const taskItems = flattened.filter((item) => item.type === 'task');
       expect(taskItems.length).toBe(1);
       expect(taskItems[0].id).toBe('1');
+    });
+
+    it('should separate tasks with the same month and day from different years into distinct groups in order', () => {
+      const currentYear = new Date().getFullYear();
+      const previousYear = currentYear - 1;
+      // Pick Jan 15 (or Feb 15 if today/yesterday happens to be around Jan 15)
+      const now = new Date();
+      const targetMonth = now.getMonth() === 0 && (now.getDate() === 15 || now.getDate() === 16) ? 1 : 0;
+
+      const thisYearSameDay = new Date(currentYear, targetMonth, 15, 12, 0, 0).toISOString();
+      const thisYearEarlier = new Date(currentYear, targetMonth, 10, 12, 0, 0).toISOString();
+      const lastYearSameDay = new Date(previousYear, targetMonth, 15, 12, 0, 0).toISOString();
+
+      const tasks: Partial<TaskData>[] = [
+        { id: 'this-year', name: 'This Year Task', updatedAt: thisYearSameDay, pinned: false, parentId: null },
+        { id: 'this-year-earlier', name: 'Earlier This Year Task', updatedAt: thisYearEarlier, pinned: false, parentId: null },
+        { id: 'last-year', name: 'Last Year Task', updatedAt: lastYearSameDay, pinned: false, parentId: null },
+      ];
+
+      const flattened = flattenTasksForVirtualization(tasks as TaskData[], new Set(), defaultStates, false, '');
+      const monthLabel = new Intl.DateTimeFormat(undefined, { month: 'short' }).format(new Date(currentYear, targetMonth, 15));
+
+      expect(flattened).toEqual([
+        { type: 'header', id: `date-${monthLabel} 15`, title: `${monthLabel} 15` },
+        { type: 'task', id: 'this-year', task: expect.any(Object), level: 0 },
+        { type: 'header', id: `date-${monthLabel} 10`, title: `${monthLabel} 10` },
+        { type: 'task', id: 'this-year-earlier', task: expect.any(Object), level: 0 },
+        { type: 'header', id: `date-${monthLabel} 15, ${previousYear}`, title: `${monthLabel} 15, ${previousYear}` },
+        { type: 'task', id: 'last-year', task: expect.any(Object), level: 0 },
+      ]);
     });
   });
 });

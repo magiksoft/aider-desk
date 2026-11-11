@@ -1,7 +1,7 @@
-import { AgentProfile, ExtensionToolInfo, McpServersData, Model, ProjectData, SettingsData, ToolApprovalState } from '@common/types';
+import { AgentProfile, McpServersData, Model, ProjectData, SettingsData, ToolApprovalState } from '@common/types';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { v4 as uuidv4 } from 'uuid';
-import { FaChevronLeft, FaChevronRight, FaPaste, FaPlus } from 'react-icons/fa';
+import { FaPaste, FaPlus } from 'react-icons/fa';
 import { DEFAULT_AGENT_PROFILE, getProviderModelId, DEFAULT_AGENT_PROFILES } from '@common/agent';
 import { BiReset, BiTrash } from 'react-icons/bi';
 import { closestCenter, DndContext, type DragEndEvent, KeyboardSensor, PointerSensor, useSensor, useSensors } from '@dnd-kit/core';
@@ -19,12 +19,13 @@ import { ProfileToolsSection } from './sections/ProfileToolsSection';
 import { ProfileSubagentsSection } from './sections/ProfileSubagentsSection';
 
 import { useBooleanState } from '@/hooks/useBooleanState';
+import { useExtensionTools } from '@/hooks/useExtensionTools';
 import { useResponsive } from '@/hooks/useResponsive';
-import { useApi } from '@/contexts/ApiContext';
 import { useMcpServers } from '@/contexts/McpServersContext';
 import { getPathBasename } from '@/utils/path-utils';
 import { IconButton } from '@/components/common/IconButton';
 import { Button } from '@/components/common/Button';
+import { ScopeSelector } from '@/components/common/ScopeSelector';
 import { ModelSelector } from '@/components/ModelSelector';
 import { Input } from '@/components/common/Input';
 import { Tabs } from '@/components/common/Tabs';
@@ -69,46 +70,29 @@ export const AgentSettings = ({
 
   // Profile context state for project-level profiles
   const contexts = useMemo(() => ['global', ...openProjects.map((p) => p.baseDir)], [openProjects]);
-  const [contextIndex, setContextIndex] = useState(0);
   const [profileContext, setProfileContext] = useState<'global' | string>(selectedProfileContext || 'global');
 
-  const api = useApi();
   const { getMergedServers } = useMcpServers();
   const { models, providers } = useModelProviders();
-  const [extensionToolsInfo, setExtensionToolsInfo] = useState<ExtensionToolInfo[]>([]);
-
-  useEffect(() => {
-    api
-      .getExtensionToolsInfo(profileContext === 'global' ? undefined : profileContext)
-      .then(setExtensionToolsInfo)
-      .catch(() => setExtensionToolsInfo([]));
-  }, [api, profileContext]);
+  const extensionToolsInfo = useExtensionTools(profileContext === 'global' ? undefined : profileContext);
 
   // Sync internal profileContext with selectedProfileContext prop
   useEffect(() => {
     if (selectedProfileContext !== undefined) {
       // eslint-disable-next-line react-hooks/set-state-in-effect
       setProfileContext(selectedProfileContext);
-      // Update contextIndex to match the selected context
-      const newIndex = contexts.indexOf(selectedProfileContext);
-      if (newIndex !== -1) {
-        setContextIndex(newIndex);
-      }
     }
-  }, [selectedProfileContext, contexts]);
+  }, [selectedProfileContext]);
 
   // Keep latest values in refs so the effect can read them without depending on them
   const agentProfilesRef = useRef(agentProfiles);
-  const contextsRef = useRef(contexts);
   useEffect(() => {
     agentProfilesRef.current = agentProfiles;
-    contextsRef.current = contexts;
   });
 
   // Handle initial profile ID - set context and select profile
   useEffect(() => {
     const profiles = agentProfilesRef.current;
-    const contexts = contextsRef.current;
     if (initialProfileId && profiles.length > 0) {
       const initialProfile = profiles.find((p) => p.id === initialProfileId);
       if (initialProfile) {
@@ -116,12 +100,6 @@ export const AgentSettings = ({
         const targetContext = initialProfile.projectDir || 'global';
         // eslint-disable-next-line react-hooks/set-state-in-effect
         setProfileContext(targetContext);
-
-        // Update contextIndex to match the target context
-        const newIndex = contexts.indexOf(targetContext);
-        if (newIndex !== -1) {
-          setContextIndex(newIndex);
-        }
 
         // Select the initial profile
         setSelectedProfileId(initialProfileId);
@@ -152,10 +130,8 @@ export const AgentSettings = ({
   const defaultProfile = agentProfiles.find((profile) => profile.id === DEFAULT_AGENT_PROFILE.id) || DEFAULT_AGENT_PROFILE;
 
   // Context navigation logic
-  const navigateContext = (direction: 'prev' | 'next') => {
-    const newIndex = direction === 'prev' ? (contextIndex - 1 + contexts.length) % contexts.length : (contextIndex + 1) % contexts.length;
-    setContextIndex(newIndex);
-    setProfileContext(contexts[newIndex]);
+  const handleContextChange = (nextContext: string) => {
+    setProfileContext(nextContext);
   };
 
   // Filter profiles based on current context
@@ -476,23 +452,7 @@ export const AgentSettings = ({
     <>
       {/* Profile Context Header */}
       <div className="p-3 border-b border-border-default">
-        <div className="flex items-center justify-between">
-          <IconButton
-            icon={<FaChevronLeft className="w-3 h-3" />}
-            onClick={() => navigateContext('prev')}
-            tooltip={t('settings.agent.previousContext')}
-            disabled={contexts.length <= 1}
-            className="p-1"
-          />
-          <div className="text-xs text-text-secondary truncate flex-1 text-center">{getContextDisplayName()}</div>
-          <IconButton
-            icon={<FaChevronRight className="w-3 h-3" />}
-            onClick={() => navigateContext('next')}
-            tooltip={t('settings.agent.nextContext')}
-            disabled={contexts.length <= 1}
-            className="p-1"
-          />
-        </div>
+        <ScopeSelector contexts={contexts} value={profileContext} onChange={handleContextChange} getDisplayName={getContextDisplayName} />
       </div>
 
       <div className="flex-1 overflow-y-auto p-1 scrollbar-thin scrollbar-track-transparent scrollbar-thumb-bg-tertiary">

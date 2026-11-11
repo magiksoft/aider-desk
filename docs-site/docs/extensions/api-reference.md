@@ -35,6 +35,7 @@ interface Extension {
   onTaskCreated?(event, context): Promise<void | Partial<Event>>;
   onTaskDeleted?(event, context): Promise<void | Partial<Event>>;
   onPromptTemplate?(event, context): Promise<void | Partial<PromptTemplateEvent>>;
+  onToolsetCreated?(event, context): Promise<void | Partial<ToolsetCreatedEvent>>;
   // ... and more event handlers
 }
 ```
@@ -115,6 +116,9 @@ interface ExtensionContext {
   getSetting(key: string): Promise<unknown>;
   updateSettings(updates: Partial<SettingsData>): Promise<void>;
 
+  // Providers
+  getProviders(): ProviderProfile[];
+
   // MCP Servers
   getMcpServers(projectDir?: string): Promise<Record<string, McpServerConfig>>;
 
@@ -125,6 +129,19 @@ interface ExtensionContext {
   // Navigation
   openUrl(url: string, target?: 'external' | 'window' | 'modal-overlay'): Promise<void>;
   openPath(path: string): Promise<boolean>;
+
+  // Electron access
+  getElectronApp(): Promise<ElectronApp | null>;
+
+  // Advanced
+  truncateToolResult(
+    content: string,
+    maxLines?: number,
+    maxSizeKB?: number,
+    maxTokens?: number,
+    saveToFile?: boolean,
+    truncationSuffix?: string,
+  ): Promise<string>;
 }
 ```
 
@@ -147,6 +164,9 @@ interface ExtensionContext {
 | `triggerUIComponentsReload()` | Reload all UI component definitions for this extension |
 | `openUrl(url, target?)` | Open URL in external browser, new window, or modal overlay |
 | `openPath(path)` | Open file or directory in system's default application |
+| `getProviders()` | Get configured provider profiles (read-only snapshots from ModelManager including API keys; empty array when not available) |
+| `getElectronApp()` | Get a narrowed Electron `App` object for host-level APIs (e.g., `getAppMetrics()`); returns `null` when not running in Electron |
+| `truncateToolResult(content, maxLines?, maxSizeKB?, maxTokens?, saveToFile?, truncationSuffix?)` | Truncate a tool-result string exceeding line/size/token limits, preserving head and tail (defaults: 1000 lines, 50 KB, 50000 tokens; saves full content to a temp file unless `saveToFile: false`) |
 
 ## TaskContext
 
@@ -164,6 +184,7 @@ interface TaskContext {
   getAddableFiles(searchRegex?: string): Promise<string[]>;
   getAllFiles(useGit?: boolean): Promise<string[]>;
   getUpdatedFiles(): Promise<UpdatedFile[]>;
+  getUpdatedFileDiff(filePath: string, commitHash?: string, previousPath?: string): Promise<string>;
 
   // Context Messages
   getContextMessages(): Promise<ContextMessage[]>;
@@ -185,10 +206,13 @@ interface TaskContext {
   runCommand(command: string): Promise<void>;
   interruptResponse(): Promise<void>;
   generateText(modelId: string, systemPrompt: string, prompt: string): Promise<string | undefined>;
+  generateObject<T>(modelId: string, systemPrompt: string, prompt: string, schema: z.ZodType<T>): Promise<T | undefined>;
+  generateTextFromContext(prompt: string, options?: ContextGenerationOptions): Promise<ContextGenerationResult<string>>;
+  generateObjectFromContext<T>(prompt: string, schema: z.ZodType<T>, options?: ContextGenerationOptions): Promise<ContextGenerationResult<T>>;
 
   // User Interaction
   askQuestion(text: string, options?: QuestionOptions): Promise<string>;
-  addLogMessage(level: 'info' | 'error' | 'warning', message?: string): void;
+  addLogMessage(level: 'info' | 'error' | 'warning', message?: string, persistent?: boolean): void;
   addLoadingMessage(message?: string, finished?: boolean): void;
 
   // Todos
@@ -211,6 +235,8 @@ interface TaskContext {
   clearContext(): Promise<void>;
   resetContext(): Promise<void>;
   compactConversation(instructions?: string): Promise<void>;
+  smartCompact(options?: SmartCompactionOptions): Promise<SmartCompactionResult>;
+  getEstimatedTokens(): Promise<number>;
   handoffConversation(focus?: string, execute?: boolean): Promise<void>;
   updateAutocompletionWords(words?: string[]): Promise<void>;
 
@@ -232,6 +258,31 @@ interface TaskContext {
   resumeTask(): Promise<void>;
 }
 ```
+
+### Read-only context generation
+
+`generateTextFromContext` and `generateObjectFromContext` make one model call using the task's selected agent profile, normal system prompt, current context messages/files, tool schemas, and message preparation/cache-control pipeline. They append the supplied prompt to a local copy and return `{ output, usage, providerMetadata, finishReason }` without saving the prompt or response to task context or emitting a main-agent response.
+
+```typescript
+const result = await taskContext.generateObjectFromContext(
+  'Review the existing evidence. Has the objective been met? Do not use tools.',
+  z.object({ complete: z.boolean(), reason: z.string() }),
+  { abortSignal: controller.signal, maxOutputTokens: 2048 },
+);
+context.log(JSON.stringify(result.usage));
+```
+
+`ContextGenerationOptions` accepts an optional `abortSignal` and `maxOutputTokens`. Calls use independent cancellation: `interruptResponse()` does not cancel them. Errors, cancellation, and invalid structured output reject the promise. Extensions should abort their outstanding calls on unload.
+
+Tool definitions remain in the request with `toolChoice: 'none'`, but local execute handlers are removed and provider-native tool approval is denied. A returned tool call is rejected rather than executed. Provider sessions use a fresh ID and do not resume the main agent's native session.
+
+These helpers rebuild **current task context**, not an exact snapshot of a previous request: transient `onAgentStarted`/`onAgentStepStarted` overrides are not replayed, while message transformation/optimization/cache-control hooks still run. Keep the task idle when comparing repeated requests. Preparation hooks should not mutate task state during side generation.
+
+Usage includes `inputTokens`, `outputTokens`, `totalTokens`, `inputTokenDetails` (`noCacheTokens`, `cacheReadTokens`, `cacheWriteTokens`), `outputTokenDetails` (`textTokens`, `reasoningTokens`), and optional provider `raw` usage. Missing counts remain `undefined`, not zero. These calls are billable; usage is returned to the caller rather than added to the main agent's cost totals.
+
+Preserving the request prefix makes provider caching possible, not guaranteed. Structured-output schemas, provider routing, minimum token thresholds, and cache expiry may affect reuse. Some adapters implement structured output through a synthetic output tool; check provider behavior and measured cache-read tokens rather than assuming request equivalence. The tools-plus-`none` serialization is covered for OpenAI Chat/Responses and Anthropic.
+
+These calls use non-streaming generation unless the model requires streaming, in which case the stream is collected silently. New APIs require an updated main process; reloading an extension alone cannot update an older core.
 
 ## ProjectContext
 
@@ -557,7 +608,7 @@ interface UIComponents {
   Slider: UIComponent;                 // Range slider
   DatePicker: UIComponent;             // Date picker
   Chip: UIComponent;                   // Tag/chip component
-  ModelSelector: UIComponent;          // AiderDesk model selector
+  ModelSelector: UIComponent;          // Accepts ModelSelectorProps (see creating-extensions)
   Tooltip: UIComponent;                // Tooltip wrapper
   LoadingOverlay: UIComponent;         // Loading spinner with message
   ConfirmDialog: UIComponent;          // Confirmation dialog modal
@@ -619,15 +670,18 @@ interface ExtensionProviderStrategy {
     toolSet?: unknown,
     systemPrompt?: string,
     providerMetadata?: unknown,
+    tlsRegistrar?: TlsPolicyRegistrar,
+    sessionId?: string,
+    approveTool?: ProviderToolApprovalHandler,
   ) => unknown | Promise<unknown>;
-  loadModels: (profile: ProviderProfile, settings: SettingsData) => Promise<LoadModelsResponse>;
+  loadModels: (profile: ProviderProfile, settings: SettingsData, tlsRegistrar?: TlsPolicyRegistrar) => Promise<LoadModelsResponse>;
 
   getAiderMapping?: (provider: ProviderProfile, modelId: string, settings: SettingsData, projectDir: string) => AiderModelMapping;
   getUsageReport?: (task: unknown, provider: ProviderProfile, model: Model, usage: unknown, providerMetadata?: unknown) => UsageReportData;
-  getProviderOptions?: (model: Model) => Record<string, Record<string, JSONValue>> | undefined;
+  getProviderOptions?: (model: Model, reasoning?: Reasoning) => Record<string, Record<string, JSONValue | undefined>> | undefined;
   getCacheControl?: (model: Model) => CacheControl | undefined;
   getProviderTools?: (model: Model) => Record<string, Tool> | Promise<Record<string, Tool>>;
-  getProviderParameters?: (model: Model) => Record<string, unknown>;
+  getProviderParameters?: (model: Model, reasoning?: Reasoning) => Record<string, unknown>;
   createVoiceSession?: (profile: ProviderProfile, settings: SettingsData) => Promise<VoiceSession>;
   isRetryable?: (error: unknown) => boolean;
 }
@@ -637,27 +691,90 @@ interface ExtensionProviderStrategy {
 
 | Method | Required | Description |
 |--------|----------|-------------|
-| `createLlm(profile, model, settings, projectDir, toolSet?, systemPrompt?, providerMetadata?)` | Yes | Create and return an LLM instance for the given model. The returned type depends on the AI SDK provider being used. `toolSet` contains available tools, `systemPrompt` is the agent's system prompt, and `providerMetadata` carries state from previous provider calls. |
-| `loadModels(profile, settings)` | Yes | Load available models for this provider. Returns a `LoadModelsResponse`. |
+| `createLlm(profile, model, settings, projectDir, toolSet?, systemPrompt?, providerMetadata?, tlsRegistrar?, sessionId?, approveTool?)` | Yes | Create and return an LLM instance for the given model. The returned type depends on the AI SDK provider being used. `toolSet` contains available tools, `systemPrompt` is the agent's system prompt, and `providerMetadata` carries state from previous provider calls. `tlsRegistrar` supports scoped TLS policies, `sessionId` identifies the AiderDesk task (not a native provider session), and `approveTool` checks policy for externally executed tools without executing them. |
+| `loadModels(profile, settings, tlsRegistrar?)` | Yes | Load available models for this provider. Returns a `LoadModelsResponse`. |
 | `getAiderMapping(provider, modelId, settings, projectDir)` | No | Return Aider environment variable mappings for the given model (e.g., API keys, base URLs). |
 | `getUsageReport(task, provider, model, usage, providerMetadata?)` | No | Compute and return a usage report with token counts and cost information. |
-| `getProviderOptions(model)` | No | Return provider-specific options for AI SDK calls (e.g., reasoning effort, search grounding). |
+| `getProviderOptions(model, reasoning?)` | No | Return provider-specific options for AI SDK calls (e.g., reasoning effort, search grounding). |
 | `getCacheControl(model)` | No | Return cache control configuration for the provider. |
 | `getProviderTools(model)` | No | Return additional provider-specific tools (e.g., Google search grounding). |
-| `getProviderParameters(model)` | No | Return additional parameters to pass to the AI SDK provider. |
+| `getProviderParameters(model, reasoning?)` | No | Return additional parameters to pass to the AI SDK provider. |
 | `createVoiceSession(profile, settings)` | No | Create a voice session for real-time audio conversation. |
 | `isRetryable(error)` | No | Determine if a given error is retryable. |
+
+### Streaming requirements
+
+Models returned by `loadModels` can declare `requireStreaming: true` when their endpoint rejects non-streaming requests, or `disableStreaming: true` when streaming is unsupported:
+
+```typescript
+const model: Model = {
+  id: 'streaming-only-model',
+  providerId: profile.id,
+  requireStreaming: true,
+};
+```
+
+Both flags are also available in provider settings and model overrides in Model Library. Resolution follows model-declared defaults, then provider settings, then model `providerOverrides` (highest priority). Enabling either flag clears the opposite inherited flag. Explicit `false` overrides that flag without enabling the opposite behavior. If both flags are `true` at the same level in imported configuration, `requireStreaming` wins.
+
+The main agent streams normally unless streaming is disabled. One-shot generation (`generateText`, `generateObject`, `generateTextFromContext`, and `generateObjectFromContext`) uses non-streaming calls unless streaming is required. For required streaming, the host consumes the stream silently and returns the final output and, for context generation, usage and provider metadata. It does not publish partial responses to the task.
+
+### ProviderToolApprovalHandler
+
+The optional final `createLlm` argument lets an external-agent provider check native-tool execution against the current run's AiderDesk approval policy:
+
+```typescript
+type ProviderToolApprovalHandler = (
+  toolName: string,
+  input: Record<string, unknown>,
+  text: string,
+  subject?: string,
+) => Promise<[approved: boolean, reason?: string]>;
+```
+
+Map the native call to its AiderDesk tool name and input schema first (for example, OpenCode `read` → `power---file_read` with `{ filePath }`, or `shell` → `power---bash` with `{ command, cwd }`). Await `approveTool` before replying to the external agent's permission request. The result is a decision and optional rejection reason, **not** tool output; the callback does not execute the tool.
+
+- A missing/disabled tool or **Never** approval state is denied in every autonomy mode. Power bash denied-command patterns are also enforced.
+- In **Manual** mode, **Always** skips the question and **Ask** prompts. Existing approval keys and “Always for This Run” decisions are shared with ordinary Power tools. Matching allowed bash patterns also skip the question.
+- In **Guided/Autonomous** mode, enabled tools do not prompt. For requests not rejected by the disabled-tool or denied-pattern checks, `onToolApproval` and `onHandleApproval` hooks still run before automatic/pre-approved decisions and can veto them.
+- This does **not** run Power's executor or automatically apply its `onToolCalled`/`onToolFinished` hooks, execution guards, sandboxing, or output processing. Document native-execution differences in the extension README.
+- The argument is optional for compatibility and may be absent outside a full agent run or in an older host. A native-tool adapter should reject execution with an actionable reason when it is absent, rather than silently auto-approve or reimplement policy with `TaskContext.askQuestion`.
+
+For example, this helper checks a native read request; the adapter must send the returned decision back to its native agent:
+
+```typescript
+import type { ProviderToolApprovalHandler } from '@aiderdesk/extensions';
+
+const approveNativeRead = async (
+  approveTool: ProviderToolApprovalHandler | undefined,
+  filePath: string,
+): Promise<[boolean, string?]> => {
+  if (!approveTool) {
+    return [false, 'This provider needs an AiderDesk build with provider tool approvals. Update and restart AiderDesk.'];
+  }
+  return approveTool('power---file_read', { filePath }, 'Approve native file read?', filePath);
+};
+```
+
+### External-agent providers
+
+Providers that wrap another coding agent have additional responsibilities:
+
+- **One execution owner:** native tools execute in the external agent; MCP-bridged AiderDesk tools execute through their supplied `toolSet` executors. Set `providerExecuted: true` on observed tool calls in the AI SDK adapter so AiderDesk does not execute them again. Approval continuations can replay tool calls; deduplicate by call ID and retain the original arguments.
+- **Output and streaming:** preserve the original wrapped-tool result for AiderDesk UI/history, even if MCP uses a different `toModelOutput` representation. Forward coherent text/reasoning block IDs and ordering; do not append replayed content as new content. AiderDesk owns message grouping for standard AI SDK streaming providers: tool/non-assistant boundaries close assistant groups, not every `text-end`, and step finalization follows consumption of `finish-step` rather than the raw SDK callback. An extension that renders its own messages must keep streamed and finalized messages aligned too.
+- **Session lifetime:** an external session ID is useful only while its backing store exists. Persist native session data separately from temporary server/bridge files, store scoped session metadata, and stop processes on completion/interruption/unload. Validate the workspace, model and completed history before resuming; rebuild from full AiderDesk history after edits, clearing, compaction, or a missing session. Do not label a pre-created empty session as an existing conversation if that prevents the SDK from importing prior history.
+- **Parent/subagent isolation:** the `sessionId` argument currently carries the AiderDesk task ID; subagents may share it with their parent. Scope native sessions and resource ownership per conversation/run rather than treating that ID as a unique native session.
+- **Host compatibility:** when the extension depends on a new core callback or streaming fix, test with the matching AiderDesk core. Hot-reloading the extension or refreshing the renderer does not update an older main process; update/build and restart the application.
+
+See [OpenCode Free](https://github.com/magiksoft/aider-desk/tree/main/packages/extensions/extensions/opencode-free/) for a native-tool/MCP adapter and [Cursor SDK](https://github.com/magiksoft/aider-desk/tree/main/packages/extensions/extensions/cursor-sdk/) for extension-owned agent/message orchestration.
 
 ### Example
 
 ```typescript
 import type {
   Extension,
-  ExtensionContext,
   ProviderDefinition,
   ProviderProfile,
   Model,
-  SettingsData,
   LoadModelsResponse,
 } from '@aiderdesk/extensions';
 import { createOpenAICompatible } from '@ai-sdk/openai-compatible';
@@ -665,35 +782,24 @@ import { createOpenAICompatible } from '@ai-sdk/openai-compatible';
 const MY_PROVIDER_NAME = 'my-custom-provider';
 
 export default class MyProviderExtension implements Extension {
-  getProviders(_context: ExtensionContext): ProviderDefinition[] {
+  getProviders(): ProviderDefinition[] {
     return [
       {
         id: MY_PROVIDER_NAME,
         name: MY_PROVIDER_NAME,
         provider: { name: MY_PROVIDER_NAME, apiKey: '' },
         strategy: {
-          createLlm: (
-            profile: ProviderProfile,
-            model: Model,
-            _settings: SettingsData,
-            _projectDir: string,
-            toolSet?: unknown,
-            systemPrompt?: string,
-            _providerMetadata?: unknown,
-          ) => {
+          createLlm: (profile: ProviderProfile, model: Model) => {
             const providerConfig = profile.provider as { apiKey?: string; baseUrl?: string };
             const customProvider = createOpenAICompatible({
               name: MY_PROVIDER_NAME,
               apiKey: providerConfig.apiKey,
-              baseURL: providerConfig.baseUrl,
+              baseURL: providerConfig.baseUrl ?? 'https://example.com/v1',
             });
-            return customProvider.languageModel(model.id, {
-              system: systemPrompt,
-              tools: toolSet,
-            });
+            return customProvider.languageModel(model.id);
           },
 
-          loadModels: async (profile: ProviderProfile, _settings: SettingsData): Promise<LoadModelsResponse> => {
+          loadModels: async (profile: ProviderProfile): Promise<LoadModelsResponse> => {
             return {
               success: true,
               models: [
@@ -701,7 +807,7 @@ export default class MyProviderExtension implements Extension {
                   id: 'my-model-v1',
                   providerId: profile.id,
                   maxInputTokens: 128000,
-                  maxOutputTokens: 4096,
+                  maxOutputTokensLimit: 4096,
                   inputCostPerToken: 0.5,
                   outputCostPerToken: 1.5,
                 },
@@ -746,10 +852,12 @@ interface ToolResult {
 
 Provides access to AiderDesk's memory system — the same underlying vector store used by the built-in memory MCP tools. Available via `context.getMemoryContext()` in any extension lifecycle hook or method.
 
+Memories are scoped by the first parameter of `storeMemory`/`retrieveMemories`. Use the project directory (`context.getProjectDir()`) for project-scoped memories, or `agent-profile:{profileId}` to share memories across projects for agents with memory isolation (`useAgentMemoryScope`) enabled.
+
 ```typescript
 interface MemoryContext {
-  storeMemory(projectId: string, taskId: string, type: MemoryEntryType, content: string): Promise<string>;
-  retrieveMemories(projectId: string, query: string, limit?: number): Promise<MemoryEntry[]>;
+  storeMemory(scopeId: string, taskId: string, type: MemoryEntryType, content: string): Promise<string>;
+  retrieveMemories(scopeId: string, query: string, limit?: number): Promise<MemoryEntry[]>;
   getMemory(id: string): Promise<MemoryEntry | null>;
   deleteMemory(id: string): Promise<boolean>;
   updateMemory(id: string, content: string): Promise<boolean>;
@@ -763,8 +871,8 @@ interface MemoryContext {
 
 | Method | Returns | Description |
 |--------|---------|-------------|
-| `storeMemory(projectId, taskId, type, content)` | `Promise<string>` | Store a new memory entry. Returns the created memory ID. |
-| `retrieveMemories(projectId, query, limit?)` | `Promise<MemoryEntry[]>` | Retrieve memories by semantic similarity, ranked by relevance. |
+| `storeMemory(scopeId, taskId, type, content)` | `Promise<string>` | Store a new memory entry. Returns the created memory ID. |
+| `retrieveMemories(scopeId, query, limit?)` | `Promise<MemoryEntry[]>` | Retrieve memories by semantic similarity, ranked by relevance. |
 | `getMemory(id)` | `Promise<MemoryEntry \| null>` | Get a single memory by ID. |
 | `deleteMemory(id)` | `Promise<boolean>` | Delete a specific memory by ID. Returns `true` if successful. |
 | `updateMemory(id, content)` | `Promise<boolean>` | Update the content of an existing memory. Returns `true` if successful. |
@@ -792,7 +900,7 @@ interface MemoryEntry {
   content: string;       // Memory content text
   type: MemoryEntryType; // Category of memory
   taskId?: string;       // Associated task ID (if applicable)
-  projectId?: string;    // Associated project directory path
+  projectId?: string;    // Memory scope: project directory path, or agent profile scope (`agent-profile:{id}`)
   timestamp: number;     // Creation timestamp
 }
 ```
@@ -807,19 +915,19 @@ export default class MemoryExtension implements Extension {
     const memory = context.getMemoryContext();
     if (!memory.isMemoryEnabled()) return;
 
-    const projectId = context.getProjectDir();
+    const scopeId = context.getProjectDir();
     const taskId = context.getTaskContext()?.data.id ?? '';
 
     // Store a code pattern discovered during the task
     await memory.storeMemory(
-      projectId,
+      scopeId,
       taskId,
       'code-pattern',
       'Always use clsx for conditional class names in React components',
     );
 
     // Retrieve relevant memories
-    const memories = await memory.retrieveMemories(projectId, 'React class naming conventions');
+    const memories = await memory.retrieveMemories(scopeId, 'React class naming conventions');
     context.log(`Found ${memories.length} relevant memories`, 'info');
   }
 }

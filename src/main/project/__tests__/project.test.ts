@@ -22,6 +22,7 @@ vi.mock('@/extensions/extension-manager');
 vi.mock('@/constants');
 vi.mock('@/utils');
 vi.mock('fs/promises');
+vi.mock('@/utils/atomic-write');
 let uuidCounter = 0;
 vi.mock('uuid', () => ({
   v4: vi.fn(() => `uuid-${String(uuidCounter++).padStart(8, '0')}-${Math.random()}`),
@@ -154,7 +155,7 @@ describe('Project - createNewTask', () => {
     // Mock all other dependencies with minimal implementations
     mockMcpManager = {};
     mockTelemetryManager = {};
-    mockDataManager = {};
+    mockDataManager = { getAgentExecutions: vi.fn(() => []), saveAgentExecution: vi.fn(), deleteAgentExecution: vi.fn() };
     mockEventManager = {
       sendTaskCreated: vi.fn(),
       sendProjectStarted: vi.fn(),
@@ -164,6 +165,7 @@ describe('Project - createNewTask', () => {
       sendTaskDeleted: vi.fn(),
     };
     mockModelManager = {
+      getProviders: vi.fn(() => []),
       getProviderModels: vi.fn(() => Promise.resolve({ models: [] })),
       getAiderModelMapping: vi.fn(() => ({
         modelName: 'default-model',
@@ -439,7 +441,7 @@ describe('Project - deleteTask', () => {
   beforeEach(async () => {
     mockMcpManager = {} as unknown as McpManager;
     mockTelemetryManager = {} as unknown as TelemetryManager;
-    mockDataManager = {} as unknown as DataManager;
+    mockDataManager = { getAgentExecutions: vi.fn(() => []), saveAgentExecution: vi.fn(), deleteAgentExecution: vi.fn() } as unknown as DataManager;
     mockMemoryManager = {} as unknown as MemoryManager;
 
     mockStore = {
@@ -535,6 +537,7 @@ describe('Project - deleteTask', () => {
     } as unknown as EventManager;
 
     mockModelManager = {
+      getProviders: vi.fn(() => []),
       getProviderModels: vi.fn(() => Promise.resolve({ models: [] })),
       getAiderModelMapping: vi.fn(() => ({
         modelName: 'default-model',

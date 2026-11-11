@@ -16,6 +16,10 @@ describe('translate', () => {
     expect(translate('zh', 'mcp.oauth.authenticationRequiredMessage', { serverName: 'sentry' })).toContain('需要 OAuth 身份验证');
     expect(translate('ru', 'mcp.oauth.authenticationRequiredMessage', { serverName: 'sentry' })).toContain('требует аутентификацию');
     expect(translate('ko', 'mcp.oauth.authenticationRequiredMessage', { serverName: 'sentry' })).toContain('OAuth 인증이 필요');
+    expect(translate('de', 'mcp.oauth.authenticationRequired')).toBe('OAuth-Authentifizierung ist erforderlich.');
+    expect(translate('de', 'mcp.oauth.authenticationRequiredMessage', { serverName: 'sentry' })).toBe(
+      "MCP-Server 'sentry' erfordert OAuth-Authentifizierung. Verbinden Sie ihn in Einstellungen → MCP-Server.",
+    );
   });
 
   it('falls back to English for unknown languages and missing keys', () => {

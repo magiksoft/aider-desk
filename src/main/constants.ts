@@ -4,7 +4,7 @@ import { homedir } from 'os';
 import { getDataDir, getResourceDir } from './paths';
 
 export const AIDER_DESK_TITLE = 'AiderDesk';
-export const AIDER_DESK_WEBSITE = 'https://aiderdesk.hotovo.com';
+export const AIDER_DESK_WEBSITE = 'https://aiderdesk.dev';
 export const AIDER_DESK_DATA_DIR = getDataDir();
 export const AIDER_DESK_CACHE_DIR = path.join(AIDER_DESK_DATA_DIR, 'cache');
 export const RESOURCES_DIR = getResourceDir();
@@ -48,6 +48,19 @@ export const POSTHOG_PUBLIC_API_KEY = process.env.POSTHOG_PUBLIC_API_KEY ?? '';
 export const POSTHOG_HOST = 'https://eu.i.posthog.com';
 export const PRODUCT_TELEMETRY_DISTINCT_ID = 'aiderdesk-global';
 
+export const DIAGNOSTICS_MODE = process.env.AIDER_DESK_DIAGNOSTICS === 'true';
+
+// Database pragmas, overridable for diagnostics/benchmarking (e.g. comparing WAL vs the
+// legacy rollback journal to approximate slow-I/O platforms). Values are validated against
+// an allowlist because they are interpolated into PRAGMA statements.
+const DB_JOURNAL_MODES = ['DELETE', 'TRUNCATE', 'PERSIST', 'MEMORY', 'WAL', 'OFF'];
+const DB_SYNCHRONOUS_LEVELS = ['OFF', 'NORMAL', 'FULL', 'EXTRA'];
+const resolveDbPragma = (value: string | undefined, allowed: string[], fallback: string): string => {
+  const normalized = value?.trim().toUpperCase();
+  return normalized && allowed.includes(normalized) ? normalized : fallback;
+};
+export const DB_JOURNAL_MODE = resolveDbPragma(process.env.AIDER_DESK_DB_JOURNAL_MODE, DB_JOURNAL_MODES, 'WAL');
+export const DB_SYNCHRONOUS = resolveDbPragma(process.env.AIDER_DESK_DB_SYNCHRONOUS, DB_SYNCHRONOUS_LEVELS, 'NORMAL');
 export const HEADLESS_MODE = process.env.AIDER_DESK_HEADLESS === 'true';
 export const READONLY_MODE = process.env.AIDER_DESK_READONLY === 'true';
 export const APP_TYPE = process.env.AIDER_DESK_APP_TYPE || (HEADLESS_MODE ? 'docker' : 'electron');

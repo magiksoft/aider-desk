@@ -50,7 +50,7 @@ Direct file system and system operations.
 | `power---grep` | **always** | Most profiles | Default | None |
 | `power---semantic_search` | **always** | Most profiles | Default | None |
 | `power---bash` | ask | Trusted scripts | Default | Read-only profiles |
-| `power---fetch` | ask | Trusted domains | Default | Air-gapped systems |
+| `power---fetch` | **always** | Most profiles (built-in default approves fetch) | Default | Air-gapped systems |
 
 **Recommended Patterns:**
 
@@ -88,7 +88,7 @@ AI-powered code generation via Aider.
 | `aider---get_context_files` | **always** | Always helpful | Default | N/A |
 | `aider---add_context_files` | **always** | Auto-building context | Default | N/A |
 | `aider---drop_context_files` | ask | Bulk operations | Default | N/A |
-| `aider---run` | ask | Trusted contexts | Default | Non-Aider profiles |
+| `aider---run_prompt` | ask | Trusted contexts | Default | Non-Aider profiles |
 
 **Recommended Patterns:**
 
@@ -107,7 +107,7 @@ AI-powered code generation via Aider.
     "aider---get_context_files": "always",
     "aider---add_context_files": "always",
     "aider---drop_context_files": "always",
-    "aider---run": "always"
+    "aider---run_prompt": "always"
   }
 }
 ```

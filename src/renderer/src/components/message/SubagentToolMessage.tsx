@@ -4,9 +4,20 @@ import { CgSpinner } from 'react-icons/cg';
 import { FaExclamationTriangle } from 'react-icons/fa';
 import { ToolMessage } from '@common/types';
 
-import { MessageBar } from '@/components/message/MessageBar';
-import { CopyMessageButton } from '@/components/message/CopyMessageButton';
+import { getTruncatedToolResult } from './truncated-tool-result';
+import { TruncatedToolResultContent } from './TruncatedToolResultContent';
+
 import { Tooltip } from '@/components/ui/Tooltip';
+import { CopyMessageButton } from '@/components/message/CopyMessageButton';
+import { MessageBar } from '@/components/message/MessageBar';
+
+const parseSubagentResult = (content: string): unknown => {
+  try {
+    return content && JSON.parse(content);
+  } catch {
+    return content;
+  }
+};
 
 type Props = {
   message: ToolMessage;
@@ -20,10 +31,11 @@ export const SubagentToolMessage = ({ message, onRemove, compact = false, onRemo
   const { t } = useTranslation();
 
   const isExecuting = message.content === '';
-  const content = message.content && JSON.parse(message.content);
-  const error = content && typeof content === 'string' && content.startsWith('Error') ? content : null;
+  const content = parseSubagentResult(message.content);
+  const truncatedResult = getTruncatedToolResult(content);
+  const error = typeof content === 'string' && content.startsWith('Error') ? content : null;
   const promptText = (message.args.prompt as string) || '';
-  const copyContent = JSON.stringify({ args: message.args, result: message.content && JSON.parse(message.content) }, null, 2);
+  const copyContent = JSON.stringify({ args: message.args, result: content }, null, 2);
 
   const getToolName = (): string => {
     if (error) {
@@ -73,6 +85,8 @@ export const SubagentToolMessage = ({ message, onRemove, compact = false, onRemo
           </div>
         </div>
       </div>
+
+      {truncatedResult && <TruncatedToolResultContent result={truncatedResult} />}
 
       {!hideMessageBar && (
         <MessageBar message={message} content={copyContent} usageReport={message.usageReport} remove={onRemove} onRemoveUpTo={onRemoveUpTo} />

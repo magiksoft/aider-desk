@@ -59,9 +59,19 @@ vi.mock('@/components/ModelLibrary/providers', () => ({
   SyntheticParameters: () => <div>Synthetic Parameters</div>,
   OpenCodeParameters: () => <div>OpenCode Parameters</div>,
   OpenCodeGoParameters: () => <div>OpenCode Go Parameters</div>,
+  OpenLlmParameters: () => <div>OpenLlm Parameters</div>,
 }));
 
 describe('ProviderProfileForm', () => {
+  it('saves mutually exclusive required streaming and disabled streaming flags', () => {
+    const onSave = vi.fn();
+    const profile: ProviderProfile = { id: 'openai', name: 'OpenAI', provider: { name: 'openai', apiKey: '', disableStreaming: true } };
+    render(<ProviderProfileForm provider="openai" editProfile={profile} providers={[profile]} onSave={onSave} onCancel={vi.fn()} />);
+    fireEvent.click(screen.getByText('modelLibrary.requireStreaming'));
+    fireEvent.click(screen.getByText('common.save'));
+    expect(onSave).toHaveBeenCalledWith(expect.objectContaining({ provider: expect.objectContaining({ requireStreaming: true, disableStreaming: false }) }));
+  });
+
   it('renders with provider name', () => {
     render(<ProviderProfileForm provider="openai" providers={[]} onSave={vi.fn()} onCancel={vi.fn()} />);
 

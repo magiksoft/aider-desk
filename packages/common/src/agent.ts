@@ -58,6 +58,7 @@ export type LlmProviderName =
   | 'openai-compatible'
   | 'opencode'
   | 'opencode-go'
+  | 'openllm'
   | 'openrouter'
   | 'requesty'
   | 'synthetic'
@@ -68,6 +69,7 @@ export type LlmProviderName =
 export interface LlmProviderBase {
   name: LlmProviderName;
   disableStreaming?: boolean;
+  requireStreaming?: boolean;
   disableToolCallStreaming?: boolean;
   voiceEnabled?: boolean;
 }
@@ -109,6 +111,7 @@ export const AVAILABLE_PROVIDERS: LlmProviderName[] = [
   'openai-compatible',
   'opencode',
   'opencode-go',
+  'openllm',
   'openrouter',
   'requesty',
   'synthetic',
@@ -361,6 +364,13 @@ export interface LlmApiProvider extends LlmProviderBase {
 }
 export const isLlmApiProvider = (provider: LlmProviderBase): provider is LlmApiProvider => provider.name === 'llmapi';
 
+export interface OpenLlmProvider extends LlmProviderBase {
+  name: 'openllm';
+  baseUrl: string;
+  apiKey: string;
+}
+export const isOpenLlmProvider = (provider: LlmProviderBase): provider is OpenLlmProvider => provider.name === 'openllm';
+
 export interface ExtensionLlmProvider extends LlmProviderBase {
   [key: string]: unknown;
 }
@@ -395,6 +405,7 @@ export type LlmProvider =
   | NeuralwattProvider
   | LlmApiProvider
   | AtlasCloudProvider
+  | OpenLlmProvider
   | ExtensionLlmProvider;
 
 export const DEFAULT_PROVIDER_MODELS: Partial<Record<LlmProviderName, string>> = {
@@ -477,6 +488,7 @@ export const DEFAULT_AGENT_PROFILE: AgentProfile = {
   useTaskTools: false,
   useMemoryTools: true,
   useSkillsTools: true,
+  useAgentMemoryScope: false,
   useExtensionTools: true,
   disabledExtensionTools: [],
   customInstructions: '',
@@ -646,6 +658,10 @@ export const HANDOFF_AGENT_PROFILE: AgentProfile = {
     [`${SUBAGENTS_TOOL_GROUP_NAME}${TOOL_GROUP_NAME_SEPARATOR}${SUBAGENTS_TOOL_RUN_TASK}`]: ToolApprovalState.Never,
   },
 };
+
+export const AGENT_MEMORY_SCOPE_PREFIX = 'agent-profile:';
+
+export const getAgentMemoryScopeId = (profileId: string): string => `${AGENT_MEMORY_SCOPE_PREFIX}${profileId}`;
 
 export const getDefaultProviderParams = <T extends LlmProvider>(providerName: LlmProviderName): T => {
   let provider: LlmProvider;
@@ -830,6 +846,14 @@ export const getDefaultProviderParams = <T extends LlmProvider>(providerName: Ll
         name: 'opencode-go',
         apiKey: '',
       } satisfies OpenCodeGoProvider;
+      break;
+    case 'openllm':
+      provider = {
+        name: 'openllm',
+        // Empty so OPENLLM_BASE_URL or the local default (http://127.0.0.1:8787/v1) is resolved at runtime
+        baseUrl: '',
+        apiKey: '',
+      } satisfies OpenLlmProvider;
       break;
     case 'lmstudio':
       provider = {

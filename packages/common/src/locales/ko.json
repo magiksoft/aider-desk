@@ -1,4 +1,34 @@
 {
+  "fileLink": {
+    "downloadTitle": "파일 다운로드",
+    "downloadPrompt": "이 파일을 다운로드하시겠습니까?",
+    "download": "다운로드",
+    "copyPath": "파일 경로 복사",
+    "openError": "파일을 열 수 없습니다. 파일이 없거나 접근할 수 없습니다.",
+    "downloadError": "파일을 다운로드할 수 없습니다. 파일이 없거나 접근할 수 없습니다.",
+    "copyError": "파일 경로를 복사할 수 없습니다.",
+    "readonly": "읽기 전용 모드에서는 파일을 다운로드할 수 없습니다. 파일 경로를 복사할 수 있습니다."
+  },
+  "splitButton": {
+    "moreActions": "추가 작업"
+  },
+  "startup": {
+    "downloading": "애플리케이션 다운로드 중…",
+    "starting": "애플리케이션 시작 중…",
+    "error": "AiderDesk를 불러올 수 없습니다. 연결을 확인하고 다시 시도하세요.",
+    "retry": "다시 시도"
+  },
+  "projectTrust": {
+    "title": "이 프로젝트를 신뢰하시겠습니까?",
+    "warning": "이 프로젝트에는 에이전트, MCP 서버 또는 확장 기능이 포함되어 있습니다. 사용자 권한으로 악성 코드를 실행하거나, 파일과 인증 정보에 접근하거나, 외부 서비스로 데이터를 전송할 수 있습니다.",
+    "review": "계속하기 전에 아래 파일을 검토하세요. 출처를 신뢰하는 경우에만 이 프로젝트를 신뢰하세요. 취소하면 프로젝트가 열리지 않습니다.",
+    "confirm": "프로젝트 신뢰",
+    "agents": "에이전트",
+    "mcpServers": "MCP 서버",
+    "extensions": "확장 기능",
+    "checking": "프로젝트 설정 확인 중…",
+    "checkFailed": "프로젝트 설정을 확인할 수 없어 프로젝트를 열지 않았습니다. 파일 권한과 설정 파일을 확인한 후 다시 시도하세요."
+  },
   "languages": {
     "en": "English",
     "zh": "中文",
@@ -46,10 +76,21 @@
     "switchToLocal": "로컬 모드로 전환",
     "switchToWorktree": "워크트리 모드로 전환",
     "switchWorkingMode": "작업 모드 전환",
+    "switchToAgentMode": "에이전트 모드로 전환",
+    "switchToCodeMode": "코드 모드로 전환",
+    "switchToAskMode": "질문 모드로 전환",
+    "switchToArchitectMode": "아키텍트 모드로 전환",
+    "switchToContextMode": "컨텍스트 모드로 전환",
+    "switchToMode": "{{mode}} 모드로 전환",
     "gitAction": "Git 작업",
     "gitBranches": "Git 브랜치 표시"
   },
   "common": {
+    "forkBeforeCompaction": "압축 전 상태로 분기",
+    "restoreContextFailed": "이 압축 지점을 복원할 수 없습니다. 백업이 없거나 읽을 수 없습니다.",
+    "autonomyManual": "수동",
+    "autonomyGuided": "가이드",
+    "autonomyAutonomous": "자동",
     "settings": "설정",
     "cancel": "취소",
     "save": "저장",
@@ -128,7 +169,32 @@
       "aider": "Aider",
       "agent": "AI 에이전트",
       "providers": "공급자",
-      "finish": "완료"
+      "finish": "완료",
+      "choosePath": "경로 선택",
+      "configure": "구성"
+    },
+    "choice": {
+      "title": "AiderDesk를 어떻게 사용하실 건가요?",
+      "description": "이 선택에 따라 설정 과정이 맞춤화되고 기본 모드가 지정됩니다. 설정 → 일반에서 언제든 변경할 수 있습니다.",
+      "recommended": "추천",
+      "agent": {
+        "title": "에이전트 우선",
+        "subtitle": "기본값",
+        "description": "전체 도구 접근 권한을 가진 자율 에이전트. 결과만 설명하면 계획하고 실행합니다.",
+        "feature1": "다단계 계획 및 파일 편집",
+        "feature2": "파워 도구, MCP 서버 및 스킬",
+        "feature3": "Aider 모드도 한 번에 전환 가능",
+        "modeLabel": "기본 모드 → 에이전트"
+      },
+      "aider": {
+        "title": "Aider 사용자",
+        "subtitle": "Aider 모드 중심",
+        "description": "이미 Aider에 익숙하다면 Code, Ask, Architect를 중심으로 사용하세요.",
+        "feature1": "Aider 설정을 바로 구성",
+        "feature2": "편집 형식, 자동 커밋, 환경 변수",
+        "feature3": "필요할 때 에이전트 모드 사용 가능",
+        "modeLabel": "기본 모드 → Code"
+      }
     },
     "language": {
       "title": "언어 선택",
@@ -143,9 +209,14 @@
         "3": "Aider와 마찬가지로 .env 및 .aider.conf.yaml 파일도 읽습니다"
       },
       "configureLater": "이 작업은 나중에 설정에서도 할 수 있습니다.",
+      "modelTitle": "Aider 모델 선택",
+      "modelDescription": "새 Aider 작업에서 기본으로 사용할 메인 모델을 선택하세요. 자동은 구성된 공급자의 사용 가능한 모델을 선택합니다. 나중에 설정 → Aider에서 기본값을 변경할 수 있습니다.",
+      "advancedSettings": "고급 설정 (선택 사항)",
+      "noModels": "아직 사용 가능한 모델이 없습니다. 이전 단계로 돌아가 공급자를 연결하거나, 자동으로 계속한 뒤 나중에 설정에서 공급자를 구성하세요.",
       "fineTuneTitle": "Aider 세부 조정 (선택 사항)",
       "fineTuneDescription": "고급 사용자는 추가 Aider 설정과 환경 변수를 구성할 수 있습니다. 이 단계는 완전히 선택 사항이며 건너뛰어도 안전합니다.",
-      "fineTuneNote": "참고: 이 설정은 Aider의 동작을 사용자 지정하려는 고급 사용자를 위한 것입니다. 대부분의 사용자는 이 단계를 건너뛰고 필요할 때 설정에서 나중에 구성해도 됩니다."
+      "fineTuneNote": "참고: 이 설정은 Aider의 동작을 사용자 지정하려는 고급 사용자를 위한 것입니다. 대부분의 사용자는 이 단계를 건너뛰고 필요할 때 설정에서 나중에 구성해도 됩니다.",
+      "agentSwitchNote": "팁: 에이전트 모드는 한 번에 전환할 수 있습니다 — 완전한 자율성이 필요할 때 프롬프트 위의 모드 선택기를 사용하세요."
     },
     "providers": {
       "title": "모델 공급자",
@@ -192,7 +263,24 @@
       "title": "설정 완료!",
       "description": "축하합니다! AiderDesk 설정을 성공적으로 완료했습니다. 이제 완전한 투명성과 제어로 AI 지원 개발을 이끌어 나갈 준비가 되었습니다.",
       "ready": "'설정 완료'를 클릭하여 코딩 여정을 시작하세요.",
-      "success": "온보딩이 성공적으로 완료되었습니다! AiderDesk에 오신 것을 환영합니다."
+      "success": "온보딩이 성공적으로 완료되었습니다! AiderDesk에 오신 것을 환영합니다.",
+      "mode": "새 작업은 {{mode}} 모드로 시작됩니다 — 설정 → 일반에서 언제든 변경할 수 있습니다.",
+      "modeAgent": "에이전트",
+      "modeCode": "Code",
+      "customizeTitle": "AiderDesk를 나에게 맞게",
+      "customizeDescription": "더 살펴볼 만한 곳들이 있습니다:",
+      "general": {
+        "title": "설정 → 일반",
+        "description": "외관, 언어, 기본 모드 및 시작 동작"
+      },
+      "mcp": {
+        "title": "설정 → MCP",
+        "description": "MCP 서버를 연결해 에이전트에 더 많은 도구 제공"
+      },
+      "tasks": {
+        "title": "설정 → 작업",
+        "description": "작업 동작, 자동화 및 스마트 상태"
+      }
     },
     "errors": {
       "navigationFailed": "이동에 실패했습니다. 다시 시도해 주세요.",
@@ -238,13 +326,31 @@
     }
   },
   "mermaid": {
-    "renderFailed": "다이어그램 렌더링 실패:"
+    "renderFailed": "다이어그램 렌더링 실패:",
+    "zoomIn": "확대",
+    "zoomOut": "축소",
+    "resetZoom": "확대/축소 초기화"
   },
   "clinepass": {
     "getApiKeyLink": "ClinePass API 키 받기",
     "apiKey": "API 키"
   },
   "modelLibrary": {
+    "modalities": {
+      "label": "모달리티",
+      "input": "입력",
+      "inputTooltip": "모델이 입력으로 이해할 수 있는 모달리티입니다.",
+      "output": "출력",
+      "outputTooltip": "모델이 출력으로 생성할 수 있는 모달리티입니다.",
+      "text": "텍스트",
+      "image": "이미지",
+      "audio": "오디오",
+      "video": "비디오",
+      "pdf": "PDF",
+      "unknown": "알 수 없는 모달리티",
+      "unknownTooltip": "모델 기능을 알 수 없습니다. 첨부 파일 검증을 건너뜁니다.",
+      "description": "이미지 입력은 시각적 이해를 의미하며 이미지 생성이 아닙니다. 메타데이터가 없으면 모달리티가 선택되지 않으며 첨부 파일 검증을 건너뜁니다. 선택을 변경하면 모델별 기능으로 저장되며, 다른 설정을 변경해도 이를 재정의하지 않습니다. 빈 선택은 지원하는 모달리티가 없음을 명시합니다."
+    },
     "enableVoiceControl": "음성 제어 사용",
     "enableVoiceControlOnlyOneInfo": "한 번에 하나의 공급자만 사용할 수 있습니다.",
     "voiceControl": "음성 제어",
@@ -323,6 +429,8 @@
     },
     "disableStreaming": "스트리밍 비활성화",
     "disableStreamingInfo": "응답 스트리밍을 비활성화합니다. 공급자 또는 모델이 스트리밍 응답을 지원하지 않을 때 사용하세요.",
+    "requireStreaming": "스트리밍 필수",
+    "requireStreamingInfo": "백그라운드 생성을 포함한 모든 요청에 스트리밍을 사용합니다. 비스트리밍 요청을 거부하는 모델에 사용하세요.",
     "disableToolCallStreaming": "도구 호출 스트리밍 비활성화",
     "disableToolCallStreamingInfo": "도구 호출 입력의 스트리밍을 비활성화합니다. 도구 호출은 여전히 실행되지만 인수가 점진적으로 표시되지 않습니다.",
     "trackTokenUsage": "토큰 사용량 추적",
@@ -455,6 +563,12 @@
     "getApiKeyLink": "Atlas Cloud API 키 받기",
     "apiKey": "API 키"
   },
+  "openLlm": {
+    "docsLink": "OpenLLM 설정 가이드",
+    "baseUrl": "기본 URL",
+    "apiKey": "API 키",
+    "apiKeyHint": "API 키를 비워 두면 로그인된 로컬 데몬을 사용합니다. 클라우드를 사용하려면 API 키와 함께 https://www.openllm.sh/v1 을 사용하세요."
+  },
   "zaiPlan": {
     "getApiKeyLink": "Z.AI API 키 받기",
     "apiKey": "API 키",
@@ -513,6 +627,7 @@
     "openai": "OpenAI",
     "opencode": "OpenCode ZEN",
     "opencode-go": "OpenCode Go",
+    "openllm": "OpenLLM",
     "openai-compatible": "OpenAI 호환",
     "openrouter": "OpenRouter",
     "requesty": "Requesty",
@@ -688,8 +803,12 @@
     },
     "startup": {
       "title": "시작 방식",
+      "taskMode": "시작 시",
+      "recovery": "복구",
       "emptyTask": "빈 작업으로 시작",
-      "lastTask": "마지막 작업 불러오기"
+      "lastTask": "마지막 작업 불러오기",
+      "resumeAgentAfterRestart": "재시작 후 중단된 에이전트 재개",
+      "resumeAgentAfterRestartTooltip": "활성화하면 앱 종료나 충돌로 중단된 에이전트 실행이 다음에 프로젝트를 열 때 자동으로 재개됩니다. 재실행이 안전한 도구는 다시 실행될 수 있으며, 부작용이 있는 도구는 반복되지 않습니다. 비활성화하면 중단된 실행이 그대로 유지됩니다."
     },
     "tasks": {
       "title": "작업",
@@ -699,6 +818,11 @@
       "autoGenerateTaskNameTooltip": "활성화하면 모델이 프롬프트로부터 간결한 작업 이름을 생성합니다. 비활성화하면 프롬프트의 처음 5단어가 작업 이름으로 사용됩니다.",
       "showTaskStateActions": "작업 상태 액션 표시",
       "showTaskStateActionsTooltip": "활성화하면 메시지 하단에 작업 상태 액션이 표시됩니다. 비활성화하면 이 액션들이 숨겨집니다.",
+      "defaultTaskMode": "새 작업 기본 모드",
+      "defaultTaskModeTooltip": "이미 작업이 있는 프로젝트에서 새 작업을 만들 때 사용됩니다. '마지막 작업 모드 사용'을 선택하면 가장 최근 작업의 모드를 유지합니다.",
+      "defaultTaskModeLast": "마지막 작업 모드 사용",
+      "defaultProjectMode": "새 프로젝트 기본 모드",
+      "defaultProjectModeTooltip": "이전 작업이 없어 상속받을 수 없을 때, 프로젝트의 첫 작업에 사용되는 초기 모드입니다. 온보딩 중 자동으로 설정됩니다.",
       "contextManagement": "컨텍스트 관리",
       "contextCompactingThreshold": "자동 압축 임계값",
       "contextCompactingThresholdTooltip": "토큰 사용량이 이 임계값을 초과하면 선택한 압축 유형에 따라 대화가 자동으로 관리됩니다. 비활성화하려면 0으로 설정하세요.",
@@ -738,6 +862,10 @@
       "commitMessageModel": "커밋 메시지",
       "commitMessageModelTooltip": "커밋 메시지를 생성하는 데 사용되는 모델",
       "inheritModel": "상속",
+      "compactionModel": "압축 모델",
+      "handoffModel": "인계 모델",
+      "useCurrentTaskModel": "작업의 현재 모델 사용",
+      "contextModelTooltip": "에이전트 모드에서 수동 및 자동 압축 또는 인계에 사용할 모델입니다. 각 유형의 선택은 별도로 저장됩니다. 다른 모델은 대화의 컨텍스트 크기를 지원해야 하며 캐시된 입력을 재사용하지 못할 수 있습니다.",
       "defaultWorkingMode": "기본 작업 모드",
       "defaultWorkingModeTooltip": "새 작업의 기본 작업 모드입니다. 로컬은 프로젝트 디렉터리에서 직접 작업하고, 워크트리는 격리된 git 워크트리를 사용합니다."
     },
@@ -796,6 +924,9 @@
       "includeFilesTooltip": "에이전트의 채팅에 컨텍스트 파일의 내용을 추가합니다. 토큰 사용량이 늘어납니다.",
       "includeRepoMap": "저장소 맵 포함",
       "includeRepoMapTooltip": "Aider의 저장소 맵을 에이전트의 컨텍스트에 포함합니다. 에이전트가 프로젝트 구조를 이해하는 데 도움이 되지만 토큰 사용량이 늘어납니다.",
+      "memory": "메모리",
+      "useAgentMemoryScope": "에이전트별 메모리 격리",
+      "useAgentMemoryScopeTooltip": "활성화하면 이 에이전트는 프로젝트 디렉터리 대신 자체 메모리 범위에 메모리를 저장하고 검색합니다. 이 메모리는 이 에이전트가 사용되는 모든 프로젝트에서 공유됩니다.",
       "autonomyMode": "자율성 모드",
       "override": "재정의",
       "clearOverride": "재정의 지우기",
@@ -817,6 +948,7 @@
       "envVarFoundPlaceholder": "다음에서 찾음: {{source}}",
       "createNewProfile": "새로 만들기",
       "genericTools": "도구",
+      "extensionTools": "확장 도구",
       "noGenericToolsConfigured": "구성된 도구가 없습니다.",
       "todoTools": "할 일 도구",
       "includeTodoToolsTooltip": "에이전트가 할 일 항목 목록을 설정, 조회, 업데이트, 삭제하는 등 관리할 수 있게 합니다.",
@@ -897,11 +1029,23 @@
       "envVarsDocumentation": "환경 변수는 다음 문서를 확인하세요",
       "context": "컨텍스트",
       "addRuleFiles": "프로젝트의 <file>.aider-desk/rules</file> 디렉터리에 있는 규칙 파일을 읽기 전용 파일로 추가합니다.",
-      "confirmBeforeEdit": "파일 편집 전 확인"
+      "confirmBeforeEdit": "파일 편집 전 확인",
+      "models": "모델",
+      "auto": "자동",
+      "inherited": "상속됨",
+      "automaticModel": "자동 선택",
+      "inheritMainModel": "기본 모델에서 상속",
+      "globalSettings": "전역",
+      "additionalOptions": "추가 Aider 옵션",
+      "addRuleFilesLabel": "프로젝트 규칙 파일 포함",
+      "projectEnvironmentHint": "프로젝트 키는 일치하는 전역 환경 변수를 재정의합니다. 다른 전역 키는 계속 사용할 수 있습니다."
     },
     "common": {
       "showSecrets": "비밀 값 표시",
-      "learnMore": "더 알아보기"
+      "learnMore": "더 알아보기",
+      "scopeGlobal": "전역",
+      "previousContext": "이전 컨텍스트",
+      "nextContext": "다음 컨텍스트"
     },
     "notificationsEnabled": "알림 사용",
     "zoom": "확대/축소 수준",
@@ -1049,7 +1193,8 @@
       "viewModeFull": "전체",
       "viewModeCompact": "간략히",
       "fullMessageRendering": "전체 메시지 렌더링 사용 (레거시)",
-      "fullMessageRenderingTooltip": "가상화 없이 모든 메시지를 DOM에 렌더링합니다. 대화 기록이 많으면 성능에 영향을 줄 수 있습니다."
+      "fullMessageRenderingTooltip": "가상화 없이 모든 메시지를 DOM에 렌더링합니다. 대화 기록이 많으면 성능에 영향을 줄 수 있습니다.",
+      "messageMap": "메시지 맵 표시"
     },
     "memory": {
       "configuration": "구성",
@@ -1076,8 +1221,8 @@
       },
       "memories": {
         "title": "메모리",
-        "project": "프로젝트",
-        "allProjects": "모든 프로젝트",
+        "scope": "범위",
+        "all": "전체",
         "loading": "메모리를 불러오는 중...",
         "empty": "메모리가 없습니다.",
         "delete": "삭제",
@@ -1086,6 +1231,9 @@
         "deleteDialogText": "메모리 삭제",
         "deleteProjectDialogTitle": "프로젝트 메모리 삭제",
         "deleteProjectDialogText": "프로젝트의 모든 메모리 삭제",
+        "deleteAllForAgent": "에이전트의 모든 메모리 삭제",
+        "deleteAgentMemoriesDialogTitle": "에이전트 메모리 삭제",
+        "deleteAgentMemoriesDialogText": "에이전트의 모든 메모리 삭제",
         "projectId": "projectId",
         "id": "id"
       }
@@ -1120,6 +1268,14 @@
     "scrollToBottom": "맨 아래로 스크롤",
     "previousUserMessage": "이전 사용자 메시지",
     "nextUserMessage": "다음 사용자 메시지",
+    "map": {
+      "title": "메시지 지도",
+      "turn": "{{number}}번째 대화",
+      "userPrompt": "내 프롬프트",
+      "assistantReply": "마지막 답변",
+      "emptyPreview": "텍스트 미리보기 없음",
+      "goToMessage": "{{number}}번째 대화의 {{label}}(으)로 이동"
+    },
     "messageBar": "메시지 바",
     "execute": "실행",
     "resume": "재개",
@@ -1149,7 +1305,7 @@
     "appCrash": {
       "title": "문제가 발생했습니다",
       "message": "예기치 않은 오류가 발생하여 애플리케이션을 계속 진행할 수 없습니다.",
-      "reportIssue": "<a>https://github.com/hotovo/aider-desk/issues</a>에 이슈를 등록해 주시면 감사하겠습니다.",
+      "reportIssue": "<a>https://github.com/magiksoft/aider-desk/issues</a>에 이슈를 등록해 주시면 감사하겠습니다.",
       "reload": "새로고침",
       "details": "오류 세부 정보",
       "copy": "복사",
@@ -1227,12 +1383,21 @@
     "saveAllTooltip": "열려 있는 모든 파일 저장",
     "savedAll": "{{count}}개 파일 저장됨",
     "closeTab": "탭 닫기 {{file}}",
+    "copyAbsolutePath": "절대 경로 복사",
+    "copyRelativePath": "상대 경로 복사",
+    "openInExternal": "외부 애플리케이션에서 열기",
+    "pathCopied": "경로가 클립보드에 복사되었습니다",
+    "fileTree": "파일",
+    "showFileTree": "파일 트리 표시",
+    "hideFileTree": "파일 트리 숨기기",
+    "noProjectFiles": "프로젝트 파일을 찾을 수 없습니다",
     "discardTitle": "저장되지 않은 변경 사항을 취소하시겠습니까?",
     "discard": "취소",
     "discardMessage": "저장되지 않은 파일 변경 사항이 손실됩니다.",
     "title": "에디터"
   },
   "contextFiles": {
+    "renamedFrom": "{{path}}에서 이름 변경됨",
     "workspaceTitle": "워크스페이스",
     "title": "컨텍스트 파일",
     "updatedFiles": "업데이트된 파일",
@@ -1301,6 +1466,8 @@
     "generateMessage": "메시지 생성",
     "amend": "수정(Amend)",
     "amendTooltip": "새 커밋을 만드는 대신 마지막 커밋을 수정합니다",
+    "skipGitHooks": "Git 훅 건너뛰기",
+    "skipGitHooksTooltip": "Git 훅을 실행하지 않고 커밋을 생성합니다 (git commit --no-verify)",
     "commit": "커밋",
     "generatingMessage": "생성하는 중...",
     "committing": "커밋하는 중...",
@@ -1405,6 +1572,18 @@
       "never": "안 함",
       "always": "항상",
       "ask": "물어보기"
+    },
+    "recovery": {
+      "forget": "미완료 호출 삭제",
+      "safe": "안전하게 재실행",
+      "notify": "중단 알림",
+      "label": "복구 모드",
+      "description": "앱 충돌과 같은 예기치 않은 중단 후 작업을 재개할 때 미완료 도구 호출을 처리하는 방식을 설정합니다.",
+      "descriptions": {
+        "forget": "작업 재개 시 미완료 호출을 삭제합니다.",
+        "safe": "재개 시 미완료 호출을 다시 실행합니다. 도구는 반복 실행을 허용해야 합니다.",
+        "notify": "결과를 알 수 없음으로 보고하여 모델이 재시도 전에 확인하도록 합니다."
+      }
     }
   },
   "autocompletion": {
@@ -1447,6 +1626,11 @@
     "answer": "답변"
   },
   "toolMessage": {
+    "truncatedResult": {
+      "notice": "도구 결과가 잘렸습니다. 미리 보기만 사용할 수 있습니다.",
+      "originalLength": "원본 결과: {{length}}자",
+      "unavailable": "결과를 직렬화할 수 없어 미리 보기를 사용할 수 없습니다."
+    },
     "toolLabel": "{{server}}: {{tool}}",
     "arguments": "인수:",
     "executing": "도구를 실행하는 중...",
@@ -1464,7 +1648,7 @@
       "createTask": "작업 생성",
       "createSubtask": "하위 작업 생성",
       "deleteTask": "작업 삭제",
-      "runPrompt": "작업에서 프롬프트 실행",
+      "runPrompt": "작업 실행",
       "searchTask": "작업 검색:",
       "inTask": "위치:",
       "searchTaskNoMatches": "일치하는 항목이 없습니다.",
@@ -1638,7 +1822,7 @@
     "oldValue": "이전 값",
     "newValue": "새 값",
     "error": "오류: {{message}}",
-    "reportIssue": "https://github.com/hotovo/aider-desk/issues에서 문제를 보고해 주세요.",
+    "reportIssue": "https://github.com/magiksoft/aider-desk/issues에서 문제를 보고해 주세요.",
     "sideBySide": "나란히 보기",
     "unified": "통합 보기",
     "compact": "간략히",
@@ -1656,11 +1840,8 @@
     "savePrompt": "프롬프트 저장",
     "savePromptDescription": "실행하지 않고 프롬프트 저장",
     "saveError": "프롬프트를 저장하지 못했습니다: {{error}}",
-    "autonomyManual": "수동",
     "autonomyManualTooltip": "수동 모드: 진행하기 전에 모든 도구 실행과 계획에 명시적인 승인이 필요합니다. 익숙하지 않은 코드베이스나 위험한 작업에 적합합니다.",
-    "autonomyGuided": "가이드",
     "autonomyGuidedTooltip": "가이드 모드: 에이전트가 실행 전에 계획을 세우고 변경 사항을 실행하기 전에 사용자의 승인을 기다립니다. 도구 실행은 자동으로 승인됩니다. 일상적인 개발에 적합합니다.",
-    "autonomyAutonomous": "자동",
     "autonomyAutonomousTooltip": "자율 모드: 에이전트가 작업이 완료될 때까지 중단 없이 계획하고 실행합니다. 신뢰할 수 있는 작업에서 자리를 비우고 싶을 때 적합합니다.",
     "autonomyLockTooltip": "잠그면 새로 생성되는 작업에 대해서도 현재 자율성 모드가 유지됩니다",
     "placeholders": {
@@ -1725,7 +1906,8 @@
     "tools": "도구",
     "model": "모델",
     "selectProfile": "선택...",
-    "useAsProjectDefault": "프로젝트 기본값으로 사용"
+    "useAsProjectDefault": "프로젝트 기본값으로 사용",
+    "infoTooltip": "에이전트는 AI가 작업에 사용할 모델과 도구를 결정합니다 — 에이전트를 전환하거나 하나를 프로젝트 기본값으로 설정하세요. AI에게 직접 새 에이전트 프로필 생성을 요청할 수도 있습니다."
   },
   "projectBar": {
     "editFormatTooltip": "코드 편집에 사용되는 형식입니다. 변경하면 모델이 예상대로 동작하지 않을 수 있습니다.",
@@ -1894,8 +2076,7 @@
     "tabLabel": "터미널",
     "copyOutput": "터미널 출력을 프롬프트로 복사",
     "minimize": "터미널 최소화",
-    "addTerminal": "새 터미널 추가",
-    "restartHint": "세션이 종료되었습니다. 아무 키나 눌러 재시작하세요."
+    "addTerminal": "새 터미널 추가"
   },
   "contextMenu": {
     "copy": "복사",
@@ -1984,6 +2165,9 @@
     "TODO": "할 일"
   },
   "git": {
+    "conflictsDescription": "다음 파일에서 충돌이 감지되었습니다. 직접 해결하거나 AI 에이전트의 도움을 받으세요.",
+    "smartCheckout": "스마트 체크아웃",
+    "smartCheckoutMessage": "로컬 변경 사항으로 인해 {{branch}} 브랜치로 전환할 수 없습니다. 스마트 체크아웃은 추적 및 미추적 파일의 변경 사항을 임시로 스태시에 저장하고 브랜치를 전환한 뒤 다시 적용합니다. 일부 변경 사항은 스테이징이 해제될 수 있습니다. 충돌이 발생하면 대상 브랜치에서 해결할 수 있습니다.",
     "askpass": {
       "passwordTitle": "Git 인증",
       "usernameTitle": "Git 사용자 이름",
@@ -2044,13 +2228,19 @@
     "noCommitsToPush": "푸시할 커밋이 없습니다",
     "confirmPushSetUpstreamMessage": "'{{branch}}' 브랜치에 업스트림이 없습니다. 원격에 푸시하고 원격 브랜치를 업스트림으로 설정하시겠습니까?",
     "force": "강제",
+    "pushToBaseUpstream": "기준 브랜치의 업스트림으로 푸시",
+    "pushToBaseDestination": "대상: {{upstream}}",
+    "pushToBaseNoUpstream": "기준 브랜치에 원격 업스트림이 설정되어 있지 않습니다.",
+    "confirmPushToBaseMessage": "{{branch}}의 HEAD를 {{upstream}}에 푸시하시겠습니까? 로컬 브랜치와 업스트림 추적 설정은 변경되지 않습니다.",
     "aheadCommits_one": "{{count}}개 커밋 앞섬",
     "aheadCommits_other": "{{count}}개 커밋 앞섬",
     "behindCommits_one": "{{count}}개 커밋 뒤처짐",
     "behindCommits_other": "{{count}}개 커밋 뒤처짐",
     "recentBranches": "최근",
     "checkoutBranch": "'{{branch}}' 체크아웃",
+    "copyBranchName": "브랜치 이름 복사",
     "newBranchFrom": "'{{branch}}'에서 새 브랜치...",
+    "createWorktreeFrom": "'{{branch}}'에서 워크트리 생성",
     "mergeBranchInto": "'{{branch}}' 브랜치를 '{{current}}'에 병합",
     "rebaseOnto": "'{{current}}' 브랜치를 '{{branch}}' 위로 리베이스",
     "deleteBranchName": "'{{branch}}' 삭제",
@@ -2200,5 +2390,28 @@
     "caCertPath": "CA 인증서 경로",
     "caCertPathInfo": "공급자 엔드포인트를 검증하는 데 사용되는 CA 인증서 파일(PEM)의 절대 경로입니다. 자체 서명 또는 사설 CA 인증서를 사용할 때는 검증 비활성화보다 이 방법을 권장합니다.",
     "caCertPathPlaceholder": "/path/to/ca.pem"
+  },
+  "durability": {
+    "notices": {
+      "interrupted": "도구 실행이 중단되어 결과를 알 수 없습니다. 다시 시도하기 전에 상태를 확인하세요.",
+      "finalizationInterrupted": "도구 실행은 완료되었지만 최종 출력을 사용할 수 없습니다. 출력을 복구하기 위해 작업을 반복하지 마세요.",
+      "unavailable": "중단된 도구를 더 이상 사용할 수 없거나 실행이 허용되지 않습니다.",
+      "argumentsChanged": "도구 인수가 변경되었거나 검증에 실패하여 복구가 중지되었습니다.",
+      "ownerChanged": "도구 소유자가 변경되어 복구가 중지되었습니다.",
+      "identityConflict": "실행이 거부되었습니다. 이 호출 ID는 다른 작업에 속합니다."
+    },
+    "labels": {
+      "interrupted": "중단됨",
+      "finalizationInterrupted": "마무리 중단",
+      "unavailable": "사용 불가",
+      "argumentsChanged": "인수 변경됨",
+      "ownerChanged": "소유자 변경됨",
+      "identityConflict": "ID 충돌"
+    },
+    "recovery": {
+      "detailsTitle": "보존된 출력",
+      "noOutput": "추가로 보존된 출력이 없습니다."
+    },
+    "missingProfile": "에이전트 프로필을 사용할 수 없어 작업을 복구할 수 없습니다."
   }
 }

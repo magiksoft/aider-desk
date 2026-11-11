@@ -15,6 +15,7 @@ import {
   EditFormat,
   EnvironmentVariable,
   GitSyncCommits,
+  GitCheckoutResult,
   FileEdit,
   InputHistoryData,
   LogData,
@@ -36,6 +37,7 @@ import {
   OpenDialogResult,
   OS,
   ProjectData,
+  ProjectCheckResult,
   ProjectSettings,
   ProjectStartedData,
   ProviderModelsData,
@@ -63,9 +65,9 @@ import {
   VoiceSession,
   SwitchToLocalOptions,
   SwitchToWorktreeOptions,
-  WorktreeUncommittedFiles,
-  WorktreeIntegrationStatus,
-  WorktreeIntegrationStatusUpdatedData,
+  UncommittedFiles,
+  TaskGitStatus,
+  TaskGitStatusUpdatedData,
   UpdatedFile,
   UpdatedFilesUpdatedData,
   InstalledExtension,
@@ -74,6 +76,7 @@ import {
   ExtensionToolInfo,
   ExtensionUIComponent,
   ExtensionUIRefreshData,
+  ExtensionsUpdatedData,
   ModalOverlayUrlData,
   InputPromptData,
   AiderConnectorStatus,
@@ -126,6 +129,7 @@ export interface ApplicationAPI {
   showOpenDialog: (options: OpenDialogOptions) => Promise<OpenDialogResult>;
   getPathForFile: (file: File) => string;
   getOpenProjects: () => Promise<ProjectData[]>;
+  checkProject: (baseDir: string) => Promise<ProjectCheckResult>;
   addOpenProject: (baseDir: string) => Promise<ProjectData[]>;
   setActiveProject: (baseDir: string) => Promise<ProjectData[]>;
   removeOpenProject: (baseDir: string) => Promise<ProjectData[]>;
@@ -143,14 +147,20 @@ export interface ApplicationAPI {
   getAllFiles: (baseDir: string, taskId: string, useGit?: boolean) => Promise<string[]>;
   refreshContextFiles: (baseDir: string, taskId: string) => Promise<void>;
   getUpdatedFiles: (baseDir: string, taskId: string) => Promise<UpdatedFile[]>;
-  getUpdatedFileDiff: (baseDir: string, taskId: string, filePath: string, commitHash?: string) => Promise<string>;
-  getUpdatedFileContents: (baseDir: string, taskId: string, filePath: string, commitHash?: string) => Promise<{ oldContent: string; newContent: string }>;
+  getUpdatedFileDiff: (baseDir: string, taskId: string, filePath: string, commitHash?: string, previousPath?: string) => Promise<string>;
+  getUpdatedFileContents: (
+    baseDir: string,
+    taskId: string,
+    filePath: string,
+    commitHash?: string,
+    previousPath?: string,
+  ) => Promise<{ oldContent: string; newContent: string }>;
   addFileToGit: (baseDir: string, taskId: string, filePath: string) => Promise<void>;
-  restoreFile: (baseDir: string, taskId: string, filePath: string) => Promise<void>;
+  restoreFile: (baseDir: string, taskId: string, filePath: string, previousPath?: string) => Promise<void>;
   readFile: (baseDir: string, taskId: string, filePath: string) => Promise<string>;
   saveFile: (baseDir: string, taskId: string, filePath: string, content: string) => Promise<void>;
   generateCommitMessage: (baseDir: string, taskId: string, filePaths?: string[]) => Promise<string>;
-  commitChanges: (baseDir: string, taskId: string, message: string, amend: boolean, filePaths?: string[]) => Promise<void>;
+  commitChanges: (baseDir: string, taskId: string, message: string, amend: boolean, skipGitHooks: boolean, filePaths?: string[]) => Promise<void>;
   cancelCommitChanges: (baseDir: string, taskId: string) => Promise<void>;
   addFile: (baseDir: string, taskId: string, filePath: string, readOnly?: boolean) => void;
   isValidPath: (baseDir: string, path: string) => Promise<boolean>;
@@ -223,6 +233,7 @@ export interface ApplicationAPI {
   deleteTask: (baseDir: string, id: string) => Promise<boolean>;
   duplicateTask: (baseDir: string, taskId: string) => Promise<TaskData>;
   forkTask: (baseDir: string, taskId: string, messageId: string) => Promise<TaskData>;
+  forkTaskFromCheckpoint: (baseDir: string, taskId: string, checkpointId: string) => Promise<TaskData>;
   getTasks: (baseDir: string) => Promise<TaskData[]>;
   loadTask: (baseDir: string, taskId: string) => Promise<TaskStateData>;
   exportTaskToMarkdown: (baseDir: string, taskId: string, copyOnly?: boolean) => Promise<string | void>;
@@ -238,7 +249,7 @@ export interface ApplicationAPI {
   compactConversation: (baseDir: string, taskId: string, mode: Mode, customInstructions?: string) => void;
   smartCompactConversation: (baseDir: string, taskId: string) => Promise<void>;
   handoffConversation: (baseDir: string, taskId: string, focus?: string) => Promise<void>;
-  undoContextChange: (baseDir: string, taskId: string) => Promise<boolean>;
+  undoContextChange: (baseDir: string, taskId: string, checkpointId?: string) => Promise<boolean>;
   runCodeChangeRequests: (baseDir: string, taskId: string, requests: ChangeRequestItem[], createNewTask?: boolean) => void;
   setZoomLevel: (level: number) => Promise<void>;
 
@@ -266,7 +277,7 @@ export interface ApplicationAPI {
   addResponseCompletedListener: (baseDir: string, taskId: string, callback: (data: ResponseCompletedData) => void) => () => void;
   addLogListener: (baseDir: string, taskId: string, callback: (data: LogData) => void) => () => void;
   addContextFilesUpdatedListener: (baseDir: string, taskId: string, callback: (data: ContextFilesUpdatedData) => void) => () => void;
-  addUpdatedFilesUpdatedListener: (baseDir: string, taskId: string, callback: (data: UpdatedFilesUpdatedData) => void) => () => void;
+  addUpdatedFilesUpdatedListener: (baseDir: string, taskDir: string, callback: (data: UpdatedFilesUpdatedData) => void) => () => void;
   addSkillsUpdatedListener: (baseDir: string, taskId: string, callback: (data: SkillsUpdatedData) => void) => () => void;
   addCommandsUpdatedListener: (baseDir: string, callback: (data: CommandsData) => void) => () => void;
   addUpdateAutocompletionListener: (baseDir: string, taskId: string, callback: (data: AutocompletionData) => void) => () => void;
@@ -285,12 +296,14 @@ export interface ApplicationAPI {
   addMessageRemovedListener: (baseDir: string, taskId: string, callback: (data: MessageRemovedData) => void) => () => void;
   addProjectStartedListener: (baseDir: string, callback: (data: ProjectStartedData) => void) => () => void;
   addVersionsInfoUpdatedListener: (callback: (data: VersionsInfo) => void) => () => void;
+  addSocketReconnectListener: (callback: () => void) => () => void;
   addProviderModelsUpdatedListener: (callback: (data: ProviderModelsData) => void) => () => void;
   addProvidersUpdatedListener: (callback: (data: ProvidersUpdatedData) => void) => () => void;
   addAgentProfilesUpdatedListener: (callback: (data: AgentProfilesUpdatedData) => void) => () => void;
   addMcpServersUpdatedListener: (callback: (data: McpServersData) => void) => () => void;
+  addExtensionsUpdatedListener: (callback: (data: ExtensionsUpdatedData) => void) => () => void;
   addProjectSettingsUpdatedListener: (baseDir: string, callback: (data: { baseDir: string; settings: ProjectSettings }) => void) => () => void;
-  addWorktreeIntegrationStatusUpdatedListener: (baseDir: string, taskId: string, callback: (data: WorktreeIntegrationStatusUpdatedData) => void) => () => void;
+  addTaskGitStatusUpdatedListener: (baseDir: string, taskId: string, callback: (data: TaskGitStatusUpdatedData) => void) => () => void;
   addTerminalDataListener: (baseDir: string, callback: (data: TerminalData) => void) => () => void;
   addTerminalExitListener: (baseDir: string, callback: (data: TerminalExitData) => void) => () => void;
   addContextMenuListener: (callback: (params: ContextMenuParams) => void) => () => void;
@@ -306,7 +319,7 @@ export interface ApplicationAPI {
   addTaskDeletedListener: (baseDir: string, callback: (data: TaskData) => void) => () => void;
 
   getCommands: (baseDir: string) => Promise<CommandsData>;
-  getCustomModes: (baseDir: string) => Promise<ModeDefinition[]>;
+  getCustomModes: (baseDir?: string) => Promise<ModeDefinition[]>;
   runCustomCommand: (baseDir: string, taskId: string, commandName: string, args: string[], mode: Mode, images?: string[]) => Promise<void>;
 
   // Terminal operations
@@ -323,15 +336,15 @@ export interface ApplicationAPI {
   mergeWorktreeToMain: (baseDir: string, taskId: string, squash: boolean, targetBranch?: string, commitMessage?: string) => Promise<void>;
   switchToLocalWorkingMode: (baseDir: string, taskId: string, options?: SwitchToLocalOptions) => Promise<void>;
   switchToWorktreeWorkingMode: (baseDir: string, taskId: string, options?: SwitchToWorktreeOptions) => Promise<void>;
-  getLocalUncommittedFiles: (baseDir: string, taskId: string) => Promise<WorktreeUncommittedFiles>;
+  getLocalUncommittedFiles: (baseDir: string, taskId: string) => Promise<UncommittedFiles>;
   applyUncommittedChanges: (baseDir: string, taskId: string) => Promise<void>;
   revertLastMerge: (baseDir: string, taskId: string) => Promise<void>;
   listBranches: (baseDir: string) => Promise<BranchInfo[]>;
-  getWorktreeIntegrationStatus: (baseDir: string, taskId: string, targetBranch?: string) => Promise<WorktreeIntegrationStatus | null>;
+  getTaskGitStatus: (baseDir: string, taskId: string, targetBranch?: string) => Promise<TaskGitStatus | null>;
   rebaseWorktreeFromBranch: (baseDir: string, taskId: string, fromBranch?: string) => Promise<void>;
-  abortWorktreeRebase: (baseDir: string, taskId: string) => Promise<void>;
-  continueWorktreeRebase: (baseDir: string, taskId: string) => Promise<void>;
-  resolveWorktreeConflictsWithAgent: (baseDir: string, taskId: string) => Promise<void>;
+  abortRebase: (baseDir: string, taskId: string) => Promise<void>;
+  continueRebase: (baseDir: string, taskId: string) => Promise<void>;
+  resolveConflictsWithAgent: (baseDir: string, taskId: string) => Promise<void>;
   renameWorktreeBranch: (baseDir: string, taskId: string, newBranchName: string) => Promise<void>;
   renameGitBranch: (baseDir: string, taskId: string, newBranchName: string) => Promise<void>;
 
@@ -339,7 +352,14 @@ export interface ApplicationAPI {
   listGitBranches: (baseDir: string, taskId: string, includeRemote?: boolean) => Promise<BranchInfo[]>;
   getSyncCommits: (baseDir: string, taskId: string, targetBranch?: string) => Promise<GitSyncCommits>;
   createGitBranch: (baseDir: string, taskId: string, name: string, startPoint?: string, checkout?: boolean) => Promise<void>;
-  checkoutGitBranch: (baseDir: string, taskId: string, branch: string, createTracking?: boolean, takeOver?: boolean) => Promise<void>;
+  checkoutGitBranch: (
+    baseDir: string,
+    taskId: string,
+    branch: string,
+    createTracking?: boolean,
+    takeOver?: boolean,
+    smartCheckout?: boolean,
+  ) => Promise<GitCheckoutResult>;
   deleteGitBranch: (baseDir: string, taskId: string, branch: string, force?: boolean) => Promise<void>;
   mergeIntoCurrentBranch: (baseDir: string, taskId: string, branch: string) => Promise<{ conflictedFiles?: string[] }>;
   rebaseOntoBranch: (baseDir: string, taskId: string, branch: string) => Promise<{ conflictedFiles?: string[] }>;
@@ -347,7 +367,7 @@ export interface ApplicationAPI {
   isGitRepository: (baseDir: string, taskId: string) => Promise<boolean>;
   initializeGitRepository: (baseDir: string, taskId: string) => Promise<void>;
   gitPull: (baseDir: string, taskId: string, rebase?: boolean) => Promise<{ output: string }>;
-  gitPush: (baseDir: string, taskId: string, force?: boolean, setUpstream?: boolean) => Promise<{ output: string }>;
+  gitPush: (baseDir: string, taskId: string, force?: boolean, setUpstream?: boolean, pushToBase?: boolean) => Promise<{ output: string }>;
   resolveGitErrorWithAgent: (baseDir: string, taskId: string) => Promise<void>;
 
   // Agent profile operations
@@ -360,7 +380,7 @@ export interface ApplicationAPI {
   // Memory operations
   listAllMemories: () => Promise<MemoryEntry[]>;
   deleteMemory: (id: string) => Promise<boolean>;
-  deleteProjectMemories: (projectId: string) => Promise<number>;
+  deleteScopeMemories: (scopeId: string) => Promise<number>;
   getMemoryEmbeddingProgress: () => Promise<MemoryEmbeddingProgress>;
 
   // Clipboard operations

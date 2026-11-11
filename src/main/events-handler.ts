@@ -12,6 +12,7 @@ import {
   EnvironmentVariable,
   FileEdit,
   GitSyncCommits,
+  GitCheckoutResult,
   InstalledExtension,
   ExtensionToolInfo,
   McpOAuthStatusData,
@@ -41,6 +42,7 @@ import {
   VersionsInfo,
   VoiceSession,
   ChangeRequestItem,
+  SwitchToWorktreeOptions,
 } from '@common/types';
 import { compareBaseDirs, normalizeBaseDir } from '@common/utils';
 // @ts-expect-error istextorbinary is not typed properly
@@ -54,6 +56,7 @@ import { McpManager, McpConfigManager, AgentProfileManager } from '@/agent';
 import { MemoryManager } from '@/memory/memory-manager';
 import { ModelManager } from '@/models';
 import { Project, ProjectManager } from '@/project';
+import { checkProject } from '@/project/check-project';
 import { CloudflareTunnelManager } from '@/server';
 import { Store } from '@/store';
 import { TelemetryManager } from '@/telemetry';
@@ -142,6 +145,7 @@ export class EventsHandler {
     });
 
     this.projectManager.projectSettingsChanged(baseDir, oldProjectSettings, updatedSettings);
+    this.eventManager.sendProjectSettingsUpdated(baseDir, updatedSettings);
 
     return updatedSettings;
   }
@@ -192,6 +196,8 @@ export class EventsHandler {
   getOpenProjects(): ProjectData[] {
     return this.store.getOpenProjects();
   }
+
+  checkProject = checkProject;
 
   async addOpenProject(baseDir: string): Promise<ProjectData[]> {
     const projects = this.store.getOpenProjects();
@@ -313,10 +319,10 @@ export class EventsHandler {
     }
   }
 
-  async undoContextChange(baseDir: string, taskId: string): Promise<boolean> {
+  async undoContextChange(baseDir: string, taskId: string, checkpointId?: string): Promise<boolean> {
     const task = this.projectManager.getProject(baseDir).getTask(taskId);
     if (task) {
-      return task.undoContextChange();
+      return task.undoContextChange(checkpointId);
     }
     return false;
   }
@@ -359,20 +365,26 @@ export class EventsHandler {
     return await task.getUpdatedFiles();
   }
 
-  async getUpdatedFileDiff(baseDir: string, taskId: string, filePath: string, commitHash?: string): Promise<string> {
+  async getUpdatedFileDiff(baseDir: string, taskId: string, filePath: string, commitHash?: string, previousPath?: string): Promise<string> {
     const task = this.projectManager.getProject(baseDir).getTask(taskId);
     if (!task) {
       return '';
     }
-    return await task.getUpdatedFileDiff(filePath, commitHash);
+    return await task.getUpdatedFileDiff(filePath, commitHash, previousPath);
   }
 
-  async getUpdatedFileContents(baseDir: string, taskId: string, filePath: string, commitHash?: string): Promise<{ oldContent: string; newContent: string }> {
+  async getUpdatedFileContents(
+    baseDir: string,
+    taskId: string,
+    filePath: string,
+    commitHash?: string,
+    previousPath?: string,
+  ): Promise<{ oldContent: string; newContent: string }> {
     const task = this.projectManager.getProject(baseDir).getTask(taskId);
     if (!task) {
       return { oldContent: '', newContent: '' };
     }
-    return await task.getUpdatedFileContents(filePath, commitHash);
+    return await task.getUpdatedFileContents(filePath, commitHash, previousPath);
   }
 
   async addFile(baseDir: string, taskId: string, filePath: string, readOnly = false): Promise<void> {
@@ -518,7 +530,7 @@ export class EventsHandler {
     return this.projectManager.getCommands(baseDir);
   }
 
-  async getCustomModes(baseDir: string): Promise<ModeDefinition[]> {
+  async getCustomModes(baseDir?: string): Promise<ModeDefinition[]> {
     return this.projectManager.getCustomModes(baseDir);
   }
 
@@ -728,11 +740,7 @@ export class EventsHandler {
     await task.switchToLocalWorkingMode(options);
   }
 
-  async switchToWorktreeWorkingMode(
-    baseDir: string,
-    taskId: string,
-    options?: { carryOverUncommittedChanges?: boolean; dropSourceChanges?: boolean },
-  ): Promise<void> {
+  async switchToWorktreeWorkingMode(baseDir: string, taskId: string, options?: SwitchToWorktreeOptions): Promise<void> {
     const task = this.getTaskOrThrow(baseDir, taskId);
     await task.switchToWorktreeWorkingMode(options);
   }
@@ -757,9 +765,9 @@ export class EventsHandler {
     await task.addFileToGit(filePath);
   }
 
-  async restoreFile(baseDir: string, taskId: string, filePath: string): Promise<void> {
+  async restoreFile(baseDir: string, taskId: string, filePath: string, previousPath?: string): Promise<void> {
     const task = this.getTaskOrThrow(baseDir, taskId);
-    await task.restoreFile(filePath);
+    await task.restoreFile(filePath, previousPath);
   }
 
   async readFile(baseDir: string, taskId: string, filePath: string): Promise<string> {
@@ -798,9 +806,9 @@ export class EventsHandler {
     return await task.generateCommitMessage(filePaths);
   }
 
-  async commitChanges(baseDir: string, taskId: string, message: string, amend: boolean, filePaths?: string[]): Promise<void> {
+  async commitChanges(baseDir: string, taskId: string, message: string, amend: boolean, skipGitHooks: boolean, filePaths?: string[]): Promise<void> {
     const task = this.getTaskOrThrow(baseDir, taskId);
-    await task.commitChanges(message, amend, filePaths);
+    await task.commitChanges(message, amend, skipGitHooks, filePaths);
   }
 
   cancelCommitChanges(baseDir: string, taskId: string): void {
@@ -832,8 +840,15 @@ export class EventsHandler {
     await this.getTaskOrThrow(baseDir, taskId).createGitBranch(name, startPoint, checkout);
   }
 
-  async checkoutGitBranch(baseDir: string, taskId: string, branch: string, createTracking?: boolean, takeOver?: boolean): Promise<void> {
-    await this.getTaskOrThrow(baseDir, taskId).checkoutGitBranch(branch, createTracking, takeOver);
+  async checkoutGitBranch(
+    baseDir: string,
+    taskId: string,
+    branch: string,
+    createTracking?: boolean,
+    takeOver?: boolean,
+    smartCheckout?: boolean,
+  ): Promise<GitCheckoutResult> {
+    return await this.getTaskOrThrow(baseDir, taskId).checkoutGitBranch(branch, createTracking, takeOver, smartCheckout);
   }
 
   async deleteGitBranch(baseDir: string, taskId: string, branch: string, force?: boolean): Promise<void> {
@@ -856,13 +871,13 @@ export class EventsHandler {
     return await this.getTaskOrThrow(baseDir, taskId).gitPull(rebase);
   }
 
-  async gitPush(baseDir: string, taskId: string, force?: boolean, setUpstream?: boolean): Promise<{ output: string }> {
-    return await this.getTaskOrThrow(baseDir, taskId).gitPush(force, setUpstream);
+  async gitPush(baseDir: string, taskId: string, force?: boolean, setUpstream?: boolean, pushToBase?: boolean): Promise<{ output: string }> {
+    return await this.getTaskOrThrow(baseDir, taskId).gitPush(force, setUpstream, pushToBase);
   }
 
-  async getWorktreeIntegrationStatus(baseDir: string, taskId: string, targetBranch?: string) {
+  async getTaskGitStatus(baseDir: string, taskId: string, targetBranch?: string) {
     const task = this.getTaskOrThrow(baseDir, taskId);
-    return await task.getWorktreeIntegrationStatus(targetBranch);
+    return await task.getTaskGitStatus(targetBranch);
   }
 
   async rebaseWorktreeFromBranch(baseDir: string, taskId: string, fromBranch?: string): Promise<void> {
@@ -870,14 +885,14 @@ export class EventsHandler {
     await task.rebaseWorktreeFromBranch(fromBranch);
   }
 
-  async abortWorktreeRebase(baseDir: string, taskId: string): Promise<void> {
+  async abortRebase(baseDir: string, taskId: string): Promise<void> {
     const task = this.getTaskOrThrow(baseDir, taskId);
-    await task.abortWorktreeRebase();
+    await task.abortRebase();
   }
 
-  async continueWorktreeRebase(baseDir: string, taskId: string): Promise<void> {
+  async continueRebase(baseDir: string, taskId: string): Promise<void> {
     const task = this.getTaskOrThrow(baseDir, taskId);
-    await task.continueWorktreeRebase();
+    await task.continueRebase();
   }
 
   async resolveConflictsWithAgent(baseDir: string, taskId: string): Promise<void> {
@@ -989,6 +1004,10 @@ export class EventsHandler {
 
   async forkTask(baseDir: string, taskId: string, messageId: string): Promise<TaskData> {
     return await this.projectManager.getProject(baseDir).forkTask(taskId, messageId);
+  }
+
+  async forkTaskFromCheckpoint(baseDir: string, taskId: string, checkpointId: string): Promise<TaskData> {
+    return await this.projectManager.getProject(baseDir).forkTaskFromCheckpoint(taskId, checkpointId);
   }
 
   async getTasks(baseDir: string): Promise<TaskData[]> {
@@ -1186,8 +1205,8 @@ export class EventsHandler {
   async openPath(path: string): Promise<boolean> {
     try {
       const { shell } = await import('electron');
-      await shell.openPath(path);
-      return true;
+      const error = await shell.openPath(path);
+      return !error;
     } catch (error) {
       logger.error('Failed to open path:', {
         path,
@@ -1391,8 +1410,8 @@ export class EventsHandler {
     return await this.memoryManager.deleteMemory(id);
   }
 
-  async deleteProjectMemories(projectId: string): Promise<number> {
-    return await this.memoryManager.deleteMemoriesForProject(projectId);
+  async deleteScopeMemories(scopeId: string): Promise<number> {
+    return await this.memoryManager.deleteMemoriesForScope(scopeId);
   }
 
   getMemoryEmbeddingProgress() {

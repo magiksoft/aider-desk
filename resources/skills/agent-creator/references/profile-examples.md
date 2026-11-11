@@ -11,7 +11,7 @@ Use case: Direct file system access and system operations.
   "id": "power-tools-profile",
   "name": "Power Tools",
   "provider": "anthropic",
-  "model": "claude-sonnet-5",
+  "model": "claude-opus-5",
   "maxIterations": 250,
   "minTimeBetweenToolCalls": 0,
   "enabledServers": [],
@@ -66,7 +66,7 @@ Use case: AI-powered code generation using Aider's advanced capabilities.
   "id": "aider-profile",
   "name": "Aider",
   "provider": "anthropic",
-  "model": "claude-sonnet-5",
+  "model": "claude-opus-5",
   "maxIterations": 250,
   "minTimeBetweenToolCalls": 0,
   "enabledServers": [],
@@ -120,7 +120,7 @@ Use case: Specialized subagent for code review tasks with both main agent and su
   "id": "code-reviewer",
   "name": "Code Reviewer",
   "provider": "anthropic",
-  "model": "claude-sonnet-5",
+  "model": "claude-opus-5",
   "maxIterations": 150,
   "minTimeBetweenToolCalls": 0,
   "maxTokens": 8192,
@@ -179,7 +179,7 @@ Use case: Generating and updating documentation, usable as subagent.
   "id": "doc-generator",
   "name": "Documentation Generator",
   "provider": "anthropic",
-  "model": "claude-sonnet-5",
+  "model": "claude-opus-5",
   "maxIterations": 200,
   "minTimeBetweenToolCalls": 0,
   "maxTokens": 16384,
@@ -236,7 +236,7 @@ Use case: Security-focused code analysis and vulnerability detection.
   "id": "security-auditor",
   "name": "Security Auditor",
   "provider": "anthropic",
-  "model": "claude-sonnet-5",
+  "model": "claude-opus-5",
   "maxIterations": 250,
   "minTimeBetweenToolCalls": 100,
   "maxTokens": 8192,
@@ -299,7 +299,7 @@ Use case: Main agent that delegates to specific subagents using `enabledSubagent
   "id": "orchestrator",
   "name": "Orchestrator",
   "provider": "anthropic",
-  "model": "claude-sonnet-5",
+  "model": "claude-opus-5",
   "maxIterations": 300,
   "minTimeBetweenToolCalls": 0,
   "enabledServers": [],
@@ -359,7 +359,7 @@ Use case: Basic agent with minimal tool set — starting point for custom config
   "id": "minimal-profile",
   "name": "Minimal Agent",
   "provider": "anthropic",
-  "model": "claude-sonnet-5",
+  "model": "claude-opus-5",
   "maxIterations": 250,
   "minTimeBetweenToolCalls": 0,
   "enabledServers": [],
@@ -441,6 +441,32 @@ Set these to "never" in `toolApprovals`:
   "useSubagents": true,
   "enabledSubagentIds": ["code-reviewer", "security-auditor"]
 }
+```
+
+### Role-Agent Profile with Rules-File Context
+
+For agents defining a clear role (community manager, business analyst, etc.), put the role in `systemPrompt` and durable knowledge in `rules/` — never instruct the agent to "read the README every time":
+
+```json
+{
+  "id": "community-builder",
+  "name": "Community Builder",
+  "systemPrompt": "You are the Community Builder for the AiderDesk project. You own all outward-facing community and content work. Reliable project facts, positioning, links, and voice guidelines are provided in your rules files; verify specific details only when accuracy demands it.",
+  "customInstructions": "",
+  "subagent": {
+    "enabled": true,
+    "systemPrompt": "You are the Community Builder subagent. Reliable project facts and voice guidelines are in your rules files. Deliver drafts only.",
+    "invocationMode": "on-demand"
+  }
+}
+```
+
+Directory layout:
+```
+agents/community-builder/
+├── config.json
+└── rules/
+    └── project-context.md
 ```
 
 ### Custom System Prompt (Main Agent)

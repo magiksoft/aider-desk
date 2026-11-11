@@ -1,45 +1,40 @@
 import { registerTelemetry } from 'ai';
 import { OpenTelemetry } from '@ai-sdk/otel';
+import { LangfuseVercelAiSdkIntegration } from '@langfuse/vercel-ai-sdk';
 import { NodeSDK } from '@opentelemetry/sdk-node';
 import { getNodeAutoInstrumentations } from '@opentelemetry/auto-instrumentations-node';
 
-import { initializeLangfuseExporter } from './langfuse';
+import { initializeLangfuseSpanProcessor } from './langfuse';
 import { initializePostHogExporter } from './posthog';
-
-import type { SpanExporter } from '@opentelemetry/sdk-trace-base';
 
 import logger from '@/logger';
 
-registerTelemetry(new OpenTelemetry());
+const langfuseSpanProcessor = initializeLangfuseSpanProcessor();
+const traceExporter = langfuseSpanProcessor ? undefined : initializePostHogExporter();
+let sdk: NodeSDK | undefined;
+let shutdownPromise: Promise<void> | undefined;
 
-const traceExporter: SpanExporter | undefined = initializeLangfuseExporter() ?? initializePostHogExporter();
-
-if (traceExporter) {
+if (langfuseSpanProcessor || traceExporter) {
   logger.info('Initializing OpenTelemetry...');
 
-  const sdk = new NodeSDK({
+  sdk = new NodeSDK({
     serviceName: 'aider-desk',
-    traceExporter,
+    ...(langfuseSpanProcessor ? { spanProcessors: [langfuseSpanProcessor] } : { traceExporter }),
     instrumentations: [getNodeAutoInstrumentations()],
   });
 
   sdk.start();
   logger.info('OpenTelemetry initialized.');
-
-  // Graceful shutdown
-  process.on('SIGTERM', () => {
-    sdk
-      .shutdown()
-      .then(() => logger.info('OpenTelemetry SDK terminated'))
-      .catch((error) => logger.error('Error terminating OpenTelemetry SDK', error))
-      .finally(() => process.exit(0));
-  });
-
-  process.on('SIGINT', () => {
-    sdk
-      .shutdown()
-      .then(() => logger.info('OpenTelemetry SDK terminated'))
-      .catch((error) => logger.error('Error terminating OpenTelemetry SDK', error))
-      .finally(() => process.exit(0));
-  });
 }
+
+registerTelemetry(langfuseSpanProcessor ? new LangfuseVercelAiSdkIntegration() : new OpenTelemetry());
+
+export const shutdownOpenTelemetry = (): Promise<void> => {
+  shutdownPromise ??= Promise.resolve().then(async () => {
+    if (sdk) {
+      await sdk.shutdown();
+      logger.info('OpenTelemetry SDK terminated');
+    }
+  });
+  return shutdownPromise;
+};

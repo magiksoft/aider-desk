@@ -11,11 +11,13 @@ import { TOOL_GROUP_NAME_SEPARATOR } from '@common/tools';
 import { useHotkeys } from 'react-hotkeys-hook';
 import { LuBrain, LuClipboardList } from 'react-icons/lu';
 
-import { Checkbox } from '../common/Checkbox';
-
 import { McpServerSelectorItem } from './McpServerSelectorItem';
+import { ExtensionToolsSelectorItem } from './ExtensionToolsSelectorItem';
 
+import { Checkbox } from '@/components/common/Checkbox';
+import { InfoIcon } from '@/components/common/InfoIcon';
 import { useClickOutside } from '@/hooks/useClickOutside';
+import { useExtensionTools } from '@/hooks/useExtensionTools';
 import { IconButton } from '@/components/common/IconButton';
 import { Accordion } from '@/components/common/Accordion';
 import { Tooltip } from '@/components/ui/Tooltip';
@@ -42,6 +44,7 @@ export const AgentSelector = memo(
     const { t } = useTranslation();
     const { getMergedServers } = useMcpServers();
     const mcpServers = useMemo(() => getMergedServers(projectDir), [getMergedServers, projectDir]);
+    const extensionToolsInfo = useExtensionTools(projectDir);
     const { projectSettings, saveProjectSettings } = useProjectSettings();
     const { getProfiles, updateProfile } = useAgents();
     const [selectorVisible, setSelectorVisible] = useState(false);
@@ -247,8 +250,25 @@ export const AgentSelector = memo(
       void updateProfile(updatedProfile);
     };
 
+    const handleToggleExtensionTools = (extensionId: string) => {
+      if (activeGlobalProfile) {
+        const disabledExtensionTools = activeGlobalProfile.disabledExtensionTools || [];
+        const updatedDisabled = disabledExtensionTools.includes(extensionId)
+          ? disabledExtensionTools.filter((id) => id !== extensionId)
+          : [...disabledExtensionTools, extensionId];
+
+        const updatedProfile = {
+          ...activeGlobalProfile,
+          disabledExtensionTools: updatedDisabled,
+        };
+        void updateProfile(updatedProfile);
+      }
+    };
+
     const availableSubagents = profiles.filter((p) => isSubagentEnabled(p));
     const enabledSubagentCount = availableSubagents.filter((p) => isSubagentEnabled(p, activeGlobalProfile)).length;
+    const extensionTools = extensionToolsInfo.filter((info) => info.tools.length > 0);
+    const enabledExtensionToolsCount = extensionTools.filter((info) => !(activeGlobalProfile?.disabledExtensionTools || []).includes(info.extensionId)).length;
 
     const getSubagentTooltipContent = (profile: AgentProfile) => {
       const firstLine =
@@ -306,6 +326,7 @@ export const AgentSelector = memo(
             <div className="py-2 border-b border-border-default-dark">
               <div className="flex items-center justify-between mb-2 pl-3 pr-2">
                 <span className="text-xs font-medium text-text-secondary uppercase">{t('agentProfiles.title')}</span>
+                <InfoIcon tooltip={t('agentProfiles.infoTooltip')} size="sm" />
               </div>
               <div className="max-h-[250px] overflow-y-auto scrollbar-thin scrollbar-thumb-bg-secondary-light scrollbar-track-bg-primary-light">
                 {profiles.map((profile) => (
@@ -350,7 +371,7 @@ export const AgentSelector = memo(
             </div>
 
             {/* MCP Servers */}
-            {activeTaskProfile && (
+            {activeTaskProfile && Object.keys(mcpServers || {}).length > 0 && (
               <div className="border-b border-border-default-dark">
                 <Accordion
                   title={
@@ -364,21 +385,46 @@ export const AgentSelector = memo(
                   chevronPosition="right"
                 >
                   <div className="max-h-[400px] overflow-y-auto scrollbar-thin scrollbar-thumb-bg-secondary-light scrollbar-track-bg-primary-light pb-2">
-                    {Object.keys(mcpServers || {}).length === 0 ? (
-                      <div className="py-2 text-xs text-text-muted italic">{t('settings.agent.noServersConfiguredGlobal')}</div>
-                    ) : (
-                      Object.keys(mcpServers || {}).map((serverName) => (
-                        <McpServerSelectorItem
-                          key={serverName}
-                          serverName={serverName}
-                          config={mcpServers?.[serverName]}
-                          projectDir={projectDir}
-                          disabled={!enabledServers.includes(serverName)}
-                          toolApprovals={activeTaskProfile?.toolApprovals || {}}
-                          onToggle={handleToggleServer}
-                        />
-                      ))
-                    )}
+                    {Object.keys(mcpServers || {}).map((serverName) => (
+                      <McpServerSelectorItem
+                        key={serverName}
+                        serverName={serverName}
+                        config={mcpServers?.[serverName]}
+                        projectDir={projectDir}
+                        disabled={!enabledServers.includes(serverName)}
+                        toolApprovals={activeTaskProfile?.toolApprovals || {}}
+                        onToggle={handleToggleServer}
+                      />
+                    ))}
+                  </div>
+                </Accordion>
+              </div>
+            )}
+
+            {/* Extension Tools */}
+            {activeTaskProfile && extensionTools.length > 0 && (
+              <div className="border-b border-border-default-dark">
+                <Accordion
+                  title={
+                    <div className="flex items-center w-full">
+                      <span className="text-xs flex-1 font-medium text-text-secondary text-left px-1 uppercase">{t('settings.agent.extensionTools')}</span>
+                      <span className="text-2xs text-text-tertiary bg-secondary-light px-1.5 py-0.5 rounded">
+                        {enabledExtensionToolsCount}/{extensionTools.length}
+                      </span>
+                    </div>
+                  }
+                  chevronPosition="right"
+                >
+                  <div className="pb-2">
+                    {extensionTools.map((extensionInfo) => (
+                      <ExtensionToolsSelectorItem
+                        key={extensionInfo.extensionId}
+                        extensionInfo={extensionInfo}
+                        disabled={(activeGlobalProfile?.disabledExtensionTools || []).includes(extensionInfo.extensionId)}
+                        toolApprovals={activeTaskProfile?.toolApprovals || {}}
+                        onToggle={handleToggleExtensionTools}
+                      />
+                    ))}
                   </div>
                 </Accordion>
               </div>

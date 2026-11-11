@@ -13,6 +13,7 @@ const sidebars: SidebarsConfig = {
         "getting-started/quick-start",
         "getting-started/managing-projects",
         "getting-started/development",
+        "getting-started/source-code-map",
       ],
     },
     {
@@ -99,6 +100,7 @@ const sidebars: SidebarsConfig = {
       items: [
         "features/git-worktrees",
         "features/updated-files",
+        "features/task-recovery",
         "features/usage-dashboard",
         "features/web-scraping",
         "features/voice-control",

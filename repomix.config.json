@@ -22,7 +22,16 @@
       "includeDiffs": false
     }
   },
-  "include": [],
+  "include": [
+    "src/**",
+    "packages/**",
+    "resources/connector/**",
+    "scripts/**",
+    "electron-builder.yml",
+    "electron.vite.config.ts",
+    "tailwind.config.js",
+    "package.json"
+  ],
   "ignore": {
     "useGitignore": true,
     "useDefaultPatterns": true,

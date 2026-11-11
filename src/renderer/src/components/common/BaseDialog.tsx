@@ -1,5 +1,6 @@
 import { FocusTrap } from 'focus-trap-react';
 import { ReactNode, useRef } from 'react';
+import { createPortal } from 'react-dom';
 import { useTranslation } from 'react-i18next';
 import { twMerge } from 'tailwind-merge';
 import { useHotkeys } from 'react-hotkeys-hook';
@@ -43,7 +44,7 @@ export const BaseDialog = ({
   const dialogContent = (
     <div
       style={{ width: `${width}px` }}
-      className="bg-bg-secondary-light-strongest shadow-2xl rounded-xl border border-bg-tertiary-strong max-h-[90vh] flex flex-col"
+      className="bg-bg-secondary-light-strongest shadow-2xl rounded-xl border border-bg-tertiary-strong max-w-[min(90vw,100%)] min-w-0 max-h-[90vh] flex flex-col [overflow-wrap:anywhere]"
       ref={dialogRef}
     >
       <div className="px-6 py-4 border-b border-bg-tertiary-strong flex-shrink-0">
@@ -57,7 +58,7 @@ export const BaseDialog = ({
       >
         {children}
       </div>
-      <div className="px-6 py-4 border-t border-bg-tertiary-strong flex justify-end space-x-3 flex-shrink-0">
+      <div className="px-6 py-4 border-t border-bg-tertiary-strong flex flex-wrap justify-end gap-3 flex-shrink-0">
         {footer || (
           <button onClick={onClose} className="bg-bg-fourth text-text-primary px-4 py-2 rounded hover:bg-bg-fifth">
             {closeButtonText || t('common.cancel')}
@@ -67,12 +68,13 @@ export const BaseDialog = ({
     </div>
   );
 
-  return (
+  return createPortal(
     <div
       className="fixed inset-0 top-0 bottom-0 left-0 right-0 bg-black/50 backdrop-blur-sm flex items-center justify-center z-50 p-4 overflow-y-auto"
       data-dialog-open="true"
     >
       {enableFocusTrap ? <FocusTrap focusTrapOptions={{ allowOutsideClick: true, escapeDeactivates: false }}>{dialogContent}</FocusTrap> : dialogContent}
-    </div>
+    </div>,
+    document.body,
   );
 };

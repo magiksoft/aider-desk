@@ -9,7 +9,7 @@ Complete reference for the `AgentProfile` interface defined in `packages/common/
 | `id` | string | Unique profile identifier (any unique string; readable names like `"code-reviewer"` are fine — no UUID needed) | `"code-reviewer"` |
 | `name` | string | Display name of the profile | `"Code Reviewer"` |
 | `provider` | string | LLM provider ID. Defaults to `"anthropic"` if not specified (see `DEFAULT_AGENT_PROFILE` / `DEFAULT_PROVIDER_MODELS` in `packages/common/src/agent.ts`). | `"anthropic"`, `"openai"`, `"ollama"` |
-| `model` | string | Model identifier. Defaults to the provider's default model (`"claude-sonnet-5"` for anthropic) if not specified. | `"claude-sonnet-5"`, `"gpt-5.5"` |
+| `model` | string | Model identifier. Falls back to the provider's default in `DEFAULT_PROVIDER_MODELS` (`"claude-opus-5"` for anthropic). Only use defaults you have verified are actually configured in the app — better: infer from sibling profiles or ask the user. | `"claude-opus-5"`, `"glm-5.2"` |
 | `maxIterations` | number | Max thinking/acting cycles per prompt. `0` means unlimited (this is the default). | `250`, `0` |
 | `minTimeBetweenToolCalls` | number | Delay in ms between tool calls (rate limiting) | `0` |
 | `enabledServers` | string[] | List of MCP server names | `["filesystem", "github"]` |
@@ -23,6 +23,7 @@ Complete reference for the `AgentProfile` interface defined in `packages/common/
 | `useSubagents` | boolean | Enable subagent delegation | `false` |
 | `useTaskTools` | boolean | Enable task management tools | `false` |
 | `useMemoryTools` | boolean | Enable memory tools | `false` |
+| `useAgentMemoryScope` | boolean | When `true`, memory tools use a dedicated per-agent scope instead of the shared project-directory scope. Useful for domain-specialized agents needing isolated persistent context (e.g., brand voice, market intel). | `false` |
 | `useSkillsTools` | boolean | Enable skills tools | `false` |
 | `useExtensionTools` | boolean | Enable tools from installed extensions | `true` |
 | `disabledExtensionTools` | string[] | Extension IDs whose tools are disabled | `["my-extension"]` |
@@ -46,6 +47,11 @@ Complete reference for the `AgentProfile` interface defined in `packages/common/
 **Note:** `isSubagent` is a runtime flag set by the system when this profile is being used as a subagent. Do not include it in config.json.
 
 ## System Prompt Behavior
+
+### Choosing Between `systemPrompt`, `customInstructions`, and Rules Files
+
+- Put the agent's **role, identity, and behavior** in `systemPrompt` — it applies whenever the profile runs as the main agent. Do not put role definitions into `customInstructions`; that field is for small additive notes when keeping the default built-in prompt (OS info, project context, tool permissions) matters more.
+- `systemPrompt` replaces the default template-generated prompt, so durable background knowledge (project facts, voice/brand guidelines, product state, links) should live in a `rules/*.md` file next to `config.json` — rule files are appended automatically, giving the agent context from the start instead of instructing it to "re-read the README each time."
 
 The system prompt is resolved by `PromptsManager.getSystemPrompt()`:
 
@@ -158,7 +164,7 @@ type ToolSettings = BashToolSettings;
 - `aider---get_context_files` - Get Aider context files
 - `aider---add_context_files` - Add files to Aider context
 - `aider---drop_context_files` - Remove files from Aider context
-- `aider---run` - Run Aider commands
+- `aider---run_prompt` - Run an Aider prompt (tool name is `run_prompt`, not `run`)
 
 ### Subagents Tools Group (`useSubagents`)
 - `subagents---run_task` - Delegate to subagent
@@ -204,7 +210,7 @@ When loading a profile, these defaults are applied if missing:
   id: the profile id as written (populated if empty; authors should just provide a unique readable id),
   name: derived from directory name (if empty),
   provider: 'anthropic',
-  model: 'claude-sonnet-5' (default model for anthropic),
+  model: 'claude-opus-5' (default model for anthropic),
   maxIterations: 0 (unlimited),
   includeContextFiles: false,
   includeRepoMap: false,
@@ -254,7 +260,7 @@ Rule files are markdown files that provide additional instructions appended to t
   "id": "code-reviewer",
   "name": "Code Reviewer",
   "provider": "anthropic",
-  "model": "claude-sonnet-5",
+  "model": "claude-opus-5",
   "maxIterations": 150,
   "minTimeBetweenToolCalls": 0,
   "maxTokens": 8192,

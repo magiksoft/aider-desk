@@ -1,0 +1,38 @@
+# AiderDesk
+
+> AiderDesk is an open-source AI coding desktop application built with Electron, React, and TypeScript. It combines Aider integration with autonomous agents, multiple model providers, MCP tools, and extensions.
+
+Use the documentation for product behavior and public APIs. Use the source map for implementation details. Source links follow the main branch; check the relevant release tag when investigating an older version. This file is a navigation index, not a source-code bundle or an access policy.
+
+## Getting started
+
+- [Documentation overview](https://aiderdesk.dev/docs): Product overview and documentation navigation.
+- [Installation](https://aiderdesk.dev/docs/getting-started/installation): Install AiderDesk.
+- [Quick start](https://aiderdesk.dev/docs/getting-started/quick-start): Configure a project and start coding.
+- [Development setup](https://aiderdesk.dev/docs/getting-started/development): Run from source, contribute, and generate an on-demand code bundle.
+
+## Workflows and configuration
+
+- [Agent mode](https://aiderdesk.dev/docs/agent-mode/agent-mode): Agent capabilities and workflow.
+- [Context files](https://aiderdesk.dev/docs/core/context-files): Manage the files available to models.
+- [Model providers](https://aiderdesk.dev/docs/configuration/providers): Configure model providers.
+- [Git worktrees](https://aiderdesk.dev/docs/features/git-worktrees): Isolate tasks and integrate changes.
+- [MCP servers](https://aiderdesk.dev/docs/agent-mode/mcp-servers): Connect external tools.
+- [Skills](https://aiderdesk.dev/docs/agent-mode/skills): Reusable agent instructions.
+
+## Extensions and integrations
+
+- [Creating extensions](https://aiderdesk.dev/docs/extensions/creating-extensions): Extension development guide.
+- [Extension API reference](https://aiderdesk.dev/docs/extensions/api-reference): Extension context and public interfaces.
+- [Extension events](https://aiderdesk.dev/docs/extensions/events): Event hooks for customizing behavior.
+- [REST API](https://aiderdesk.dev/docs/integrations/rest-api): External HTTP integration.
+- [Browser API](https://aiderdesk.dev/docs/integrations/browser-api): Browser-client integration.
+- [AiderDesk MCP server](https://aiderdesk.dev/docs/integrations/aider-mcp-server): Expose AiderDesk to MCP clients.
+
+## Source code
+
+- [Source code map](https://raw.githubusercontent.com/magiksoft/aider-desk/main/docs-site/docs/getting-started/source-code-map.md): Markdown subsystem guide with folder and entry-point links; start here to locate implementation code.
+- [Source code map on the docs site](https://aiderdesk.dev/docs/getting-started/source-code-map): Human-readable version of the subsystem guide.
+- [Contributor instructions](https://raw.githubusercontent.com/magiksoft/aider-desk/main/AGENTS.md): Architecture, development commands, and repository guidance.
+- [Shared application API](https://raw.githubusercontent.com/magiksoft/aider-desk/main/packages/common/src/api.ts): ApplicationAPI contract shared by desktop and browser clients.
+- [Extension interfaces](https://raw.githubusercontent.com/magiksoft/aider-desk/main/packages/common/src/extensions.ts): Source of truth for extension types.

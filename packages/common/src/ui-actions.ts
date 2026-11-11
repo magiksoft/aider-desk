@@ -51,10 +51,17 @@ export const UI_ACTIONS = [
   { id: 'task.modelSelector', labelKey: 'uiActions.openModelSelector' },
   { id: 'task.agentProfileSelector', labelKey: 'uiActions.changeAgentProfile' },
 
+  // Task: modes
+  { id: 'task.mode.agent', labelKey: 'uiActions.switchToAgentMode', descriptionKey: 'modeTooltip.agent' },
+  { id: 'task.mode.code', labelKey: 'uiActions.switchToCodeMode', descriptionKey: 'modeTooltip.code' },
+  { id: 'task.mode.ask', labelKey: 'uiActions.switchToAskMode', descriptionKey: 'modeTooltip.ask' },
+  { id: 'task.mode.architect', labelKey: 'uiActions.switchToArchitectMode', descriptionKey: 'modeTooltip.architect' },
+  { id: 'task.mode.context', labelKey: 'uiActions.switchToContextMode', descriptionKey: 'modeTooltip.context' },
+
   // Task: autonomy modes
-  { id: 'task.autonomy.manual', labelKey: 'promptField.autonomyManual', descriptionKey: 'uiActions.setAutonomyMode' },
-  { id: 'task.autonomy.guided', labelKey: 'promptField.autonomyGuided', descriptionKey: 'uiActions.setAutonomyMode' },
-  { id: 'task.autonomy.autonomous', labelKey: 'promptField.autonomyAutonomous', descriptionKey: 'uiActions.setAutonomyMode' },
+  { id: 'task.autonomy.manual', labelKey: 'common.autonomyManual', descriptionKey: 'uiActions.setAutonomyMode' },
+  { id: 'task.autonomy.guided', labelKey: 'common.autonomyGuided', descriptionKey: 'uiActions.setAutonomyMode' },
+  { id: 'task.autonomy.autonomous', labelKey: 'common.autonomyAutonomous', descriptionKey: 'uiActions.setAutonomyMode' },
 
   // Task: working mode
   { id: 'task.workingMode.local', labelKey: 'uiActions.switchToLocal', descriptionKey: 'uiActions.switchWorkingMode' },

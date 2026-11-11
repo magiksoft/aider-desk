@@ -36,20 +36,50 @@ import {
   SwitchToWorktreeOptions,
   TodoItem,
   ToolApprovalState,
+  ToolRecoveryMode,
   TlsPolicyRegistrar,
   UpdatedFile,
   UsageReportData,
   VoiceSession,
-  WorktreeUncommittedFiles,
+  UncommittedFiles,
+  Worktree,
 } from '@common/types';
 
-export { AutonomyMode, ContextMemoryMode, InvocationMode, OS, ToolApprovalState };
-export type { ModelCallSettings, ModelCallTimeout, Reasoning, SwitchToLocalOptions, SwitchToWorktreeOptions, WorktreeUncommittedFiles };
+export { AutonomyMode, ContextMemoryMode, InvocationMode, OS, ToolApprovalState, ToolRecoveryMode };
+export type { ModelCallSettings, ModelCallTimeout, Reasoning, SwitchToLocalOptions, SwitchToWorktreeOptions, UncommittedFiles };
+
+export interface ContextGenerationOptions {
+  abortSignal?: AbortSignal;
+  maxOutputTokens?: number;
+}
+
+export interface ContextGenerationUsage {
+  inputTokens: number | undefined;
+  outputTokens: number | undefined;
+  totalTokens: number | undefined;
+  inputTokenDetails: {
+    noCacheTokens: number | undefined;
+    cacheReadTokens: number | undefined;
+    cacheWriteTokens: number | undefined;
+  };
+  outputTokenDetails: {
+    textTokens: number | undefined;
+    reasoningTokens: number | undefined;
+  };
+  raw?: unknown;
+}
+
+export interface ContextGenerationResult<T> {
+  output: T;
+  usage: ContextGenerationUsage;
+  providerMetadata?: unknown;
+  finishReason: string;
+}
 
 export type AgentStepResult = unknown;
 export type { ModeDefinition };
 
-export const AIDER_DESK_EXTENSIONS_REPO_URL = 'https://github.com/hotovo/aider-desk/tree/main/packages/extensions/extensions/';
+export const AIDER_DESK_EXTENSIONS_REPO_URL = 'https://github.com/magiksoft/aider-desk/tree/main/packages/extensions/extensions/';
 
 export interface ResponseMessage {
   id: string;
@@ -98,9 +128,13 @@ export interface ToolResult {
  * Definition of a tool that is part of the tool set. This tool can be executed internally by extension, but it won't be propagated to UI.
  *
  * @execute - Optional execute function. If not provided, the tool has other unsupported means of execution.
+ * @description - Optional tool description as provided to the LLM.
+ * @inputSchema - Optional input schema of the tool (zod schema or JSON schema, depending on the tool origin).
  */
 export interface Tool {
   execute?: (input: Record<string, unknown>) => Promise<unknown>;
+  description?: string;
+  inputSchema?: unknown;
 }
 
 /**
@@ -122,6 +156,7 @@ export interface Tool {
  * ```
  */
 export interface ToolDefinition<TSchema extends z.ZodType = z.ZodType<Record<string, unknown>>> {
+  recoveryMode?: ToolRecoveryMode;
   /** Tool identifier in kebab-case (e.g., 'run-linter') */
   name: string;
   /** Description for LLM to understand tool purpose */
@@ -154,6 +189,13 @@ export interface CacheControl {
   placement?: 'message' | 'message-part';
 }
 
+export type ProviderToolApprovalHandler = (
+  toolName: string,
+  input: Record<string, unknown>,
+  text: string,
+  subject?: string,
+) => Promise<[approved: boolean, reason?: string]>;
+
 /**
  * Simplified provider strategy for extensions.
  * Only `createLlm` and `loadModels` are required.
@@ -170,6 +212,7 @@ export interface ExtensionProviderStrategy {
     providerMetadata?: unknown,
     tlsRegistrar?: TlsPolicyRegistrar,
     sessionId?: string,
+    approveTool?: ProviderToolApprovalHandler,
   ) => unknown | Promise<unknown>;
   loadModels: (profile: ProviderProfile, settings: SettingsData, tlsRegistrar?: TlsPolicyRegistrar) => Promise<LoadModelsResponse>;
 
@@ -288,11 +331,32 @@ export interface MessageFilter {
  */
 export type UIComponent = object;
 
+/** Props accepted by the extension-exposed ui.ModelSelector wrapper. */
+export interface ModelSelectorProps {
+  className?: string;
+  selectedModelId?: string | null;
+  onChange: (model: Model | null) => void;
+  /** Overrides the core catalog, including favorites. An empty array allows no models. */
+  models?: Model[];
+  /** Overrides provider labels and disabled state; defaults to core providers. */
+  providers?: ProviderProfile[];
+  /** Controlled provider-qualified IDs. When supplied (even empty), core favorites are never changed. */
+  preferredModels?: string[];
+  /** Receives the next complete controlled list; the extension must update its props and persist it. */
+  onPreferredModelsChange?: (preferredModels: string[]) => void;
+  popupPlacement?: 'top' | 'bottom';
+  labelOnNull?: string;
+  /** Suppresses selection-driven favorite updates, not explicit removal. */
+  skipPreferredModelsUpdate?: boolean;
+  usePortal?: boolean;
+}
+
 /**
  * Common UI components available to extension JSX components
  */
 export interface UIComponents {
   Button: UIComponent;
+  SplitButton: UIComponent;
   Checkbox: UIComponent;
   Input: UIComponent;
   Select: UIComponent;
@@ -303,6 +367,7 @@ export interface UIComponents {
   Slider: UIComponent;
   DatePicker: UIComponent;
   Chip: UIComponent;
+  /** Accepts ModelSelectorProps at runtime. */
   ModelSelector: UIComponent;
   Tooltip: UIComponent;
   LoadingOverlay: UIComponent;
@@ -388,6 +453,20 @@ export interface TaskPreparedEvent {
 /** Event payload for task initialization events */
 export interface TaskInitializedEvent {
   readonly task: TaskData;
+}
+
+export interface WorktreeCreatedEvent {
+  readonly task: TaskData;
+  readonly worktree: Worktree;
+}
+
+export interface WorktreeMergedEvent {
+  readonly task: TaskData;
+  readonly worktree: Worktree;
+  readonly targetPath: string;
+  readonly targetBranch?: string;
+  readonly squash: boolean;
+  readonly includeUncommitted: boolean;
 }
 
 /** Event payload for task closed events */
@@ -484,14 +563,27 @@ export interface AgentStepFinishedEvent {
   readonly agentProfile: AgentProfile;
   readonly currentResponseId: string;
   readonly stepResult: AgentStepResult;
-  finishReason: 'stop' | 'length' | 'content-filter' | 'tool-calls' | 'error' | 'other';
+  finishReason: 'stop' | 'length' | 'content-filter' | 'tool-calls' | 'error' | 'other' | 'interrupted';
   responseMessages: ContextMessage[];
 }
 
-/** Event payload for message optimization events */
+/** Event payload for stored-context to model-message transformations. */
+export interface TransformMessagesEvent {
+  readonly originalMessages: ContextMessage[];
+  transformedMessages: ContextMessage[];
+}
+
+/** Event payload for optional optimizations. Original messages are the transformation stage's output. */
 export interface OptimizeMessagesEvent {
   readonly originalMessages: ContextMessage[];
   optimizedMessages: ContextMessage[];
+}
+
+/** Event payload after provider compatibility and default cache annotation. */
+export interface ApplyCacheControlEvent {
+  readonly originalMessages: ContextMessage[];
+  readonly cacheControl?: CacheControl;
+  messages: ContextMessage[];
 }
 
 /** Event payload for important reminders events */
@@ -512,6 +604,9 @@ export interface ToolApprovalEvent {
 
 /** Event payload for tool called events */
 export interface ToolCalledEvent {
+  recoveryMode?: ToolRecoveryMode;
+  readonly isReplay?: boolean;
+  readonly replayAttempt?: number;
   readonly toolCallId: string;
   readonly toolName: string;
   readonly agentProfile: AgentProfile;
@@ -527,6 +622,53 @@ export interface ToolFinishedEvent {
   readonly agentProfile: AgentProfile;
   readonly input: Record<string, unknown> | undefined;
   output: unknown;
+}
+
+/** A tool entry as exposed to extensions in toolset events */
+export interface ToolsetToolEntry {
+  recoveryMode?: ToolRecoveryMode;
+  recoveryModeKey?: string;
+  replayOwner?: string;
+  description?: string;
+  inputSchema?: unknown;
+  execute?(input: Record<string, unknown>, options?: unknown): Promise<unknown>;
+}
+
+/**
+ * Marker key set on a tool's execution options when the tool is invoked internally by an
+ * extension (through the `allTools` map passed to `ExtensionTool.execute`) instead of by the
+ * model. The agent's tool wrapper reads it to honour the documented contract that
+ * extension-internal tool calls are not propagated to the UI and do not take part in durability.
+ */
+export const EXTENSION_ORIGIN: unique symbol = Symbol('aiderDesk.extensionOrigin');
+
+/**
+ * Flags describing how an extension-originated tool call should be handled.
+ *
+ * Both flags are currently always `false`. They are kept as a structured option (instead of a
+ * bare boolean) to prepare for a future capability where extensions can opt their internal tool
+ * calls into UI surfacing and/or durable execution.
+ */
+export interface ExtensionToolOrigin {
+  /** Whether the internal call should participate in durable execution/replay. */
+  durable: boolean;
+  /** Whether the internal call should be surfaced as a tool message in the UI. */
+  surfaceInUi: boolean;
+}
+
+/** Event payload for toolset created events */
+export interface ToolsetCreatedEvent {
+  readonly mode: Mode;
+  readonly agentProfile: AgentProfile;
+  readonly providerProfile: ProviderProfile;
+  readonly model: string;
+  readonly promptContext?: PromptContext;
+  /**
+   * The complete toolset (built-in, MCP, and extension tools) for the agent run.
+   * Return `{ tools }` with a new record to replace it (e.g. to add or remove tools).
+   * Return a new record instead of mutating - when multiple extensions return tools, the last one wins.
+   */
+  tools: Record<string, ToolsetToolEntry>;
 }
 
 /** Event payload for files added events */
@@ -635,6 +777,7 @@ export interface InterruptedEvent {
 export interface BeforeCommitEvent {
   message: string;
   amend: boolean;
+  skipGitHooks?: boolean;
   blocked?: boolean;
 }
 
@@ -649,6 +792,54 @@ export interface QuestionOptions {
   subject?: string;
   answers?: Array<{ text: string; shortkey: string }>;
   defaultAnswer?: string;
+}
+
+/** Selection of individual smart compaction passes. Omitted flags default to true. */
+export interface SmartCompactionPasses {
+  /** Remove errored/no-op power tool calls */
+  erroredTools?: boolean;
+  /** Collapse repeated file edit/write calls into <file-edited> markers */
+  fileEdits?: boolean;
+  /** Remove file reads that precede later edits of the same file */
+  staleFileReads?: boolean;
+  /** Truncate/redact file read outputs */
+  fileReads?: boolean;
+  /** Remove glob/grep searches made obsolete by later edits */
+  searches?: boolean;
+  /** Remove/deduplicate semantic search results */
+  semanticSearches?: boolean;
+  /** Deduplicate bash commands and redact their outputs */
+  bash?: boolean;
+  /** Redact fetch outputs */
+  fetch?: boolean;
+  /** Truncate results of non-power (MCP/extension) tools */
+  otherTools?: boolean;
+  /** Remove tool calls with verbose inputs */
+  verboseToolCalls?: boolean;
+  /** Remove reasoning parts from assistant messages */
+  reasoning?: boolean;
+}
+
+/** Options for manual smart compaction of the task context. */
+export interface SmartCompactionOptions {
+  /** Number of most-recent messages protected from compaction (default: 10) */
+  protectedMessageCount?: number;
+  /** Compaction level 1 (mild) to 5 (max). Omit to keep the automatic level. */
+  compactionLevel?: number;
+  /** Which compaction passes to run. Omitted = all passes enabled. */
+  passes?: SmartCompactionPasses;
+}
+
+/** Result of a smart compaction run. */
+export interface SmartCompactionResult {
+  /** Context message count before compaction */
+  messagesBefore: number;
+  /** Context message count after compaction */
+  messagesAfter: number;
+  /** Estimated next-prompt token count before compaction */
+  tokensBefore: number;
+  /** Estimated next-prompt token count after compaction */
+  tokensAfter: number;
 }
 
 /**
@@ -841,9 +1032,10 @@ export interface TaskContext {
    * Get the diff for a single updated file (lazily loaded from the backend)
    * @param filePath Path of the file (as returned by getUpdatedFiles)
    * @param commitHash Optional commit hash for per-commit diffs in grouped worktree mode
+   * @param previousPath Optional original path for renamed files (as returned by getUpdatedFiles)
    * @returns Unified diff string (empty for binary files or on error)
    */
-  getUpdatedFileDiff(filePath: string, commitHash?: string): Promise<string>;
+  getUpdatedFileDiff(filePath: string, commitHash?: string, previousPath?: string): Promise<string>;
 
   /**
    * Get the cached repository map string.
@@ -1005,6 +1197,16 @@ export interface TaskContext {
    */
   generateObject<T = unknown>(modelId: string, systemPrompt: string, prompt: string, schema: z.ZodType<T>): Promise<T | undefined>;
 
+  /**
+   * Generate one response from a snapshot of the task's current prepared context and selected agent profile.
+   * Retains tool definitions with toolChoice none; never executes tools or persists the generated messages.
+   * Does not reproduce transient overrides from an earlier agent execution. Cache reuse is provider-dependent.
+   */
+  generateTextFromContext(prompt: string, options?: ContextGenerationOptions): Promise<ContextGenerationResult<string>>;
+
+  /** Generate structured output from task context with the same read-only semantics as generateTextFromContext. */
+  generateObjectFromContext<T>(prompt: string, schema: z.ZodType<T>, options?: ContextGenerationOptions): Promise<ContextGenerationResult<T>>;
+
   // User Interaction
 
   /**
@@ -1021,10 +1223,12 @@ export interface TaskContext {
   /**
    * Send a log message to the UI via the event manager.
    * Log messages appear in the task's message stream as informational, error, or warning entries.
+   * Persistent log messages are also saved to the task context and survive page reloads, compaction, or restart.
    * @param level - Severity level: 'info', 'error', or 'warning'
    * @param message - The log message text
+   * @param persistent - If true, the message is persisted in the task context (not sent to the AI)
    */
-  addLogMessage(level: 'info' | 'error' | 'warning', message?: string): void;
+  addLogMessage(level: 'info' | 'error' | 'warning', message?: string, persistent?: boolean): void;
 
   /**
    * Show or update a loading indicator in the task's UI.
@@ -1076,6 +1280,22 @@ export interface TaskContext {
    * @param instructions - Optional custom instructions to guide the compaction process
    */
   compactConversation(instructions?: string): Promise<void>;
+
+  /**
+   * Run smart (rule-based) compaction on the task's context with manual controls.
+   * Backs up the current context (undoable), applies the selected compaction passes,
+   * reloads the UI and connectors, and refreshes the context info.
+   * @param options - Optional settings: protected message window, compaction level (1-5), and pass selection
+   * @returns Message and estimated token counts before and after compaction
+   */
+  smartCompact(options?: SmartCompactionOptions): Promise<SmartCompactionResult>;
+
+  /**
+   * Estimate the number of tokens the next agent prompt would use
+   * (system prompt, tools, context messages, and context files included).
+   * @returns Estimated token count, or 0 if no agent profile is configured
+   */
+  getEstimatedTokens(): Promise<number>;
 
   /**
    * Generate a markdown representation of the context messages in the context manager.
@@ -1181,7 +1401,7 @@ export interface TaskContext {
    * Get uncommitted files from the project's main repository (not from a worktree).
    * @returns Object containing arrays of unstaged, staged, and untracked file paths
    */
-  getLocalUncommittedFiles(): Promise<WorktreeUncommittedFiles>;
+  getLocalUncommittedFiles(): Promise<UncommittedFiles>;
 
   /**
    * Apply uncommitted changes from the task's worktree to the branch currently checked out
@@ -1515,6 +1735,13 @@ export interface ExtensionContext {
   getSetting(key: string): Promise<unknown>;
 
   /**
+   * Get the configured provider profiles (LLM provider settings including API keys).
+   * Results are read-only snapshots from the ModelManager; empty array when not available.
+   * @returns Array of ProviderProfile currently configured by the user
+   */
+  getProviders(): ProviderProfile[];
+
+  /**
    * Get the merged MCP server configurations (global servers overridden by project-specific ones)
    * available for the current project context. Returns an empty object if no project context is
    * available or the MCP config manager is not wired up.
@@ -1619,15 +1846,17 @@ export interface ExtensionContext {
 export interface MemoryContext {
   /**
    * Store a new memory entry
+   * @param scopeId - Memory scope: the project directory, or `agent-profile:{profileId}` when the agent profile has memory isolation (`useAgentMemoryScope`) enabled
    * @returns The ID of the created memory
    */
-  storeMemory(projectId: string, taskId: string, type: MemoryEntryType, content: string): Promise<string>;
+  storeMemory(scopeId: string, taskId: string, type: MemoryEntryType, content: string): Promise<string>;
 
   /**
    * Retrieve memories by semantic similarity
+   * @param scopeId - Memory scope: the project directory, or `agent-profile:{profileId}` when the agent profile has memory isolation (`useAgentMemoryScope`) enabled
    * @returns Array of matching memory entries, ranked by relevance
    */
-  retrieveMemories(projectId: string, query: string, limit?: number): Promise<MemoryEntry[]>;
+  retrieveMemories(scopeId: string, query: string, limit?: number): Promise<MemoryEntry[]>;
 
   /**
    * Get a single memory by ID
@@ -1887,6 +2116,14 @@ export interface Extension {
    */
   onTaskDeleted?(event: TaskDeletedEvent, context: ExtensionContext): Promise<void | Partial<TaskDeletedEvent>>;
 
+  // Worktree Events
+
+  /** Called after a new worktree, symlinks, and the configured post-create command are ready. Not called for reused worktrees. */
+  onWorktreeCreated?(event: WorktreeCreatedEvent, context: ExtensionContext): Promise<void>;
+
+  /** Called after a successful merge, before source worktree cleanup. targetBranch is provided for merges to a project branch. */
+  onWorktreeMerged?(event: WorktreeMergedEvent, context: ExtensionContext): Promise<void>;
+
   // Project Events
 
   /**
@@ -1950,8 +2187,21 @@ export interface Extension {
   onAgentStepFinished?(event: AgentStepFinishedEvent, context: ExtensionContext): Promise<void | Partial<AgentStepFinishedEvent>>;
 
   /**
+   * Override default context transformations, including Aider and subagent result reduction.
+   * Original messages include reminders. Transformations are not reapplied after this hook.
+   */
+  onTransformMessages?(event: TransformMessagesEvent, context: ExtensionContext): Promise<void | Partial<TransformMessagesEvent>>;
+
+  /**
+   * Override cache annotation after provider compatibility conversion, even without a default cache policy.
+   * Return originalMessages as messages to disable default cache annotation.
+   */
+  onApplyCacheControl?(event: ApplyCacheControlEvent, context: ExtensionContext): Promise<void | Partial<ApplyCacheControlEvent>>;
+
+  /**
    * Called when messages are optimized before being sent to the LLM
-   * Modify event.optimizedMessages to change the messages that will be sent
+   * Original messages are the transformation output, not raw stored context.
+   * Modify event.optimizedMessages to override optional optimizations
    * @returns void or partial event to modify optimized messages
    */
   onOptimizeMessages?(event: OptimizeMessagesEvent, context: ExtensionContext): Promise<void | Partial<OptimizeMessagesEvent>>;
@@ -1993,6 +2243,13 @@ export interface Extension {
    * @returns void or partial event to modify result
    */
   onToolFinished?(event: ToolFinishedEvent, context: ExtensionContext): Promise<void | Partial<ToolFinishedEvent>>;
+
+  /**
+   * Called after the complete toolset for an agent run has been created (built-in, MCP, and extension tools)
+   * Return { tools } with a new record to replace the toolset (e.g. to add or remove tools)
+   * @returns void or partial event to modify the toolset
+   */
+  onToolsetCreated?(event: ToolsetCreatedEvent, context: ExtensionContext): Promise<void | Partial<ToolsetCreatedEvent>>;
 
   // File Events
 

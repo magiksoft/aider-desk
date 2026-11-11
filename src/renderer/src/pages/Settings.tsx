@@ -1,4 +1,4 @@
-import { AgentProfile, Font, McpServersData, ProjectData, ProviderProfile, SettingsData, Theme } from '@common/types';
+import { AiderSettingsData, AgentProfile, Font, McpServersData, ProjectData, ProviderProfile, SettingsData, Theme } from '@common/types';
 import { Dispatch, ReactNode, SetStateAction, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { clsx } from 'clsx';
@@ -65,6 +65,8 @@ type Props = {
   providers?: ProviderProfile[];
   setProviders?: (providers: ProviderProfile[]) => void;
   onShowLogs?: () => void;
+  aiderProjectOverrides?: Record<string, Partial<AiderSettingsData>>;
+  onAiderProjectOverridesChange?: (baseDir: string, overrides: Partial<AiderSettingsData>) => void;
 };
 
 export const Settings = ({
@@ -85,6 +87,8 @@ export const Settings = ({
   providers,
   setProviders,
   onShowLogs,
+  aiderProjectOverrides,
+  onAiderProjectOverridesChange,
 }: Props) => {
   const { t } = useTranslation();
   const api = useApi();
@@ -117,14 +121,7 @@ export const Settings = ({
       pageId: 'aider',
       label: t('settings.tabs.aider'),
       icon: <MdTerminal className="w-4 h-4" />,
-      children: [
-        { id: 'aider-options', label: t('settings.aider.options') },
-        {
-          id: 'aider-env-vars',
-          label: t('settings.aider.environmentVariables'),
-        },
-        { id: 'aider-context', label: t('settings.aider.context') },
-      ],
+      children: [...(openProjects || []).map((project) => ({ id: `aider-project-${project.baseDir}`, label: getPathBasename(project.baseDir) }))],
     },
     {
       id: 'agents',
@@ -240,7 +237,9 @@ export const Settings = ({
     }
 
     // Handle agent context selection
-    if (pageId === 'agents' && sectionId.startsWith('agent-')) {
+    if (pageId === 'aider' && sectionId.startsWith('aider-project-')) {
+      setSelectedProfileContext(sectionId.replace('aider-project-', ''));
+    } else if (pageId === 'agents' && sectionId.startsWith('agent-')) {
       // Extract project baseDir from sectionId (format: agent-{baseDir})
       const projectBaseDir = sectionId.replace('agent-', '');
       setSelectedProfileContext(projectBaseDir);
@@ -272,7 +271,17 @@ export const Settings = ({
           />
         );
       case 'aider':
-        return <AiderSettings settings={settings} setSettings={updateSettings} />;
+        return (
+          <AiderSettings
+            key={selectedProfileContext}
+            settings={settings}
+            setSettings={updateSettings}
+            openProjects={openProjects}
+            projectOverrides={aiderProjectOverrides}
+            onProjectOverridesChange={onAiderProjectOverridesChange}
+            initialContext={selectedProfileContext}
+          />
+        );
       case 'agents':
         return (
           <AgentSettings

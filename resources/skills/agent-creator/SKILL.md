@@ -25,17 +25,17 @@ Based on the response, internally propose:
 - Name (derived from purpose)
 - Max iterations (default `0` = unlimited; use a finite value like 250 for bounded tasks, or lower for focused tasks like review/analysis: 150)
 - Tool groups (based on purpose — see Step 3)
-- Custom instructions (free-text guidance appended to the system prompt)
-- **System prompt** — does the agent need a fully custom system prompt that replaces the default built-in one? If the user describes specific behavioral constraints, role, or identity, propose a `systemPrompt`.
+- **System prompt** (preferred) — when the user describes a role, identity, or specific behavioral constraints, put that in the top-level `systemPrompt` rather than `customInstructions`. Use `customInstructions` only for small additive notes when keeping the default built-in prompt matters. Note the tradeoff: `systemPrompt` replaces the default prompt (OS info, project context, tool permissions, autonomy mode), so consider whether the agent still needs any of it.
+- **Context via rules files** — for durable background knowledge (project facts, voice/brand guidelines, product state, links), propose a `rules/*.md` file placed in the profile's `rules/` subdirectory instead of writing "read the README/docs each time" instructions. Rules files are appended to the system prompt automatically, so the agent has the context from the start.
 - **Subagent config** — should this profile be usable as a subagent? If yes, gather subagent-specific system prompt, invocation mode, color, description, and context memory mode.
 
 ### Step 2: Provider & Model
 
-Ask: "Which provider/model? (format: provider/model, e.g., anthropic/claude-sonnet-5)"
+Ask: "Which provider/model? (format: provider/model)"
 
 - Split by first slash to get provider and model
 - Use as-is (correct obvious typos only)
-- If the user does not specify, **default to `anthropic` / `claude-sonnet-5`** (matching `DEFAULT_AGENT_PROFILE` / `DEFAULT_PROVIDER_MODELS` in `packages/common/src/agent.ts`). You may ask the user for their preferred provider/model, but if none is given, use these defaults.
+- Do NOT assume any specific provider/model is available — configured providers vary per app installation. If the user does not specify, infer from an existing profile in the target agents directory (read a sibling `config.json`), or explicitly ask the user to pick from the providers configured in the app.
 - Optionally ask about `temperature` and `maxTokens` if the purpose implies precision (low temp) or creativity (high temp)
 
 ### Step 3: Tool Groups & Approvals
@@ -46,14 +46,20 @@ Based on the purpose, propose tool groups to enable. Present each group with a b
 |----------------|-------------|----------------|
 | `usePowerTools` | File read/write/edit, glob, grep, bash, semantic_search, fetch | Most agents needing file or system access |
 | `useAiderTools` | Aider AI code generation context management and run | Code generation/refactoring agents |
-| `useTodoTools` | Todo list management | Agents tracking multi-step work |
-| `useSubagents` | Delegate tasks to subagents | Orchestrator/manager agents |
-| `useTaskTools` | Create/list/get/delete/search tasks, run prompts | Project management agents |
+| `useTodoTools` | Todo list management | Enable by default; only disable when the agent definitely won't use it (no need to ask) |
+| `useSubagents` | Delegate tasks to subagents | Orchestrator/manager agents (see capability questions) |
+| `useTaskTools` | Create/list/get/delete/search tasks, run prompts | Orchestration/coordination agents only — infer from purpose, don't ask |
 | `useMemoryTools` | Store/retrieve persisted knowledge | Most agents (disabled for stateless ones) |
 | `useSkillsTools` | Activate skills | Agents that benefit from specialized skills |
 | `useExtensionTools` | Tools provided by installed extensions (default: true) | Most agents; disable for sandboxed/isolated profiles |
 
 For each enabled group, propose tool approval defaults (`always`, `ask`, `never`). Only include tools in `toolApprovals` that deviate from the default `"ask"`.
+
+**Capability questions** (ask these alongside tool groups):
+
+- **Memory scope:** ask whether the agent should share project-wide memory (default, `useAgentMemoryScope: false`) or have its own **isolated memory scope** (`useAgentMemoryScope: true` — useful for domain-specialized agents such as brand-voice or market-intelligence agents that need their own persistent context). If the agent is stateless, disable memory entirely instead.
+- **Delegation:** ask generically "Should this agent be able to use subagents?" — you cannot enumerate which subagent profiles exist, so keep the question generic. If yes: `useSubagents: true` with `subagents---run_task: always`. Use `enabledSubagentIds` only if the user explicitly wants a restricted set.
+- **Collaboration:** do not ask — infer from purpose. Enable `useTaskTools` only for orchestration/coordination agents (task tools exist to track and orchestrate other agents/work streams). `useTodoTools` is enabled by default unless the agent definitely won't use it.
 
 If `useSubagents` is enabled, ask: "Should this agent use all available subagents or only specific ones?" — set `enabledSubagentIds` if filtering is needed (omit for all).
 
@@ -159,7 +165,7 @@ See `references/subagent-guide.md` for detailed guidance.
   "id": "my-agent",
   "name": "my-agent",
   "provider": "anthropic",
-  "model": "claude-sonnet-5",
+  "model": "claude-opus-5",
   "maxIterations": 0,
   "minTimeBetweenToolCalls": 0,
   "enabledServers": [],
@@ -191,7 +197,7 @@ See `references/subagent-guide.md` for detailed guidance.
 }
 ```
 
-**Note on defaults shown above:** `id` is any unique readable string (no UUID needed). When the user does not specify provider/model, default to `anthropic` / `claude-sonnet-5`. `maxIterations: 0` means unlimited. `includeContextFiles` and `includeRepoMap` both default to `false` — the values above are defaults; set them to `true` only when you want context files / repo map included. The subagent `color` default is `#3368a8`.
+**Note on defaults shown above:** `id` is any unique readable string (no UUID needed). When the user does not specify provider/model, infer from sibling profiles or ask — don't assume `anthropic`/`claude-sonnet-5` (or any provider) is available. `maxIterations: 0` means unlimited. `includeContextFiles` and `includeRepoMap` both default to `false` — the values above are defaults; set them to `true` only when you want context files / repo map included. The subagent `color` default is `#3368a8`.
 
 ## Validation Checklist
 
@@ -199,7 +205,7 @@ Before writing `config.json`:
 
 - [ ] Unique name
 - [ ] Unique, readable `id` (no UUID required)
-- [ ] Provider/model present (use as-is; default to `anthropic`/`claude-sonnet-5` if unspecified)
+- [ ] Provider/model present (use as-is; do not assume any provider is available — infer from sibling profiles or ask)
 - [ ] Tool keys use `{group}---{tool}` format with three dashes
 - [ ] Tool approval values are "always", "ask", or "never"
 - [ ] Only tools from `references/tool-approval-guide.md` are in `toolApprovals`
@@ -207,6 +213,9 @@ Before writing `config.json`:
 - [ ] `subagent.enabled` reflects whether this profile should be delegable
 - [ ] If `subagent.invocationMode` is "automatic", `description` is non-empty
 - [ ] If `useSubagents` is true and filtering needed, `enabledSubagentIds` is set
+- [ ] Role/behavior is in `systemPrompt` (not `customInstructions`) when the profile mainly runs as a main agent
+- [ ] Durable context is provided via rules files, not "always read X" instructions in the system prompt
+- [ ] Memory-scope decision made explicitly (shared project memory / isolated `useAgentMemoryScope: true` / memory disabled)
 - [ ] `useExtensionTools` and `disabledExtensionTools` included (default: true / [])
 - [ ] `ruleFiles` NOT in config.json (dynamically discovered)
 - [ ] `isSubagent` NOT in config.json (runtime flag)

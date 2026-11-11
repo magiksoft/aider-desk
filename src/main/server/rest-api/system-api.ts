@@ -1,3 +1,6 @@
+import { stat } from 'fs/promises';
+import { basename, isAbsolute } from 'path';
+
 import { Router } from 'express';
 import { z } from 'zod';
 import { SystemLogLevel } from '@common/types';
@@ -6,6 +9,13 @@ import { BaseApi } from './base-api';
 
 import { EventsHandler } from '@/events-handler';
 import { PythonDependenciesInstaller } from '@/python-dependencies-installer';
+
+const DownloadFileSchema = z.object({
+  path: z
+    .string()
+    .min(1)
+    .refine((path) => isAbsolute(path) && !path.includes('\0'), 'An absolute file path is required'),
+});
 
 const GetEffectiveEnvironmentVariableSchema = z.object({
   key: z.string().min(1, 'Key is required'),
@@ -33,6 +43,26 @@ export class SystemApi extends BaseApi {
   }
 
   registerRoutes(router: Router): void {
+    router.post(
+      '/system/download-file',
+      this.handleRequest(async (req, res) => {
+        const parsed = this.validateRequest(DownloadFileSchema, req.body, res);
+        if (!parsed) {
+          return;
+        }
+        const info = await stat(parsed.path).catch(() => null);
+        if (!info?.isFile()) {
+          res.status(404).json({ error: 'File not found or not a regular file' });
+          return;
+        }
+        res.setHeader('Content-Type', 'application/octet-stream');
+        res.setHeader('X-Content-Type-Options', 'nosniff');
+        await new Promise<void>((resolve, reject) => {
+          res.download(parsed.path, basename(parsed.path), { dotfiles: 'allow' }, (error) => (error ? reject(error) : resolve()));
+        });
+      }),
+    );
+
     // Health check
     router.get(
       '/health',

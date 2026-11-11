@@ -1,11 +1,12 @@
 (props) => {
   const { useState, useEffect, useCallback, useMemo, useRef } = React;
-  const { ModalOverlayLayout, Select, Input, IconButton, Button, Tooltip, CodeBlock } = props.ui;
+  const { ModalOverlayLayout, Select, Input, IconButton, Button, Tooltip, CodeBlock, ConfirmDialog, RadioButton, Checkbox } = props.ui;
   const {
     FiGitBranch,
     FiGitCommit,
     FiSearch,
     FiRefreshCw,
+    FiFilter,
     FiAlertCircle,
     FiFileText,
     FiArrowLeft,
@@ -70,6 +71,13 @@
   const [activeFilePath, setActiveFilePath] = useState(null);
   const [branchQuery, setBranchQuery] = useState('');
   const [branchOpen, setBranchOpen] = useState(false);
+  const [filtersOpen, setFiltersOpen] = useState(false);
+  const [logFilters, setLogFilters] = useState({
+    includeCheckpoints: false,
+    includeAiderDeskBranches: true,
+    includeRemoteBranches: true,
+    includeTags: true,
+  });
   const [gitCtx, setGitCtx] = useState(null);
   const [contextMenu, setContextMenu] = useState(null);
   const [dialog, setDialog] = useState(null);
@@ -87,6 +95,7 @@
   const detailContainerRef = useRef(null);
   const loadingMoreRef = useRef(false);
   const branchContainerRef = useRef(null);
+  const filtersContainerRef = useRef(null);
   const contextMenuRef = useRef(null);
   const bannerTimerRef = useRef(null);
   const [isMobile, setIsMobile] = useState(false);
@@ -127,6 +136,9 @@
     const handler = (e) => {
       if (branchContainerRef.current && !branchContainerRef.current.contains(e.target)) {
         setBranchOpen(false);
+      }
+      if (filtersContainerRef.current && !filtersContainerRef.current.contains(e.target)) {
+        setFiltersOpen(false);
       }
       if (contextMenu && contextMenuRef.current && !contextMenuRef.current.contains(e.target)) {
         setContextMenu(null);
@@ -183,10 +195,16 @@
 
   const filteredBranches = useMemo(() => {
     const q = branchQuery.trim().toLowerCase();
-    const list = q ? branches.filter((b) => b.name.toLowerCase().includes(q)) : branches;
+    const list = branches.filter((b) => {
+      if (b.name !== selectedBranch) {
+        if (!logFilters.includeRemoteBranches && b.remote) return false;
+        if (!logFilters.includeAiderDeskBranches && !b.remote && b.name.startsWith('aider-desk/')) return false;
+      }
+      return !q || b.name.toLowerCase().includes(q);
+    });
     const limited = list.slice(0, 200);
     return { list: limited, total: list.length, hasMore: list.length > limited.length };
-  }, [branches, branchQuery]);
+  }, [branches, branchQuery, logFilters, selectedBranch]);
 
   const filteredCommits = useMemo(() => {
     const q = searchQuery.trim().toLowerCase();
@@ -202,7 +220,7 @@
   }, [commits, searchQuery]);
 
   const selectProject = useCallback(
-    async (dir) => {
+    async (dir, preferredBranch) => {
       if (!dir) return;
       setSelectedProject(dir);
       setError(null);
@@ -225,9 +243,10 @@
           setError(branchResult.error);
         }
       }
+      branch = preferredBranch || branch;
       setSelectedBranch(branch);
 
-      const logResult = await executeExtensionAction('get-log', dir, branch, 0, PAGE_SIZE);
+      const logResult = await executeExtensionAction('get-log', dir, branch, 0, PAGE_SIZE, logFilters);
       if (logResult) {
         if (logResult.error) {
           setError(logResult.error);
@@ -241,7 +260,7 @@
       setGitCtx(ctxResult && !ctxResult.error ? ctxResult : null);
       setLoading(false);
     },
-    [executeExtensionAction],
+    [executeExtensionAction, logFilters],
   );
 
   const handleOpen = useCallback(async () => {
@@ -275,7 +294,7 @@
   );
 
   const handleBranchChange = useCallback(
-    async (value) => {
+    async (value, filters = logFilters) => {
       setSelectedBranch(value);
       setError(null);
       setLoading(true);
@@ -284,7 +303,7 @@
       setSelectedCommit(null);
       setCommitDetail(null);
       setActiveFilePath(null);
-      const result = await executeExtensionAction('get-log', selectedProject, value, 0, PAGE_SIZE);
+      const result = await executeExtensionAction('get-log', selectedProject, value, 0, PAGE_SIZE, filters);
       if (result) {
         if (result.error) {
           setError(result.error);
@@ -298,17 +317,35 @@
       setGitCtx(ctxResult && !ctxResult.error ? ctxResult : null);
       setLoading(false);
     },
-    [executeExtensionAction, selectedProject],
+    [executeExtensionAction, selectedProject, logFilters],
   );
 
   const handleBranchSelect = useCallback(
     (value) => {
       setBranchQuery('');
       setBranchOpen(false);
+      setFiltersOpen(false);
       void handleBranchChange(value);
     },
     [handleBranchChange],
   );
+
+  const handleFilterChange = useCallback((key, checked) => {
+    if (loading || loadingMoreRef.current || actionBusy) return;
+    const nextFilters = { ...logFilters, [key]: checked };
+    setLogFilters(nextFilters);
+    void handleBranchChange(selectedBranch, nextFilters);
+  }, [actionBusy, handleBranchChange, loading, logFilters, selectedBranch]);
+
+  const handleToggleFilters = useCallback(() => {
+    setBranchOpen(false);
+    setFiltersOpen((open) => !open);
+  }, []);
+
+  const handleBranchFocus = useCallback(() => {
+    setFiltersOpen(false);
+    setBranchOpen(true);
+  }, []);
 
   const handleRefresh = useCallback(() => {
     void handleBranchChange(selectedBranch);
@@ -327,7 +364,7 @@
     loadingMoreRef.current = true;
     setLoadingMore(true);
     const skip = commits.length;
-    executeExtensionAction('get-log', selectedProject, selectedBranch, skip, PAGE_SIZE)
+    executeExtensionAction('get-log', selectedProject, selectedBranch, skip, PAGE_SIZE, logFilters)
       .then((result) => {
         if (result && !result.error) {
           setCommits((prev) => [...prev, ...(result.commits || [])]);
@@ -338,7 +375,7 @@
         loadingMoreRef.current = false;
         setLoadingMore(false);
       });
-  }, [executeExtensionAction, selectedProject, selectedBranch, commits.length]);
+  }, [executeExtensionAction, selectedProject, selectedBranch, commits.length, logFilters]);
 
   const handleScroll = useCallback(
     (e) => {
@@ -403,10 +440,10 @@
       if (opts && opts.successMsg) {
         showBanner('success', opts.successMsg);
       }
-      await selectProject(selectedProject);
+      await selectProject(selectedProject, selectedBranch);
       return result;
     },
-    [actionBusy, executeExtensionAction, selectProject, selectedProject, showBanner],
+    [actionBusy, executeExtensionAction, selectProject, selectedProject, selectedBranch, showBanner],
   );
 
   const handleCopyHash = useCallback(
@@ -664,176 +701,145 @@
         })()}
 
         {/* Action dialogs */}
-        {dialog && (
-          <div
-            className="fixed inset-0 flex items-center justify-center bg-black/40"
-            style={{ zIndex: 1101 }}
-            onClick={() => setDialog(null)}
-            onKeyDown={(e) => {
-              if (e.key === 'Enter' && e.ctrlKey) {
-                e.preventDefault();
-                const form = document.getElementById('git-log-action-form');
-                if (form) form.dispatchEvent(new Event('submit', { bubbles: true, cancelable: true }));
-              }
-            }}
+        {dialog && dialog.type === 'reset' && (
+          <ConfirmDialog
+            title="Reset Current Branch to Here…"
+            onConfirm={() => void runGitAction('reset-branch', [dialog.commit.hash, resetMode], { successMsg: 'Branch reset to ' + dialog.commit.shortHash })}
+            onCancel={() => setDialog(null)}
+            confirmButtonText="Reset"
+            closeOnEscape
           >
-            <div
-              className="bg-bg-secondary-light border border-border-default rounded shadow-lg p-4 min-w-72 max-w-lg"
-              onClick={(e) => e.stopPropagation()}
-            >
-              {dialog.type === 'reset' && (
-                <>
-                  <div className="text-sm font-medium text-text-primary mb-1">Reset Current Branch to Here…</div>
-                  <div className="text-2xs text-text-muted mb-3">
-                    Reset <span className="text-accent-primary">{gitCtx ? gitCtx.currentBranch : ''}</span> to{' '}
-                    <span className="font-mono">{dialog.commit.shortHash}</span>
-                  </div>
-                  <div className="space-y-1.5 mb-4">
-                    {[
-                      ['soft', 'Soft — keep changes staged'],
-                      ['mixed', 'Mixed — keep changes in working tree'],
-                      ['hard', 'Hard — discard all changes'],
-                    ].map(([mode, label]) => (
-                      <label key={mode} className="flex items-center gap-2 text-xs text-text-primary cursor-pointer">
-                        <input
-                          type="radio"
-                          name="git-log-reset-mode"
-                          checked={resetMode === mode}
-                          onChange={() => setResetMode(mode)}
-                        />
-                        {label}
-                      </label>
-                    ))}
-                  </div>
-                  <Button onClick={() => void runGitAction('reset-branch', [dialog.commit.hash, resetMode], { successMsg: 'Branch reset to ' + dialog.commit.shortHash })} size="sm">
-                    Reset
-                  </Button>
-                  <Button onClick={() => setDialog(null)} size="sm" color="secondary" className="ml-2">
-                    Cancel
-                  </Button>
-                </>
-              )}
-              {dialog.type === 'undo' && (
-                <>
-                  <div className="text-sm font-medium text-text-primary mb-1">Undo Commit</div>
-                  <div className="text-2xs text-text-muted mb-3">
-                    Undo <span className="font-mono">{dialog.commit.shortHash}</span> — most recent commit
-                  </div>
-                  <div className="space-y-1.5 mb-4">
-                    {[
-                      ['soft', 'Soft — keep changes staged'],
-                      ['mixed', 'Mixed — keep changes in working tree'],
-                    ].map(([mode, label]) => (
-                      <label key={mode} className="flex items-center gap-2 text-xs text-text-primary cursor-pointer">
-                        <input type="radio" name="git-log-undo-mode" checked={undoMode === mode} onChange={() => setUndoMode(mode)} />
-                        {label}
-                      </label>
-                    ))}
-                  </div>
-                  <Button onClick={() => void runGitAction('undo-commit', [undoMode], { successMsg: 'Commit undone' })} size="sm">
-                    Undo Commit
-                  </Button>
-                  <Button onClick={() => setDialog(null)} size="sm" color="secondary" className="ml-2">
-                    Cancel
-                  </Button>
-                </>
-              )}
-              {dialog.type === 'edit-message' && (
-                <>
-                  <div className="text-sm font-medium text-text-primary mb-1">Edit Commit Message</div>
-                  <div className="text-2xs text-text-muted mb-3">
-                    Amend <span className="font-mono">{dialog.commit.shortHash}</span> (most recent commit)
-                  </div>
-                  <form
-                    id="git-log-action-form"
-                    onSubmit={(e) => {
-                      e.preventDefault();
-                      void runGitAction('amend-message', [editSubject, editBody], { successMsg: 'Commit message updated' });
-                    }}
-                  >
-                    <Input
-                      value={editSubject}
-                      onChange={(e) => setEditSubject(e.target.value)}
-                      placeholder="Commit subject"
-                      size="sm"
-                      className="w-full mb-2"
-                      wrapperClassName="w-full"
-                      autoFocus
-                    />
-                    <textarea
-                      value={editBody}
-                      onChange={(e) => setEditBody(e.target.value)}
-                      placeholder="Extended description (optional)"
-                      className="w-full h-28 mb-3 px-2 py-1.5 text-xs bg-bg-primary border border-border-default rounded resize-y text-text-primary focus:outline-none focus:border-accent-primary"
-                    />
-                    <Button type="submit" size="sm">
-                      Amend Commit
-                    </Button>
-                    <Button type="button" onClick={() => setDialog(null)} size="sm" color="secondary" className="ml-2">
-                      Cancel
-                    </Button>
-                  </form>
-                </>
-              )}
-              {dialog.type === 'push' && (
-                <>
-                  <div className="text-sm font-medium text-text-primary mb-1">Push All up to Here…</div>
-                  <div className="text-2xs text-text-muted mb-3">
-                    Push all commits up to <span className="font-mono">{dialog.commit.shortHash}</span> to{' '}
-                    <span className="text-text-primary">{gitCtx && gitCtx.currentBranch ? gitCtx.currentBranch : 'remote'}</span>
-                  </div>
-                  <label className="flex items-center gap-2 text-xs text-text-primary mb-4 cursor-pointer">
-                    <input type="checkbox" checked={pushForce} onChange={(e) => setPushForce(e.target.checked)} />
-                    Force push
-                  </label>
-                  <Button onClick={() => void runGitAction('push-up-to', [dialog.commit.hash, pushForce], { successMsg: 'Pushed commits up to ' + dialog.commit.shortHash })} size="sm">
-                    Push
-                  </Button>
-                  <Button onClick={() => setDialog(null)} size="sm" color="secondary" className="ml-2">
-                    Cancel
-                  </Button>
-                </>
-              )}
-              {(dialog.type === 'new-branch' || dialog.type === 'new-tag') && (
-                <>
-                  <div className="text-sm font-medium text-text-primary mb-1">{dialog.type === 'new-branch' ? 'New Branch…' : 'New Tag…'}</div>
-                  <div className="text-2xs text-text-muted mb-3">
-                    {dialog.type === 'new-branch' ? 'Create and checkout' : 'Create'} at{' '}
-                    <span className="font-mono">{dialog.commit.shortHash}</span>
-                  </div>
-                  <form
-                    id="git-log-action-form"
-                    onSubmit={(e) => {
-                      e.preventDefault();
-                      const name = inputValue.trim();
-                      if (!name) return;
-                      void runGitAction(
-                        dialog.type === 'new-branch' ? 'create-branch' : 'create-tag',
-                        [name, dialog.commit.hash],
-                        { successMsg: (dialog.type === 'new-branch' ? 'Branch ' : 'Tag ') + name + ' created' },
-                      );
-                    }}
-                  >
-                    <Input
-                      value={inputValue}
-                      onChange={(e) => setInputValue(e.target.value)}
-                      placeholder={dialog.type === 'new-branch' ? 'Branch name' : 'Tag name'}
-                      size="sm"
-                      className="w-full mb-3"
-                      wrapperClassName="w-full"
-                      autoFocus
-                    />
-                    <Button type="submit" size="sm">
-                      {dialog.type === 'new-branch' ? 'Create & Checkout' : 'Create Tag'}
-                    </Button>
-                    <Button type="button" onClick={() => setDialog(null)} size="sm" color="secondary" className="ml-2">
-                      Cancel
-                    </Button>
-                  </form>
-                </>
-              )}
+            <div className="text-2xs text-text-muted mb-3">
+              Reset <span className="text-accent-primary">{gitCtx ? gitCtx.currentBranch : ''}</span> to{' '}
+              <span className="font-mono">{dialog.commit.shortHash}</span>
             </div>
-          </div>
+            <div className="space-y-1.5">
+              {[
+                ['soft', 'Soft — keep changes staged'],
+                ['mixed', 'Mixed — keep changes in working tree'],
+                ['hard', 'Hard — discard all changes'],
+              ].map(([mode, label]) => (
+                <RadioButton
+                  key={mode}
+                  id={'git-log-reset-mode-' + mode}
+                  name="git-log-reset-mode"
+                  value={mode}
+                  checked={resetMode === mode}
+                  onChange={setResetMode}
+                  label={label}
+                />
+              ))}
+            </div>
+          </ConfirmDialog>
+        )}
+
+        {dialog && dialog.type === 'undo' && (
+          <ConfirmDialog
+            title="Undo Commit"
+            onConfirm={() => void runGitAction('undo-commit', [undoMode], { successMsg: 'Commit undone' })}
+            onCancel={() => setDialog(null)}
+            confirmButtonText="Undo Commit"
+            closeOnEscape
+          >
+            <div className="text-2xs text-text-muted mb-3">
+              Undo <span className="font-mono">{dialog.commit.shortHash}</span> — most recent commit
+            </div>
+            <div className="space-y-1.5">
+              {[
+                ['soft', 'Soft — keep changes staged'],
+                ['mixed', 'Mixed — keep changes in working tree'],
+              ].map(([mode, label]) => (
+                <RadioButton
+                  key={mode}
+                  id={'git-log-undo-mode-' + mode}
+                  name="git-log-undo-mode"
+                  value={mode}
+                  checked={undoMode === mode}
+                  onChange={setUndoMode}
+                  label={label}
+                />
+              ))}
+            </div>
+          </ConfirmDialog>
+        )}
+
+        {dialog && dialog.type === 'edit-message' && (
+          <ConfirmDialog
+            title="Edit Commit Message"
+            onConfirm={() => void runGitAction('amend-message', [editSubject, editBody], { successMsg: 'Commit message updated' })}
+            onCancel={() => setDialog(null)}
+            confirmButtonText="Amend Commit"
+            disabled={!editSubject.trim()}
+            closeOnEscape
+          >
+            <div className="text-2xs text-text-muted mb-3">
+              Amend <span className="font-mono">{dialog.commit.shortHash}</span> (most recent commit)
+            </div>
+            <Input
+              value={editSubject}
+              onChange={(e) => setEditSubject(e.target.value)}
+              placeholder="Commit subject"
+              size="sm"
+              className="w-full mb-2"
+              wrapperClassName="w-full"
+              autoFocus
+            />
+            <textarea
+              value={editBody}
+              onChange={(e) => setEditBody(e.target.value)}
+              placeholder="Extended description (optional)"
+              className="w-full h-28 px-2 py-1.5 text-xs bg-bg-primary border border-border-default rounded resize-y text-text-primary focus:outline-none focus:border-accent-primary"
+            />
+          </ConfirmDialog>
+        )}
+
+        {dialog && dialog.type === 'push' && (
+          <ConfirmDialog
+            title="Push All up to Here…"
+            onConfirm={() => void runGitAction('push-up-to', [dialog.commit.hash, pushForce], { successMsg: 'Pushed commits up to ' + dialog.commit.shortHash })}
+            onCancel={() => setDialog(null)}
+            confirmButtonText="Push"
+            closeOnEscape
+          >
+            <div className="text-2xs text-text-muted mb-3">
+              Push all commits up to <span className="font-mono">{dialog.commit.shortHash}</span> to{' '}
+              <span className="text-text-primary">{gitCtx && gitCtx.currentBranch ? gitCtx.currentBranch : 'remote'}</span>
+            </div>
+            <Checkbox checked={pushForce} onChange={setPushForce} label="Force push" />
+          </ConfirmDialog>
+        )}
+
+        {dialog && (dialog.type === 'new-branch' || dialog.type === 'new-tag') && (
+          <ConfirmDialog
+            title={dialog.type === 'new-branch' ? 'New Branch…' : 'New Tag…'}
+            onConfirm={() => {
+              const name = inputValue.trim();
+              if (!name) return;
+              void runGitAction(
+                dialog.type === 'new-branch' ? 'create-branch' : 'create-tag',
+                [name, dialog.commit.hash],
+                { successMsg: (dialog.type === 'new-branch' ? 'Branch ' : 'Tag ') + name + ' created' },
+              );
+            }}
+            onCancel={() => setDialog(null)}
+            confirmButtonText={dialog.type === 'new-branch' ? 'Create & Checkout' : 'Create Tag'}
+            disabled={!inputValue.trim()}
+            closeOnEscape
+          >
+            <div className="text-2xs text-text-muted mb-3">
+              {dialog.type === 'new-branch' ? 'Create and checkout' : 'Create'} at{' '}
+              <span className="font-mono">{dialog.commit.shortHash}</span>
+            </div>
+            <Input
+              value={inputValue}
+              onChange={(e) => setInputValue(e.target.value)}
+              placeholder={dialog.type === 'new-branch' ? 'Branch name' : 'Tag name'}
+              size="sm"
+              className="w-full"
+              wrapperClassName="w-full"
+              autoFocus
+            />
+          </ConfirmDialog>
         )}
 
         {/* Banner */}
@@ -868,9 +874,9 @@
                 value={branchQuery}
                 onChange={(e) => {
                   setBranchQuery(e.target.value);
-                  setBranchOpen(true);
+                  handleBranchFocus();
                 }}
-                onFocus={() => setBranchOpen(true)}
+                onFocus={handleBranchFocus}
                 placeholder={selectedBranch === 'all' ? 'All branches' : selectedBranch}
                 size="sm"
                 className="pl-9 w-full"
@@ -921,6 +927,33 @@
               className="pl-9 w-full"
               wrapperClassName="w-full"
             />
+          </div>
+          <div className="relative flex-shrink-0" ref={filtersContainerRef}>
+            <Button onClick={handleToggleFilters} size="sm">
+              <FiFilter className="w-3.5 h-3.5 mr-1.5" />
+              Filters
+            </Button>
+            {filtersOpen && (
+              <div className="absolute right-0 top-full mt-1 z-50 bg-bg-secondary-light border border-border-default rounded shadow-lg p-3 space-y-2 w-64">
+                {[
+                  ['includeCheckpoints', 'Include checkpoints'],
+                  ['includeAiderDeskBranches', 'Include AiderDesk branches'],
+                  ['includeRemoteBranches', 'Include remote branches'],
+                  ['includeTags', 'Include tags'],
+                ].map(([key, label]) => (
+                  <Checkbox
+                    key={key}
+                    checked={logFilters[key]}
+                    onChange={(checked) => handleFilterChange(key, checked)}
+                    label={label}
+                    disabled={loading || loadingMore || actionBusy}
+                  />
+                ))}
+                <p className="text-2xs text-text-muted">
+                  History filters apply to All branches. The selected branch and current HEAD remain visible.
+                </p>
+              </div>
+            )}
           </div>
           <IconButton
             icon={<FiRefreshCw className={'w-4 h-4 ' + (loading ? 'animate-spin' : '')} />}

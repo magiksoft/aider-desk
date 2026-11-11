@@ -1,7 +1,7 @@
 import { Request, Response, Router } from 'express';
 import { z } from 'zod';
 import { v4 as uuidv4 } from 'uuid';
-import { AutonomyMode, CreateTaskParams } from '@common/types';
+import { AutonomyMode, CreateTaskParams, TaskExecutionMode } from '@common/types';
 
 import { BaseApi } from './base-api';
 
@@ -12,6 +12,8 @@ const RunPromptSchema = z.object({
   projectDir: z.string().min(1, 'Project directory is required'),
   taskId: z.string().optional(),
   prompt: z.string().min(1, 'Prompt is required'),
+  requestId: z.string().uuid().optional(),
+  executionMode: z.enum([TaskExecutionMode.WaitForFinish, TaskExecutionMode.RunInBackground]).optional(),
   mode: z.string().optional(),
   images: z.array(z.string()).optional(),
   model: z.string().optional(),
@@ -69,36 +71,106 @@ const SSE_ALLOWED_EVENT_TYPES = new Set([
   'task-created',
 ]);
 
+const REQUEST_ID_RETENTION_MS = 24 * 60 * 60 * 1000;
+const MAX_TRACKED_REQUEST_IDS = 10_000;
+
 export class PromptApi extends BaseApi {
+  private readonly requestIds = new Map<string, number>();
   constructor(private readonly eventsHandler: EventsHandler) {
     super();
   }
 
   registerRoutes(router: Router): void {
-    router.post('/run-prompt', (req: Request, res: Response) => {
-      const acceptsSSE = req.accepts('text/event-stream');
-      const acceptsJSON = req.accepts('application/json');
+    router.post(
+      '/run-prompt',
+      this.handleRequest(async (req: Request, res: Response) => {
+        const acceptsSSE = req.accepts('text/event-stream');
+        const acceptsJSON = req.accepts('application/json');
 
-      if (!acceptsSSE && !acceptsJSON) {
-        res.status(406).json({ error: 'Accept header must be application/json or text/event-stream' });
-        return;
-      }
+        if (!acceptsSSE && !acceptsJSON) {
+          res.status(406).json({ error: 'Accept header must be application/json or text/event-stream' });
+          return;
+        }
 
-      const parsed = RunPromptSchema.safeParse(req.body);
-      if (!parsed.success) {
-        res.status(400).json({ error: parsed.error.flatten() });
-        return;
-      }
+        const parsed = RunPromptSchema.safeParse(req.body);
+        if (!parsed.success) {
+          res.status(400).json({ error: parsed.error.flatten() });
+          return;
+        }
 
-      const { projectDir, taskId, prompt, mode, images, model, agentProfileId, autonomyMode } = parsed.data;
-      const isSSE = acceptsSSE && !acceptsJSON;
+        const { projectDir, taskId, prompt, mode, images, model, agentProfileId, autonomyMode, requestId, executionMode } = parsed.data;
+        const isSSE = acceptsSSE && !acceptsJSON;
+        if (isSSE && executionMode === TaskExecutionMode.RunInBackground) {
+          res.status(400).json({ error: 'Background execution requires a JSON response' });
+          return;
+        }
+        const receivedAt = Date.now();
+        const requestLogContext = {
+          requestId: requestId ?? null,
+          serverRequestId: uuidv4(),
+          projectDir,
+          taskId,
+          mode,
+          isSSE,
+        };
 
-      if (isSSE) {
-        void this.handleRunPromptSSE(res, projectDir, prompt, taskId, mode, images, model, agentProfileId, autonomyMode);
-      } else {
-        void this.handleRunPromptJSON(res, projectDir, prompt, taskId, mode, images, model, agentProfileId, autonomyMode);
-      }
-    });
+        logger.debug('Run prompt request received', requestLogContext);
+        res.on('finish', () => {
+          logger.debug('Run prompt response finished', {
+            ...requestLogContext,
+            statusCode: res.statusCode,
+            durationMs: Date.now() - receivedAt,
+          });
+        });
+        res.on('close', () => {
+          logger.debug('Run prompt connection closed', {
+            ...requestLogContext,
+            responseFinished: res.writableFinished,
+            durationMs: Date.now() - receivedAt,
+          });
+        });
+
+        if (requestId) {
+          for (const [id, expiresAt] of this.requestIds) {
+            if (expiresAt <= receivedAt) {
+              this.requestIds.delete(id);
+            }
+          }
+
+          if (this.requestIds.has(requestId)) {
+            logger.debug('Run prompt duplicate request rejected', requestLogContext);
+            res.status(409).json({ error: 'Request ID has already been submitted', requestId });
+            return;
+          }
+
+          if (this.requestIds.size >= MAX_TRACKED_REQUEST_IDS) {
+            res.status(503).json({ error: 'Request ID tracking capacity reached; try again later' });
+            return;
+          }
+
+          this.requestIds.set(requestId, Infinity);
+        }
+
+        try {
+          if (executionMode === TaskExecutionMode.RunInBackground) {
+            const task = taskId
+              ? { projectDir, taskId }
+              : await this.eventsHandler.ensureProjectAndCreateTask(projectDir, parseTaskParams(model, agentProfileId, autonomyMode));
+            res.setHeader('X-Task-Id', task.taskId);
+            res.status(202).json({ taskId: task.taskId, requestId });
+            await this.runPromptInBackground(task.projectDir, task.taskId, prompt, mode, images, requestId);
+          } else if (isSSE) {
+            await this.handleRunPromptSSE(res, projectDir, prompt, taskId, mode, images, model, agentProfileId, autonomyMode);
+          } else {
+            await this.handleRunPromptJSON(res, projectDir, prompt, taskId, mode, images, model, agentProfileId, autonomyMode);
+          }
+        } finally {
+          if (requestId) {
+            this.requestIds.set(requestId, Date.now() + REQUEST_ID_RETENTION_MS);
+          }
+        }
+      }),
+    );
 
     router.post(
       '/save-prompt',
@@ -131,6 +203,21 @@ export class PromptApi extends BaseApi {
         res.status(200).json({ message: 'Edited prompt saved successfully' });
       }),
     );
+  }
+
+  private async runPromptInBackground(projectDir: string, taskId: string, prompt: string, mode?: string, images?: string[], requestId?: string): Promise<void> {
+    try {
+      await this.eventsHandler.runPrompt(projectDir, taskId, prompt, mode, images);
+    } catch (error) {
+      logger.error('Background run-prompt failed', { projectDir, taskId, requestId, error });
+      this.eventsHandler.getEventManager().sendLog({
+        baseDir: projectDir,
+        taskId,
+        level: 'error',
+        message: error instanceof Error ? error.message : String(error),
+        finished: true,
+      });
+    }
   }
 
   private async handleRunPromptJSON(

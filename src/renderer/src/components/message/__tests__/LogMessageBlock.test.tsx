@@ -35,7 +35,7 @@ describe('LogMessageBlock', () => {
     type: 'log',
     level: 'error',
     content: 'git error occurred',
-    actionIds: ['resolve-git-error-with-agent'],
+    actions: [{ id: 'resolve-git-error-with-agent' }],
     timestamp: Date.now(),
     ...overrides,
   });
@@ -65,7 +65,7 @@ describe('LogMessageBlock', () => {
         .getState()
         .taskMessagesMap.get('task-123')
         ?.find((message) => message.id === 'log-1') as LogMessage | undefined;
-      expect(storedMessage?.actionIds ?? []).not.toContain('resolve-git-error-with-agent');
+      expect(storedMessage?.actions ?? []).not.toContainEqual({ id: 'resolve-git-error-with-agent' });
     });
   });
 
@@ -77,6 +77,19 @@ describe('LogMessageBlock', () => {
     fireEvent.click(screen.getByRole('button', { name: 'git.resolveWithAI' }));
 
     expect(removeActionId).toHaveBeenCalledWith('resolve-git-error-with-agent');
+  });
+
+  it.each([undefined, false, true])('only allows removing non-persistent logs (persistent: %s)', (persistent) => {
+    const onRemove = vi.fn();
+
+    render(<LogMessageBlock {...defaultProps} message={createLogMessage({ persistent })} onRemove={onRemove} />);
+
+    if (persistent) {
+      expect(screen.queryByTestId('remove-log-message')).not.toBeInTheDocument();
+    } else {
+      fireEvent.click(screen.getByTestId('remove-log-message'));
+      expect(onRemove).toHaveBeenCalledOnce();
+    }
   });
 
   it('does not render actions in compact mode', () => {

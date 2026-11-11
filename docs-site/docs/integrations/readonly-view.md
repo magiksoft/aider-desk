@@ -37,7 +37,7 @@ docker run -d \
   -v ~/projects:/projects \
   -e AIDER_DESK_READONLY=true \
   -e AIDER_DESK_PROJECTS="/projects/public-app,/projects/public-api" \
-  ghcr.io/hotovo/aider-desk:latest
+  ghcr.io/magiksoft/aider-desk:latest
 ```
 
 This mode is **immutable** for the process lifetime — it cannot be toggled at runtime. All configured projects are started automatically before the readonly UI becomes available. See [Docker](../advanced/docker.md#readonly-browser-deployments) for the full environment variable reference.
@@ -89,7 +89,7 @@ The readonly UI subscribes to a curated set of Socket.IO events for live updates
 - `tool`, `tool-input-chunk`
 - `log`, `command-output`
 - `clear-task`, `message-removed`
-- `extension-ui-refresh`
+- `extension-ui-refresh`, `extensions-updated`
 
 Direct Socket.IO mutations (e.g., running prompts, sending messages) are blocked — only these read-only event types are forwarded to browser clients.
 

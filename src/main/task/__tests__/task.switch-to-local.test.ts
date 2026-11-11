@@ -146,7 +146,7 @@ describe('Task - switchToLocalWorkingMode with merge', () => {
       mockGitManager,
       {} as any,
       {} as any,
-      { isInitialized: vi.fn(() => false) } as any,
+      { isInitialized: vi.fn(() => false), dispatchEvent: vi.fn().mockResolvedValue(undefined) } as any,
       {} as any,
       {
         workingMode: 'worktree',
@@ -172,7 +172,7 @@ describe('Task - switchToLocalWorkingMode with merge', () => {
     const updateTaskSpy = vi.spyOn(t as any, 'updateTask').mockResolvedValue(undefined as any);
     const updateAutocompletionSpy = vi.spyOn(t as any, 'updateAutocompletionData').mockResolvedValue(undefined);
     vi.spyOn(t as any, 'sendUpdatedFilesUpdated').mockResolvedValue(undefined);
-    vi.spyOn(t as any, 'sendWorktreeIntegrationStatusUpdated').mockResolvedValue(undefined);
+    vi.spyOn(t as any, 'sendTaskGitStatusUpdated').mockResolvedValue(undefined);
 
     mockGitManager.getRebaseState.mockResolvedValue({ inProgress: false });
     mockGitManager.mergeWorktreeToMainWithUncommitted.mockResolvedValue(state);

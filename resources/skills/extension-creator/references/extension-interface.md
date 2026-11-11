@@ -2,7 +2,7 @@
 
 Full TypeScript interface reference for AiderDesk extensions. All methods are optional — implement only what you need.
 
-> **IMPORTANT:** This is a comprehensive reference, but for the absolute latest types, always refer to the authoritative source: [extensions.ts on GitHub](https://raw.githubusercontent.com/hotovo/aider-desk/refs/heads/main/packages/common/src/extensions.ts). See also [context.ts](https://raw.githubusercontent.com/hotovo/aider-desk/refs/heads/main/packages/common/src/types/context.ts) for context message types and [common.ts](https://raw.githubusercontent.com/hotovo/aider-desk/refs/heads/main/packages/common/src/types/common.ts) for task/common types.
+> **IMPORTANT:** This is a comprehensive reference, but for the absolute latest types, always refer to the authoritative source: [extensions.ts on GitHub](https://raw.githubusercontent.com/magiksoft/aider-desk/refs/heads/main/packages/common/src/extensions.ts). See also [context.ts](https://raw.githubusercontent.com/magiksoft/aider-desk/refs/heads/main/packages/common/src/types/context.ts) for context message types and [common.ts](https://raw.githubusercontent.com/magiksoft/aider-desk/refs/heads/main/packages/common/src/types/common.ts) for task/common types.
 
 ---
 
@@ -14,6 +14,8 @@ Full TypeScript interface reference for AiderDesk extensions. All methods are op
 - [ProjectContext](#projectcontext)
 - [MemoryContext](#memorycontext)
 - [Supporting Types](#supporting-types)
+  - [ExtensionProviderStrategy](#extensionproviderstrategy)
+  - [ProviderToolApprovalHandler](#providertoolapprovalhandler)
 
 ---
 
@@ -114,6 +116,21 @@ interface Extension {
 }
 ```
 
+### Worktree Events
+
+```typescript
+interface Extension {
+  onWorktreeCreated?(event: WorktreeCreatedEvent, context: ExtensionContext): Promise<void>;
+  onWorktreeMerged?(event: WorktreeMergedEvent, context: ExtensionContext): Promise<void>;
+}
+```
+
+`WorktreeCreatedEvent` contains `task` and `worktree`. It runs after new worktree creation, symlinks, and the legacy post-create command, not when reusing a worktree. The task may not yet be fully initialized; use `event.worktree.path` as the command working directory.
+
+`WorktreeMergedEvent` contains `task`, source `worktree`, `targetPath`, optional `targetBranch`, `squash`, and `includeUncommitted`. It runs after successful merges to a project branch (including merge-before-switch-to-local) or another worktree, before source cleanup. `targetBranch` is omitted for worktree-to-worktree merges. Checkoutless merges update a branch without checking it out at `targetPath`.
+
+Both are awaited notifications, not cancellable operations. Handler errors are logged without undoing the Git operation. Project-local extensions are suitable for project-specific setup commands.
+
 ### Project Events
 
 ```typescript
@@ -157,8 +174,14 @@ interface Extension {
   /** Called after each agent step completes. */
   onAgentStepFinished?(event: AgentStepFinishedEvent, context: ExtensionContext): Promise<void | Partial<AgentStepFinishedEvent>>;
 
-  /** Called when messages are optimized before being sent to the LLM. Modify `event.optimizedMessages` to change what's sent. */
+  /** Override default Aider/subagent transformations. Receives originalMessages and transformedMessages; transformations are not reapplied. */
+  onTransformMessages?(event: TransformMessagesEvent, context: ExtensionContext): Promise<void | Partial<TransformMessagesEvent>>;
+
+  /** Override optional optimizations. originalMessages is the transformation output, not raw stored context. */
   onOptimizeMessages?(event: OptimizeMessagesEvent, context: ExtensionContext): Promise<void | Partial<OptimizeMessagesEvent>>;
+
+  /** Override final cache annotation. Receives originalMessages, messages, and optional cacheControl, even without a default policy. */
+  onApplyCacheControl?(event: ApplyCacheControlEvent, context: ExtensionContext): Promise<void | Partial<ApplyCacheControlEvent>>;
 
   /** Called when important reminders are added to the user message. Modify `event.remindersContent`. */
   onImportantReminders?(event: ImportantRemindersEvent, context: ExtensionContext): Promise<void | Partial<ImportantRemindersEvent>>;
@@ -327,6 +350,10 @@ interface ExtensionContext {
 
   /** Get a specific setting value from global settings using dot-notation (e.g., 'general.theme'). */
   getSetting(key: string): Promise<unknown>;
+
+  /** Get the configured provider profiles (LLM provider settings including API keys).
+   *  Read-only snapshots from the ModelManager; empty array when not available. */
+  getProviders(): ProviderProfile[];
 
   /** Update global settings by merging the provided partial updates. */
   updateSettings(updates: Partial<SettingsData>): Promise<void>;
@@ -508,6 +535,9 @@ interface TaskContext {
   /** Get files modified during the current task's execution (compares against main branch). */
   getUpdatedFiles(): Promise<UpdatedFile[]>;
 
+  /** Get a unified diff. Pass the entry's previousPath for rename-aware diffs. */
+  getUpdatedFileDiff(filePath: string, commitHash?: string, previousPath?: string): Promise<string>;
+
   /** Get the cached repository map string summarizing the codebase structure. */
   getRepoMap(): string;
 
@@ -588,7 +618,7 @@ interface TaskContext {
   askQuestion(text: string, options?: QuestionOptions): Promise<string>;
 
   /** Send a log message to the UI (appears in the task's message stream). */
-  addLogMessage(level: 'info' | 'error' | 'warning', message?: string): void;
+  addLogMessage(level: 'info' | 'error' | 'warning', message?: string, persistent?: boolean): void;
 
   /** Show or update a loading indicator in the task's UI. Pass `finished: true` to dismiss. */
   addLoadingMessage(message?: string, finished?: boolean): void;
@@ -619,6 +649,20 @@ interface TaskContext {
 
   /** Compact the conversation by summarizing history via a compact-conversation agent. */
   compactConversation(instructions?: string): Promise<void>;
+
+  /**
+   * Run deterministic (rule-based) smart compaction on the task context.
+   * Passes: erroredTools, fileEdits, staleFileReads, fileReads, searches, semanticSearches,
+   * bash, fetch, otherTools, verboseToolCalls, reasoning. Omitted flags default to true.
+   * @param options.protectedMessageCount - Number of most-recent messages protected from compaction (default: 10)
+   * @param options.compactionLevel - Compaction level 1 (mild) to 5 (max). Omit to keep the automatic level.
+   * @param options.passes - Which compaction passes to run. Omitted = all passes enabled.
+   * @returns Message counts and estimated next-prompt token counts before and after compaction.
+   */
+  smartCompact(options?: SmartCompactionOptions): Promise<SmartCompactionResult>;
+
+  /** Estimate the token count of the next agent prompt for this task. */
+  getEstimatedTokens(): Promise<number>;
 
   /** Generate a markdown representation of the context messages. */
   generateContextMarkdown(): Promise<string | null>;
@@ -750,11 +794,13 @@ Provides access to AiderDesk's memory system. Uses the same underlying vector st
 
 ```typescript
 interface MemoryContext {
-  /** Store a new memory entry. Returns the ID of the created memory. */
-  storeMemory(projectId: string, taskId: string, type: MemoryEntryType, content: string): Promise<string>;
+  /** Store a new memory entry. Returns the ID of the created memory.
+   * @param scopeId - Memory scope: the project directory, or `agent-profile:{profileId}` when the agent profile has memory isolation (`useAgentMemoryScope`) enabled */
+  storeMemory(scopeId: string, taskId: string, type: MemoryEntryType, content: string): Promise<string>;
 
-  /** Retrieve memories by semantic similarity. Returns array ranked by relevance. */
-  retrieveMemories(projectId: string, query: string, limit?: number): Promise<MemoryEntry[]>;
+  /** Retrieve memories by semantic similarity. Returns array ranked by relevance.
+   * @param scopeId - Memory scope: the project directory, or `agent-profile:{profileId}` when the agent profile has memory isolation (`useAgentMemoryScope`) enabled */
+  retrieveMemories(scopeId: string, query: string, limit?: number): Promise<MemoryEntry[]>;
 
   /** Get a single memory by ID. */
   getMemory(id: string): Promise<MemoryEntry | null>;
@@ -794,6 +840,7 @@ interface MemoryEntry {
   content: string;
   type: MemoryEntryType;
   taskId?: string;
+  /** Memory scope: project directory path, or agent profile scope (`agent-profile:{id}`) */
   projectId?: string;
   timestamp: number;
 }
@@ -885,6 +932,63 @@ interface QuestionOptions {
   answers?: Array<{ text: string; shortkey: string }>;
   /** Default answer if user doesn't choose */
   defaultAnswer?: string;
+}
+```
+
+### SmartCompactionPasses
+
+```typescript
+interface SmartCompactionPasses {
+  /** Remove errored/no-op power tool calls */
+  erroredTools?: boolean;
+  /** Collapse repeated file edit/write calls into <file-edited> markers */
+  fileEdits?: boolean;
+  /** Remove file reads that precede later edits of the same file */
+  staleFileReads?: boolean;
+  /** Truncate/redact file read outputs */
+  fileReads?: boolean;
+  /** Remove glob/grep searches made obsolete by later edits */
+  searches?: boolean;
+  /** Remove/deduplicate semantic search results */
+  semanticSearches?: boolean;
+  /** Deduplicate bash commands and redact their outputs */
+  bash?: boolean;
+  /** Redact fetch outputs */
+  fetch?: boolean;
+  /** Truncate results of non-power (MCP/extension) tools */
+  otherTools?: boolean;
+  /** Remove tool calls with verbose inputs */
+  verboseToolCalls?: boolean;
+  /** Remove reasoning parts from assistant messages */
+  reasoning?: boolean;
+}
+```
+
+### SmartCompactionOptions
+
+```typescript
+interface SmartCompactionOptions {
+  /** Number of most-recent messages protected from compaction (default: 10) */
+  protectedMessageCount?: number;
+  /** Compaction level 1 (mild) to 5 (max). Omit to keep the automatic level. */
+  compactionLevel?: number;
+  /** Which compaction passes to run. Omitted = all passes enabled. */
+  passes?: SmartCompactionPasses;
+}
+```
+
+### SmartCompactionResult
+
+```typescript
+interface SmartCompactionResult {
+  /** Context message count before compaction */
+  messagesBefore: number;
+  /** Context message count after compaction */
+  messagesAfter: number;
+  /** Estimated next-prompt token count before compaction */
+  tokensBefore: number;
+  /** Estimated next-prompt token count after compaction */
+  tokensAfter: number;
 }
 ```
 
@@ -1125,6 +1229,56 @@ interface ProviderDefinition {
   headers?: Record<string, string>;
 }
 ```
+
+### ExtensionProviderStrategy
+
+Only `createLlm` and `loadModels` are required; omitted optional methods use built-in defaults. `toolSet` contains the active run's executable tools. `providerMetadata` can carry previous provider state; `sessionId` currently identifies the AiderDesk task, **not** a native session or unique subagent run. All trailing `createLlm` arguments are optional.
+
+```typescript
+interface ExtensionProviderStrategy {
+  createLlm: (
+    profile: ProviderProfile,
+    model: Model,
+    settings: SettingsData,
+    projectDir: string,
+    toolSet?: unknown,
+    systemPrompt?: string,
+    providerMetadata?: unknown,
+    tlsRegistrar?: TlsPolicyRegistrar,
+    sessionId?: string,
+    approveTool?: ProviderToolApprovalHandler,
+  ) => unknown | Promise<unknown>;
+  loadModels: (profile: ProviderProfile, settings: SettingsData, tlsRegistrar?: TlsPolicyRegistrar) => Promise<LoadModelsResponse>;
+
+  getAiderMapping?: (provider: ProviderProfile, modelId: string, settings: SettingsData, projectDir: string) => AiderModelMapping;
+  getUsageReport?: (task: unknown, provider: ProviderProfile, model: Model, usage: unknown, providerMetadata?: unknown) => UsageReportData;
+  getProviderOptions?: (model: Model, reasoning?: Reasoning) => Record<string, Record<string, JSONValue | undefined>> | undefined;
+  getCacheControl?: (model: Model) => CacheControl | undefined;
+  getProviderTools?: (model: Model) => Record<string, Tool> | Promise<Record<string, Tool>>;
+  getProviderParameters?: (model: Model, reasoning?: Reasoning) => Record<string, unknown>;
+  createVoiceSession?: (profile: ProviderProfile, settings: SettingsData) => Promise<VoiceSession>;
+  isRetryable?: (error: unknown) => boolean;
+}
+```
+
+### ProviderToolApprovalHandler
+
+The optional tenth `createLlm` argument checks an externally executed tool against the active run's approval manager without executing the tool:
+
+```typescript
+type ProviderToolApprovalHandler = (
+  toolName: string,
+  input: Record<string, unknown>,
+  text: string,
+  subject?: string,
+) => Promise<[approved: boolean, reason?: string]>;
+```
+
+Map native tools to enabled AiderDesk names and input shapes before calling it. For example, native file reading maps to `power---file_read` with `{ filePath }`; native shell execution maps to `power---bash` with `{ command, cwd }`. Await the callback before granting native permission and forward its rejection reason when denied.
+
+Missing/disabled tools and **Never** are denied in every autonomy mode. Power bash denied patterns are enforced. In **Manual**, **Always** or an allowed bash pattern skips the prompt, while **Ask** uses the normal question and shared always-for-this-run keys. **Guided/Autonomous** do not prompt for enabled tools. Approval hooks (`onToolApproval`, `onHandleApproval`) can still veto requests before auto/pre-approval, except that disabled tools and denied bash patterns are rejected before those hooks.
+
+This does not invoke Power executors, execution hooks, sandboxing, or output processing. Do not call an executor just to obtain approval: it may execute the operation twice. If the callback is absent (older host or a non-agent call), reject native execution with an update/restart explanation. For the full native/MCP, streaming, session and lifecycle checklist, read [External-agent providers](external-agent-providers.md).
 
 ### Event Payload Types
 

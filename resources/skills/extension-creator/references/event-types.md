@@ -2,7 +2,7 @@
 
 All event types and their payloads for extension event handlers.
 
-> **IMPORTANT:** For the authoritative event type definitions, see [extensions.ts on GitHub](https://raw.githubusercontent.com/hotovo/aider-desk/refs/heads/main/packages/common/src/extensions.ts) (event interfaces start at line ~360).
+> **IMPORTANT:** For the authoritative event type definitions, see [extensions.ts on GitHub](https://raw.githubusercontent.com/magiksoft/aider-desk/refs/heads/main/packages/common/src/extensions.ts) (event interfaces start at line ~360).
 
 ---
 
@@ -27,12 +27,15 @@ Every Extension interface method dispatches a specific event type. All handlers 
 | `onAgentFinished` | `AgentFinishedEvent` | — |
 | `onAgentStepStarted` | `AgentStepStartedEvent` | — |
 | `onAgentStepFinished` | `AgentStepFinishedEvent` | — |
+| `onTransformMessages` | `TransformMessagesEvent` | — |
+| `onApplyCacheControl` | `ApplyCacheControlEvent` | — |
 | `onOptimizeMessages` | `OptimizeMessagesEvent` | — |
 | `onImportantReminders` | `ImportantRemindersEvent` | — |
 | `onInterrupted` | `InterruptedEvent` | ✅ Yes |
 | `onToolApproval` | `ToolApprovalEvent` | ✅ Yes |
 | `onToolCalled` | `ToolCalledEvent` | — |
 | `onToolFinished` | `ToolFinishedEvent` | — |
+| `onToolsetCreated` | `ToolsetCreatedEvent` | — |
 | `onFilesAdded` | `FilesAddedEvent` | — |
 | `onFilesDropped` | `FilesDroppedEvent` | — |
 | `onRuleFilesRetrieved` | `RuleFilesRetrievedEvent` | — |
@@ -247,7 +250,7 @@ interface AgentStepStartedEvent {
 
 ### AgentStepFinishedEvent
 
-Dispatched at the end of each agent step/iteration.
+Dispatched at the end of each agent step/iteration. With streaming AI SDK providers, finalization follows the consumer reaching `finish-step`, after earlier chunks have been handled; do not treat this as the raw SDK callback timing.
 
 ```typescript
 interface AgentStepFinishedEvent {
@@ -307,7 +310,7 @@ interface InterruptedEvent {
 
 ### ToolApprovalEvent (Can Block)
 
-Dispatched when a tool requires approval. Set `blocked` to a boolean or string message to block; set `allowed: true` to auto-approve.
+Dispatched when checking a tool execution decision, including native calls routed through `ProviderToolApprovalHandler`, even if autonomy or pre-approval would otherwise skip the question. Set `blocked` to a boolean or string message to block; set `allowed: true` to auto-approve. Provider-native disabled-tool and denied bash-pattern checks reject before this event. Approval does not dispatch native execution hooks; see [external-agent-providers.md](external-agent-providers.md).
 
 ```typescript
 interface ToolApprovalEvent {
@@ -346,6 +349,31 @@ interface ToolFinishedEvent {
   output: unknown;
 }
 ```
+
+---
+
+### ToolsetCreatedEvent
+
+Dispatched after the complete toolset for an agent run has been assembled (built-in, MCP, and extension tools). Extensions can replace the `tools` record to add or remove tools before they are exposed to the model. Return a new record instead of mutating; when multiple extensions return `tools`, the last one wins.
+
+```typescript
+interface ToolsetCreatedEvent {
+  readonly mode: Mode;
+  readonly agentProfile: AgentProfile;
+  readonly providerProfile: ProviderProfile;
+  readonly model: string;
+  readonly promptContext?: PromptContext;
+  tools: Record<string, ToolsetToolEntry>;
+}
+
+interface ToolsetToolEntry {
+  description?: string;
+  inputSchema?: unknown;
+  execute?(input: Record<string, unknown>, options?: unknown): Promise<unknown>;
+}
+```
+
+Typical use case: hide tools from direct model calling while still invoking them programmatically (Code Mode pattern) — remove the tools from `tools` while keeping them accessible through your own extension tool.
 
 ---
 
@@ -411,7 +439,7 @@ interface ResponseCompletedEvent {
 
 ### HandleApprovalEvent (Can Block)
 
-Dispatched when an approval dialog is about to be shown. Set `blocked: true` to prevent the dialog, or `allowed: true` to auto-approve.
+Dispatched while handling an approval decision, before default auto/pre-approval or a Manual prompt. It also applies to provider-native requests routed through `ProviderToolApprovalHandler` unless an earlier check or `onToolApproval` decision resolved them. This event does not guarantee a dialog will be shown. Set `blocked: true` to deny handling, or `allowed: true` to auto-approve.
 
 ```typescript
 interface HandleApprovalEvent {

@@ -3,6 +3,7 @@ import { z } from 'zod';
 import { CreateTaskParams, ProjectSettingsSchema, TaskDataSchema, ModeDefinition, QueuedPromptData } from '@common/types';
 
 import { BaseApi } from './base-api';
+import { TaskOperationSchema, TaskOperations } from './task-operations';
 
 import { EventsHandler } from '@/events-handler';
 
@@ -17,6 +18,10 @@ const ResetTaskSchema = z.object({
 
 const GetProjectSettingsSchema = z.object({
   projectDir: z.string().min(1, 'Project directory is required'),
+});
+
+const GetCustomModesSchema = z.object({
+  projectDir: z.string().optional(),
 });
 
 const PatchProjectSettingsSchema = ProjectSettingsSchema.partial().and(
@@ -38,6 +43,10 @@ const ClearContextSchema = z.object({
 const UndoContextChangeSchema = z.object({
   projectDir: z.string().min(1, 'Project directory is required'),
   taskId: z.string().min(1, 'Task id is required'),
+  checkpointId: z
+    .string()
+    .regex(/^context\.pre-compaction\.\d+\.json$/)
+    .optional(),
 });
 
 const AnswerQuestionSchema = z.object({
@@ -193,9 +202,7 @@ const RunCommandSchema = z.object({
   command: z.string().min(1, 'Command is required'),
 });
 
-const InitProjectRulesFileSchema = z.object({
-  projectDir: z.string().min(1, 'Project directory is required'),
-  taskId: z.string().min(1, 'Task id is required'),
+const InitProjectRulesFileSchema = TaskOperationSchema.extend({
   args: z.string().optional(),
 });
 
@@ -237,6 +244,10 @@ const ForkTaskSchema = z.object({
   messageId: z.string().min(1, 'Message id is required'),
 });
 
+const ForkTaskFromCheckpointSchema = UndoContextChangeSchema.extend({
+  checkpointId: z.string().regex(/^context\.pre-compaction\.\d+\.json$/),
+});
+
 const GetTaskContextDataSchema = z.object({
   projectDir: z.string().min(1, 'Project directory is required'),
   id: z.string().min(1, 'Task id is required'),
@@ -265,16 +276,12 @@ const RemoveMessagesUpToSchema = z.object({
   messageId: z.string().min(1, 'Message id is required'),
 });
 
-const CompactConversationSchema = z.object({
-  projectDir: z.string().min(1, 'Project directory is required'),
-  taskId: z.string().min(1, 'Task id is required'),
+const CompactConversationSchema = TaskOperationSchema.extend({
   mode: z.string().min(1, 'Mode is required'),
   customInstructions: z.string().optional(),
 });
 
-const HandoffConversationSchema = z.object({
-  projectDir: z.string().min(1, 'Project directory is required'),
-  taskId: z.string().min(1, 'Task id is required'),
+const HandoffConversationSchema = TaskOperationSchema.extend({
   focus: z.string().optional(),
 });
 
@@ -321,6 +328,7 @@ const SwitchToLocalWorkingModeSchema = z.object({
 });
 
 const SwitchToWorktreeWorkingModeSchema = z.object({
+  baseBranch: z.string().min(1).optional(),
   projectDir: z.string().min(1, 'Project directory is required'),
   taskId: z.string().min(1, 'Task id is required'),
   carryOverUncommittedChanges: z.boolean().optional(),
@@ -352,6 +360,7 @@ const RestoreFileSchema = z.object({
   projectDir: z.string().min(1, 'Project directory is required'),
   taskId: z.string().min(1, 'Task id is required'),
   filePath: z.string().min(1, 'File path is required'),
+  previousPath: z.string().min(1).optional(),
 });
 
 const ReadFileSchema = z.object({
@@ -379,6 +388,7 @@ const CommitChangesSchema = z
     taskId: z.string().min(1, 'Task id is required'),
     message: z.string(),
     amend: z.boolean(),
+    skipGitHooks: z.boolean().optional(),
     filePaths: z.array(z.string()).optional(),
   })
   .refine((data) => data.amend || data.message.trim().length > 0, { message: 'Commit message is required', path: ['message'] });
@@ -419,6 +429,7 @@ const CheckoutGitBranchSchema = z.object({
   branch: z.string().min(1, 'Branch name is required'),
   createTracking: z.boolean().optional(),
   takeOver: z.boolean().optional(),
+  smartCheckout: z.boolean().optional(),
 });
 
 const DeleteGitBranchSchema = z.object({
@@ -462,12 +473,10 @@ const GitPushSchema = z.object({
   taskId: z.string().min(1, 'Task id is required'),
   force: z.boolean().optional(),
   setUpstream: z.boolean().optional(),
+  pushToBase: z.boolean().optional(),
 });
 
-const ResolveGitErrorSchema = z.object({
-  projectDir: z.string().min(1, 'Project directory is required'),
-  taskId: z.string().min(1, 'Task id is required'),
-});
+const ResolveGitErrorSchema = TaskOperationSchema.extend({});
 
 const WorktreeStatusSchema = z.object({
   projectDir: z.string().min(1, 'Project directory is required'),
@@ -475,23 +484,25 @@ const WorktreeStatusSchema = z.object({
   targetBranch: z.string().optional(),
 });
 
+const TaskGitStatusSchema = WorktreeStatusSchema;
+
 const RebaseWorktreeFromBranchSchema = z.object({
   projectDir: z.string().min(1, 'Project directory is required'),
   taskId: z.string().min(1, 'Task id is required'),
   fromBranch: z.string().optional(),
 });
 
-const AbortWorktreeRebaseSchema = z.object({
+const AbortRebaseSchema = z.object({
   projectDir: z.string().min(1, 'Project directory is required'),
   taskId: z.string().min(1, 'Task id is required'),
 });
 
-const ContinueWorktreeRebaseSchema = z.object({
+const ContinueRebaseSchema = z.object({
   projectDir: z.string().min(1, 'Project directory is required'),
   taskId: z.string().min(1, 'Task id is required'),
 });
 
-const ResolveWorktreeConflictsWithAgentSchema = z.object({
+const ResolveConflictsWithAgentSchema = z.object({
   projectDir: z.string().min(1, 'Project directory is required'),
   taskId: z.string().min(1, 'Task id is required'),
 });
@@ -505,8 +516,11 @@ const RenameGitBranchSchema = z.object({
 const RenameWorktreeBranchSchema = RenameGitBranchSchema;
 
 export class ProjectApi extends BaseApi {
+  private readonly taskOperations: TaskOperations;
+
   constructor(private readonly eventsHandler: EventsHandler) {
     super();
+    this.taskOperations = new TaskOperations(eventsHandler);
   }
 
   registerRoutes(router: Router): void {
@@ -695,8 +709,12 @@ export class ProjectApi extends BaseApi {
         }
 
         const { projectDir, taskId, args } = parsed;
-        await this.eventsHandler.initProjectRulesFile(projectDir, taskId, args);
-        res.status(200).json({ message: 'Project rules file initialized' });
+        await this.taskOperations.execute(
+          res,
+          parsed,
+          () => this.eventsHandler.initProjectRulesFile(projectDir, taskId, args),
+          'Project rules file initialized',
+        );
       }),
     );
 
@@ -817,6 +835,19 @@ export class ProjectApi extends BaseApi {
 
         const { projectDir, taskId, messageId } = parsed;
         const forkedTask = await this.eventsHandler.forkTask(projectDir, taskId, messageId);
+        res.status(200).json(forkedTask);
+      }),
+    );
+
+    router.post(
+      '/project/tasks/fork-from-checkpoint',
+      this.handleRequest(async (req, res) => {
+        const parsed = this.validateRequest(ForkTaskFromCheckpointSchema, req.body, res);
+        if (!parsed) {
+          return;
+        }
+        const { projectDir, taskId, checkpointId } = parsed;
+        const forkedTask = await this.eventsHandler.forkTaskFromCheckpoint(projectDir, taskId, checkpointId);
         res.status(200).json(forkedTask);
       }),
     );
@@ -948,8 +979,12 @@ export class ProjectApi extends BaseApi {
         }
 
         const { projectDir, taskId, mode, customInstructions } = parsed;
-        await this.eventsHandler.compactConversation(projectDir, taskId, mode, customInstructions);
-        res.status(200).json({ message: 'Conversation compacted' });
+        await this.taskOperations.execute(
+          res,
+          parsed,
+          () => this.eventsHandler.compactConversation(projectDir, taskId, mode, customInstructions),
+          'Conversation compacted',
+        );
       }),
     );
 
@@ -978,7 +1013,7 @@ export class ProjectApi extends BaseApi {
         }
 
         const { projectDir, taskId } = parsed;
-        const undone = await this.eventsHandler.undoContextChange(projectDir, taskId);
+        const undone = await this.eventsHandler.undoContextChange(projectDir, taskId, parsed.checkpointId);
         res.status(200).json({ undone });
       }),
     );
@@ -993,8 +1028,7 @@ export class ProjectApi extends BaseApi {
         }
 
         const { projectDir, taskId, focus } = parsed;
-        await this.eventsHandler.handoffConversation(projectDir, taskId, focus);
-        res.status(200).json({ message: 'Conversation handed off' });
+        await this.taskOperations.execute(res, parsed, () => this.eventsHandler.handoffConversation(projectDir, taskId, focus), 'Conversation handed off');
       }),
     );
 
@@ -1067,8 +1101,8 @@ export class ProjectApi extends BaseApi {
           return;
         }
 
-        const { projectDir, taskId, carryOverUncommittedChanges, dropSourceChanges } = parsed;
-        await this.eventsHandler.switchToWorktreeWorkingMode(projectDir, taskId, { carryOverUncommittedChanges, dropSourceChanges });
+        const { projectDir, taskId, baseBranch, carryOverUncommittedChanges, dropSourceChanges } = parsed;
+        await this.eventsHandler.switchToWorktreeWorkingMode(projectDir, taskId, { baseBranch, carryOverUncommittedChanges, dropSourceChanges });
         res.status(200).json({ message: 'Switched to worktree working mode' });
       }),
     );
@@ -1141,8 +1175,8 @@ export class ProjectApi extends BaseApi {
           return;
         }
 
-        const { projectDir, taskId, filePath } = parsed;
-        await this.eventsHandler.restoreFile(projectDir, taskId, filePath);
+        const { projectDir, taskId, filePath, previousPath } = parsed;
+        await this.eventsHandler.restoreFile(projectDir, taskId, filePath, previousPath);
         res.status(200).json({ message: 'File restored' });
       }),
     );
@@ -1201,8 +1235,8 @@ export class ProjectApi extends BaseApi {
           return;
         }
 
-        const { projectDir, taskId, message, amend, filePaths } = parsed;
-        await this.eventsHandler.commitChanges(projectDir, taskId, message, amend, filePaths);
+        const { projectDir, taskId, message, amend, skipGitHooks = false, filePaths } = parsed;
+        await this.eventsHandler.commitChanges(projectDir, taskId, message, amend, skipGitHooks, filePaths);
         res.status(200).json({ message: 'Changes committed' });
       }),
     );
@@ -1292,9 +1326,9 @@ export class ProjectApi extends BaseApi {
           return;
         }
 
-        const { projectDir, taskId, branch, createTracking, takeOver } = parsed;
-        await this.eventsHandler.checkoutGitBranch(projectDir, taskId, branch, createTracking, takeOver);
-        res.status(200).json({ message: 'Branch checked out' });
+        const { projectDir, taskId, branch, createTracking, takeOver, smartCheckout } = parsed;
+        const result = await this.eventsHandler.checkoutGitBranch(projectDir, taskId, branch, createTracking, takeOver, smartCheckout);
+        res.status(200).json(result);
       }),
     );
 
@@ -1412,13 +1446,29 @@ export class ProjectApi extends BaseApi {
           return;
         }
 
-        const { projectDir, taskId, force, setUpstream } = parsed;
-        const result = await this.eventsHandler.gitPush(projectDir, taskId, force, setUpstream);
+        const { projectDir, taskId, force, setUpstream, pushToBase } = parsed;
+        const result = await this.eventsHandler.gitPush(projectDir, taskId, force, setUpstream, pushToBase);
         res.status(200).json(result);
       }),
     );
 
-    // Worktree status
+    // Task git status (current branch, uncommitted files, rebase state, worktree integration)
+    router.get(
+      '/project/git/status',
+      this.handleRequest(async (req, res) => {
+        const parsed = this.validateRequest(TaskGitStatusSchema, req.query, res);
+        if (!parsed) {
+          return;
+        }
+
+        const { projectDir, taskId, targetBranch } = parsed;
+        const status = await this.eventsHandler.getTaskGitStatus(projectDir, taskId, targetBranch);
+        res.status(200).json(status);
+      }),
+    );
+
+    // Deprecated: use /project/git/status. Returns the legacy flat WorktreeIntegrationStatus shape,
+    // or null when the task has no materialized worktree (matches the documented pre-deprecation contract).
     router.get(
       '/project/worktree/status',
       this.handleRequest(async (req, res) => {
@@ -1428,8 +1478,26 @@ export class ProjectApi extends BaseApi {
         }
 
         const { projectDir, taskId, targetBranch } = parsed;
-        const status = await this.eventsHandler.getWorktreeIntegrationStatus(projectDir, taskId, targetBranch);
-        res.status(200).json(status);
+        const taskGitStatus = await this.eventsHandler.getTaskGitStatus(projectDir, taskId, targetBranch);
+        if (!taskGitStatus?.worktree) {
+          res.status(200).json(null);
+          return;
+        }
+
+        const { currentBranch, worktree } = taskGitStatus;
+        const legacyStatus = {
+          currentBranch,
+          baseBranch: worktree.baseBranch,
+          targetBranch: worktree.targetBranch,
+          aheadCommits: worktree.aheadCommits,
+          uncommittedFiles: {
+            count: taskGitStatus.uncommittedFiles.count,
+            files: taskGitStatus.uncommittedFiles.files,
+          },
+          predictedConflicts: worktree.predictedConflicts,
+          rebaseState: taskGitStatus.rebaseState,
+        };
+        res.status(200).json(legacyStatus);
       }),
     );
 
@@ -1448,41 +1516,86 @@ export class ProjectApi extends BaseApi {
       }),
     );
 
-    // Abort worktree rebase
+    // Abort rebase (worktree or local branch)
     router.post(
-      '/project/worktree/abort-rebase',
+      '/project/git/abort-rebase',
       this.handleRequest(async (req, res) => {
-        const parsed = this.validateRequest(AbortWorktreeRebaseSchema, req.body, res);
+        const parsed = this.validateRequest(AbortRebaseSchema, req.body, res);
         if (!parsed) {
           return;
         }
 
         const { projectDir, taskId } = parsed;
-        await this.eventsHandler.abortWorktreeRebase(projectDir, taskId);
+        await this.eventsHandler.abortRebase(projectDir, taskId);
         res.status(200).json({ message: 'Rebase aborted' });
       }),
     );
 
-    // Continue worktree rebase
+    // Continue rebase (worktree or local branch)
     router.post(
-      '/project/worktree/continue-rebase',
+      '/project/git/continue-rebase',
       this.handleRequest(async (req, res) => {
-        const parsed = this.validateRequest(ContinueWorktreeRebaseSchema, req.body, res);
+        const parsed = this.validateRequest(ContinueRebaseSchema, req.body, res);
         if (!parsed) {
           return;
         }
 
         const { projectDir, taskId } = parsed;
-        await this.eventsHandler.continueWorktreeRebase(projectDir, taskId);
+        await this.eventsHandler.continueRebase(projectDir, taskId);
         res.status(200).json({ message: 'Rebase continued' });
       }),
     );
 
-    // Resolve worktree conflicts with agent
+    // Resolve conflicts with agent (worktree or local branch)
+    router.post(
+      '/project/git/resolve-conflicts-with-agent',
+      this.handleRequest(async (req, res) => {
+        const parsed = this.validateRequest(ResolveConflictsWithAgentSchema, req.body, res);
+        if (!parsed) {
+          return;
+        }
+
+        const { projectDir, taskId } = parsed;
+        await this.eventsHandler.resolveConflictsWithAgent(projectDir, taskId);
+        res.status(200).json({ message: 'Conflicts resolved' });
+      }),
+    );
+
+    // Deprecated: use /project/git/abort-rebase
+    router.post(
+      '/project/worktree/abort-rebase',
+      this.handleRequest(async (req, res) => {
+        const parsed = this.validateRequest(AbortRebaseSchema, req.body, res);
+        if (!parsed) {
+          return;
+        }
+
+        const { projectDir, taskId } = parsed;
+        await this.eventsHandler.abortRebase(projectDir, taskId);
+        res.status(200).json({ message: 'Rebase aborted' });
+      }),
+    );
+
+    // Deprecated: use /project/git/continue-rebase
+    router.post(
+      '/project/worktree/continue-rebase',
+      this.handleRequest(async (req, res) => {
+        const parsed = this.validateRequest(ContinueRebaseSchema, req.body, res);
+        if (!parsed) {
+          return;
+        }
+
+        const { projectDir, taskId } = parsed;
+        await this.eventsHandler.continueRebase(projectDir, taskId);
+        res.status(200).json({ message: 'Rebase continued' });
+      }),
+    );
+
+    // Deprecated: use /project/git/resolve-conflicts-with-agent
     router.post(
       '/project/worktree/resolve-conflicts-with-agent',
       this.handleRequest(async (req, res) => {
-        const parsed = this.validateRequest(ResolveWorktreeConflictsWithAgentSchema, req.body, res);
+        const parsed = this.validateRequest(ResolveConflictsWithAgentSchema, req.body, res);
         if (!parsed) {
           return;
         }
@@ -1503,8 +1616,7 @@ export class ProjectApi extends BaseApi {
         }
 
         const { projectDir, taskId } = parsed;
-        await this.eventsHandler.resolveGitErrorWithAgent(projectDir, taskId);
-        res.status(200).json({ message: 'Git error resolution started' });
+        await this.taskOperations.execute(res, parsed, () => this.eventsHandler.resolveGitErrorWithAgent(projectDir, taskId), 'Git error resolution started');
       }),
     );
 
@@ -1632,7 +1744,7 @@ export class ProjectApi extends BaseApi {
     router.get(
       '/project/custom-modes',
       this.handleRequest(async (req, res) => {
-        const parsed = this.validateRequest(GetProjectSettingsSchema, req.query, res);
+        const parsed = this.validateRequest(GetCustomModesSchema, req.query, res);
         if (!parsed) {
           return;
         }
@@ -1835,6 +1947,17 @@ export class ProjectApi extends BaseApi {
         const { projectDir } = parsed;
         await this.eventsHandler.stopProject(projectDir);
         res.status(200).json({ message: 'Project stopped' });
+      }),
+    );
+
+    router.post(
+      '/project/check',
+      this.handleRequest(async (req, res) => {
+        const parsed = this.validateRequest(AddOpenProjectSchema, req.body, res);
+        if (!parsed) {
+          return;
+        }
+        res.status(200).json(await this.eventsHandler.checkProject(parsed.projectDir));
       }),
     );
 

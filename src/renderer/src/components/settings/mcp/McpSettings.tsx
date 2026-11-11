@@ -2,7 +2,7 @@ import { Dispatch, SetStateAction, useCallback, useEffect, useMemo, useState } f
 import { McpServerConfig, McpServersData, McpTool, ProjectData } from '@common/types';
 import { extractIpcErrorMessage } from '@common/utils';
 import { useTranslation } from 'react-i18next';
-import { FaChevronLeft, FaChevronRight, FaPencilAlt, FaPlus, FaSyncAlt } from 'react-icons/fa';
+import { FaPencilAlt, FaPlus, FaSyncAlt } from 'react-icons/fa';
 import { AnimatePresence, motion } from 'framer-motion';
 import { RiMenuUnfold4Line } from 'react-icons/ri';
 import { HiXMark } from 'react-icons/hi2';
@@ -18,6 +18,7 @@ import { useBooleanState } from '@/hooks/useBooleanState';
 import { getPathBasename } from '@/utils/path-utils';
 import { Button } from '@/components/common/Button';
 import { IconButton } from '@/components/common/IconButton';
+import { ScopeSelector } from '@/components/common/ScopeSelector';
 
 type ServerToolsState = {
   tools: McpTool[] | null;
@@ -47,24 +48,17 @@ export const McpSettings = ({ mcpServers, setMcpServers, openProjects = [], sele
   const [serversTools, setServersTools] = useState<Record<string, ServerToolsState>>({});
 
   const contexts = useMemo(() => ['global', ...openProjects.map((p) => p.baseDir)], [openProjects]);
-  const [contextIndex, setContextIndex] = useState(0);
   const [mcpContext, setMcpContext] = useState<string>(selectedMcpContext || 'global');
 
   useEffect(() => {
     if (selectedMcpContext !== undefined) {
       // eslint-disable-next-line react-hooks/set-state-in-effect
       setMcpContext(selectedMcpContext);
-      const newIndex = contexts.indexOf(selectedMcpContext);
-      if (newIndex !== -1) {
-        setContextIndex(newIndex);
-      }
     }
-  }, [selectedMcpContext, contexts]);
+  }, [selectedMcpContext]);
 
-  const navigateContext = (direction: 'prev' | 'next') => {
-    const newIndex = direction === 'prev' ? (contextIndex - 1 + contexts.length) % contexts.length : (contextIndex + 1) % contexts.length;
-    setContextIndex(newIndex);
-    setMcpContext(contexts[newIndex]);
+  const handleContextChange = (nextContext: string) => {
+    setMcpContext(nextContext);
     setServersTools({});
   };
 
@@ -314,23 +308,7 @@ export const McpSettings = ({ mcpServers, setMcpServers, openProjects = [], sele
     <>
       {/* Context switcher */}
       <div className="p-3 border-b border-border-default">
-        <div className="flex items-center justify-between">
-          <IconButton
-            icon={<FaChevronLeft className="w-3 h-3" />}
-            onClick={() => navigateContext('prev')}
-            tooltip={t('settings.agent.previousContext')}
-            disabled={contexts.length <= 1}
-            className="p-1"
-          />
-          <div className="text-xs text-text-secondary truncate flex-1 text-center">{getContextDisplayName()}</div>
-          <IconButton
-            icon={<FaChevronRight className="w-3 h-3" />}
-            onClick={() => navigateContext('next')}
-            tooltip={t('settings.agent.nextContext')}
-            disabled={contexts.length <= 1}
-            className="p-1"
-          />
-        </div>
+        <ScopeSelector contexts={contexts} value={mcpContext} onChange={handleContextChange} getDisplayName={getContextDisplayName} />
       </div>
 
       {/* Server list */}

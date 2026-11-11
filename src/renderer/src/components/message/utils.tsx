@@ -2,6 +2,8 @@ import { Fragment, ReactNode } from 'react';
 import ReactMarkdown from 'react-markdown';
 import { type Components } from 'react-markdown';
 import remarkGfm from 'remark-gfm';
+import remarkMath from 'remark-math';
+import rehypeKatex from 'rehype-katex';
 import {
   Group,
   AssistantGroupMessage,
@@ -18,6 +20,8 @@ import {
 import { CompactionSnippetBlock } from './CompactionSnippetBlock';
 import { CustomCommandBashBlock } from './CustomCommandBashBlock';
 import { ThinkingAnswerBlock } from './ThinkingAnswerBlock';
+import { MarkdownLink } from './MarkdownLink';
+import { messageUrlTransform } from './markdown-url';
 
 import { CodeBlock } from '@/components/common/CodeBlock';
 import { MermaidDiagram } from '@/components/common/MermaidDiagram';
@@ -41,7 +45,8 @@ const ALL_FENCES = [
   ['<sourcecode>', '</sourcecode>'],
 ] as const;
 
-export const REMARK_PLUGINS = [remarkGfm];
+export const REMARK_PLUGINS = [remarkGfm, remarkMath];
+export const REHYPE_PLUGINS = [rehypeKatex];
 export const MARKDOWN_COMPONENTS: Components = {
   h1: (props) => <h1 className="text-2xl font-bold my-4 first:mt-0 last:mb-0" {...props} />,
   h2: (props) => <h2 className="text-xl font-bold my-3 first:mt-0 last:mb-0" {...props} />,
@@ -56,7 +61,11 @@ export const MARKDOWN_COMPONENTS: Components = {
   blockquote: (props) => <blockquote className="border-l-4 border-border-default pl-4 italic my-0 text-text-muted-light" {...props} />,
   strong: (props) => <strong className="font-bold" {...props} />,
   em: (props) => <em className="italic" {...props} />,
-  a: (props) => <a className="text-info-light hover:underline" target="_blank" rel="noopener noreferrer" {...props} />,
+  a: ({ href, children, title }) => (
+    <MarkdownLink href={href} title={title}>
+      {children}
+    </MarkdownLink>
+  ),
   // Handle code blocks - check if it's a mermaid diagram or regular code
   code: (props) => {
     const { className, children } = props;
@@ -138,7 +147,13 @@ export const parseMessageContent = (
     if (currentText.trimEnd()) {
       if (renderMarkdown) {
         parts.push(
-          <ReactMarkdown key={parts.length} remarkPlugins={REMARK_PLUGINS} components={MARKDOWN_COMPONENTS}>
+          <ReactMarkdown
+            key={parts.length}
+            urlTransform={messageUrlTransform}
+            remarkPlugins={REMARK_PLUGINS}
+            rehypePlugins={REHYPE_PLUGINS}
+            components={MARKDOWN_COMPONENTS}
+          >
             {normalizeListBlocks(currentText.trimEnd())}
           </ReactMarkdown>,
         );
@@ -590,7 +605,9 @@ export const parseToolContent = (rawContent: string): ToolContentResult => {
 
 export const includeMessageProperty = (message: Message): boolean => {
   if (isAssistantGroupMessage(message)) {
-    return message.responseMessage.finished === true;
+    return message.responseMessage
+      ? message.responseMessage.finished === true
+      : message.toolMessages.length > 0 && message.toolMessages.every((toolMessage) => toolMessage.finished === true);
   }
   if (isGroupMessage(message)) {
     return message.group.finished === true;
@@ -608,7 +625,7 @@ export const includeMessageProperty = (message: Message): boolean => {
  * Rules:
  * - A ResponseMessage followed by ToolMessages forms a single group
  * - A new ResponseMessage starts a new group
- * - Orphan ToolMessages (without preceding ResponseMessage) remain standalone
+ * - Consecutive ToolMessages without a preceding ResponseMessage form a tool-only group
  * - Other message types remain standalone
  */
 export const groupAssistantMessages = (messages: Message[]): Message[] => {
@@ -633,24 +650,21 @@ export const groupAssistantMessages = (messages: Message[]): Message[] => {
   };
 
   const flushCurrentGroup = () => {
-    if (currentResponse) {
-      if (currentToolMessages.length > 0) {
-        // Create an AssistantGroupMessage
-        const assistantGroup: AssistantGroupMessage = {
-          id: nextUniqueId(currentResponse),
-          type: 'assistant-group',
-          content: '',
-          responseMessage: currentResponse,
-          toolMessages: currentToolMessages,
-        };
-        result.push(assistantGroup);
-      } else {
-        // No tool messages, just push the response as-is
-        pushWithUniqueId(currentResponse);
-      }
-      currentResponse = null;
-      currentToolMessages = [];
+    const firstMessage = currentResponse ?? currentToolMessages[0];
+    if (firstMessage && currentToolMessages.length > 0) {
+      const assistantGroup: AssistantGroupMessage = {
+        id: nextUniqueId(firstMessage),
+        type: 'assistant-group',
+        content: '',
+        responseMessage: currentResponse ?? undefined,
+        toolMessages: currentToolMessages,
+      };
+      result.push(assistantGroup);
+    } else if (currentResponse) {
+      pushWithUniqueId(currentResponse);
     }
+    currentResponse = null;
+    currentToolMessages = [];
   };
 
   for (const message of messages) {
@@ -659,13 +673,7 @@ export const groupAssistantMessages = (messages: Message[]): Message[] => {
       flushCurrentGroup();
       currentResponse = message;
     } else if (isToolMessage(message)) {
-      if (currentResponse) {
-        // Add to current group
-        currentToolMessages.push(message);
-      } else {
-        // Orphan tool message - push as-is
-        pushWithUniqueId(message);
-      }
+      currentToolMessages.push(message);
     } else {
       // Other message types - flush current group and push as-is
       flushCurrentGroup();
@@ -746,7 +754,11 @@ export const areMessagesEqual = (prevMessage: Message, nextMessage: Message): bo
   }
 
   if (isAssistantGroupMessage(prevMessage) && isAssistantGroupMessage(nextMessage)) {
-    if (!areMessagesEqual(prevMessage.responseMessage, nextMessage.responseMessage)) {
+    if (
+      prevMessage.responseMessage && nextMessage.responseMessage
+        ? !areMessagesEqual(prevMessage.responseMessage, nextMessage.responseMessage)
+        : prevMessage.responseMessage !== nextMessage.responseMessage
+    ) {
       return false;
     }
     if (prevMessage.toolMessages.length !== nextMessage.toolMessages.length) {

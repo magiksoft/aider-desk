@@ -61,9 +61,9 @@ export const LogMessageBlock = ({ baseDir, taskId, message, onRemove, compact = 
     <div className={`${baseClasses} ${config.levelClasses} relative group flex items-center justify-between`}>
       {renderMessage()}
       <div className="flex items-center gap-4">
-        {message.actionIds && (
+        {message.actions && (
           <div className="flex flex-wrap justify-end">
-            <MessageActions actionIds={message.actionIds} baseDir={baseDir} taskId={taskId} onInterrupt={onInterrupt} removeActionId={removeMessageAction} />
+            <MessageActions actions={message.actions} baseDir={baseDir} taskId={taskId} onInterrupt={onInterrupt} removeActionId={removeMessageAction} />
           </div>
         )}
         <div className="flex items-center space-x-1">
@@ -72,10 +72,11 @@ export const LogMessageBlock = ({ baseDir, taskId, message, onRemove, compact = 
             className={clsx(config.tooltipClass, 'transition-colors text-text-dark group-hover:text-text-muted-light')}
             alwaysShow={true}
           />
-          {onRemove && (
+          {onRemove && !message.persistent && (
             <IconButton
               icon={<MdClose className="w-4 h-4" />}
               onClick={onRemove}
+              data-testid="remove-log-message"
               tooltip={t('common.remove')}
               className={clsx(config.tooltipClass, 'p-1 rounded transition-colors text-text-dark group-hover:text-text-muted-light duration-200')}
             />

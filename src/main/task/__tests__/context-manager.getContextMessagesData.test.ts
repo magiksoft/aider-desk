@@ -555,6 +555,70 @@ describe('ContextManager - getContextMessagesData', () => {
   });
 
   describe('7. Aider tool with prompt context', () => {
+    it.each([
+      { inline: false, outputContext: true },
+      { inline: true, outputContext: true },
+      { inline: false, outputContext: false },
+      { inline: true, outputContext: false },
+    ])('should restore the Aider group for all responses (inline: $inline, outputContext: $outputContext)', ({ inline, outputContext }) => {
+      const parentContext = { id: 'parent-ctx' };
+      const aiderContext = {
+        id: 'aider-ctx',
+        group: {
+          id: 'aider-group',
+          color: 'var(--color-agent-aider-tools)',
+          name: 'toolMessage.aider.finishedTask',
+          finished: true,
+        },
+      };
+      const toolName = `${AIDER_TOOL_GROUP_NAME}${TOOL_GROUP_NAME_SEPARATOR}${AIDER_TOOL_RUN_PROMPT}`;
+      const toolResult = {
+        type: 'tool-result' as const,
+        toolCallId: 'aider-call',
+        toolName,
+        output: {
+          type: 'json' as const,
+          value: {
+            responses: ['aider-1', 'aider-2'].map((messageId) => ({
+              messageId,
+              content: `Response ${messageId}`,
+              promptContext: {
+                ...aiderContext,
+                group: { ...aiderContext.group, name: 'toolMessage.aider.working', finished: false },
+              },
+            })),
+            ...(outputContext ? { promptContext: aiderContext } : {}),
+          },
+        },
+      };
+      const messages: ContextMessage[] = [
+        {
+          id: 'assistant-1',
+          role: 'assistant',
+          promptContext: inline && !outputContext ? aiderContext : parentContext,
+          content: [{ type: 'tool-call', toolCallId: 'aider-call', toolName, input: { prompt: 'Fix issues' } }, ...(inline ? [toolResult] : [])],
+        },
+        ...(inline
+          ? []
+          : [
+              {
+                id: 'tool-1',
+                role: 'tool' as const,
+                promptContext: outputContext ? parentContext : aiderContext,
+                content: [toolResult],
+              },
+            ]),
+      ];
+      const manager = new ContextManager(mockTask, 'test-task', messages);
+      const result = manager.getContextMessagesData();
+
+      expect(result).toHaveLength(3);
+      expect(result[0]).toMatchObject({ type: 'tool', id: 'aider-call', promptContext: aiderContext, finished: true });
+      expect(result[1]).toMatchObject({ type: 'response-completed', messageId: 'aider-1', promptContext: aiderContext });
+      expect(result[2]).toMatchObject({ type: 'response-completed', messageId: 'aider-2', promptContext: aiderContext });
+      expect(messages[0].promptContext).toEqual(inline && !outputContext ? aiderContext : parentContext);
+    });
+
     it('should create ResponseCompletedData for aider run_prompt responses', () => {
       const toolCallId = uuidv4();
       const promptContext = { id: 'ctx-1', group: { id: 'g-1', color: 'red', name: 'Aider' } };
@@ -1195,6 +1259,94 @@ describe('ContextManager - getContextMessagesData', () => {
       expect(result).toHaveLength(2);
       const toolMsg = result[1];
       expect(toolMsg.promptContext).toEqual(toolResultPromptContext);
+    });
+  });
+
+  describe('Log messages', () => {
+    it('should convert a log message to LogData', () => {
+      const logMessage: ContextMessage = {
+        id: 'log-1',
+        role: 'log',
+        level: 'info',
+        content: 'Conversation compacted.',
+        timestamp: 12345,
+      };
+
+      const manager = new ContextManager(mockTask, 'test-task', [logMessage]);
+      const result = manager.getContextMessagesData();
+
+      expect(result).toHaveLength(1);
+      expect(result[0]).toEqual({
+        baseDir: '/test/project',
+        taskId: 'test-task',
+        level: 'info',
+        id: 'log-1',
+        message: 'Conversation compacted.',
+        finished: undefined,
+        promptContext: undefined,
+        actions: undefined,
+        timestamp: 12345,
+        persistent: true,
+      });
+    });
+
+    it('should include actions and promptContext in LogData', () => {
+      const promptContext: PromptContext = { id: 'prompt-1' };
+      const logMessage: ContextMessage = {
+        id: 'log-2',
+        role: 'log',
+        level: 'warning',
+        content: 'Something went wrong.',
+        promptContext,
+        actions: [{ id: 'undoContextChange', data: { checkpointId: 'context.pre-compaction.001.json' } }],
+        timestamp: 99999,
+      };
+
+      const manager = new ContextManager(mockTask, 'test-task', [logMessage]);
+      const result = manager.getContextMessagesData();
+
+      expect(result).toHaveLength(1);
+      expect(result[0]).toMatchObject({
+        level: 'warning',
+        message: 'Something went wrong.',
+        promptContext,
+        actions: [{ id: 'undoContextChange', data: { checkpointId: 'context.pre-compaction.001.json' } }],
+        timestamp: 99999,
+      });
+    });
+
+    it('should interleave log messages with regular messages in order', () => {
+      const messages: ContextMessage[] = [
+        { id: 'user-1', role: 'user', content: 'Hello' },
+        { id: 'log-1', role: 'log', level: 'info', content: 'Compacted.', timestamp: 100 },
+        { id: 'asst-1', role: 'assistant', content: 'Hi' },
+      ];
+
+      const manager = new ContextManager(mockTask, 'test-task', messages);
+      const result = manager.getContextMessagesData();
+
+      expect(result).toHaveLength(3);
+      expect(result[0].type).toBe('user');
+      expect('level' in result[1] && result[1].level).toBe('info');
+      expect(result[1].type).toBeUndefined();
+      expect(result[2].type).toBe('response-completed');
+    });
+
+    it('should handle finished flag on log messages', () => {
+      const logMessage: ContextMessage = {
+        id: 'log-3',
+        role: 'log',
+        level: 'info',
+        content: 'Done.',
+        finished: true,
+        timestamp: 500,
+      };
+
+      const manager = new ContextManager(mockTask, 'test-task', [logMessage]);
+      const result = manager.getContextMessagesData();
+
+      expect(result).toHaveLength(1);
+      expect(result[0]).toMatchObject({ finished: true });
     });
   });
 });

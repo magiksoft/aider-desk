@@ -1,4 +1,4 @@
-import { McpServersData, ProjectData, ProviderProfile, SettingsData } from '@common/types';
+import { AiderSettingsData, McpServersData, ProjectData, ProviderProfile, SettingsData } from '@common/types';
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { isEqual } from 'lodash';
 import { useTranslation } from 'react-i18next';
@@ -32,6 +32,14 @@ export const SettingsPage = ({ onClose, initialPageId, initialOptions, openProje
 
   const [providers, setProviders] = useState<ProviderProfile[]>([]);
   const [originalProviders, setOriginalProviders] = useState<ProviderProfile[]>([]);
+  const [aiderProjectOverrides, setAiderProjectOverrides] = useState<Record<string, Partial<AiderSettingsData>>>(() =>
+    Object.fromEntries((openProjects ?? []).map((project) => [project.baseDir, project.settings.aider ?? {}])),
+  );
+  const [originalAiderProjectOverrides, setOriginalAiderProjectOverrides] = useState(aiderProjectOverrides);
+
+  const handleAiderProjectOverridesChange = (baseDir: string, overrides: Partial<AiderSettingsData>) => {
+    setAiderProjectOverrides((current) => ({ ...current, [baseDir]: overrides }));
+  };
 
   const [mcpServers, setMcpServers] = useState<McpServersData>({ global: {}, projectServers: {} });
   const [originalMcpServers, setOriginalMcpServers] = useState<McpServersData>({ global: {}, projectServers: {} });
@@ -73,6 +81,33 @@ export const SettingsPage = ({ onClose, initialPageId, initialOptions, openProje
   }, [api]);
 
   useEffect(() => {
+    let cancelled = false;
+    const loadProjectOverrides = async () => {
+      try {
+        const overrides = Object.fromEntries(
+          await Promise.all(
+            (openProjects ?? []).map(async (project) => {
+              const projectSettings = await api.getProjectSettings(project.baseDir);
+              return [project.baseDir, projectSettings.aider ?? {}];
+            }),
+          ),
+        );
+        if (!cancelled) {
+          setAiderProjectOverrides(overrides);
+          setOriginalAiderProjectOverrides(overrides);
+        }
+      } catch (error) {
+        // eslint-disable-next-line no-console
+        console.error('Failed to load project Aider settings:', error);
+      }
+    };
+    void loadProjectOverrides();
+    return () => {
+      cancelled = true;
+    };
+  }, [api, openProjects]);
+
+  useEffect(() => {
     setAgentProfiles(originalAgentProfiles);
   }, [originalAgentProfiles]);
 
@@ -81,8 +116,20 @@ export const SettingsPage = ({ onClose, initialPageId, initialOptions, openProje
     const agentProfilesChanged = !isEqual(agentProfiles, originalAgentProfiles);
     const providersChanged = !isEqual(providers, originalProviders);
     const mcpServersChanged = !isEqual(mcpServers, originalMcpServers);
-    return settingsChanged || agentProfilesChanged || providersChanged || mcpServersChanged;
-  }, [localSettings, originalSettings, agentProfiles, originalAgentProfiles, providers, originalProviders, mcpServers, originalMcpServers]);
+    const aiderProjectOverridesChanged = !isEqual(aiderProjectOverrides, originalAiderProjectOverrides);
+    return settingsChanged || agentProfilesChanged || providersChanged || mcpServersChanged || aiderProjectOverridesChanged;
+  }, [
+    localSettings,
+    originalSettings,
+    agentProfiles,
+    originalAgentProfiles,
+    providers,
+    originalProviders,
+    mcpServers,
+    originalMcpServers,
+    aiderProjectOverrides,
+    originalAiderProjectOverrides,
+  ]);
 
   const handleCancel = useCallback(() => {
     if (originalSettings && localSettings?.language !== originalSettings.language) {
@@ -126,6 +173,13 @@ export const SettingsPage = ({ onClose, initialPageId, initialOptions, openProje
         console.error('Failed to save providers:', error);
         return false;
       }
+
+      for (const [baseDir, overrides] of Object.entries(aiderProjectOverrides)) {
+        if (!isEqual(overrides, originalAiderProjectOverrides[baseDir])) {
+          await api.patchProjectSettings(baseDir, { aider: overrides });
+        }
+      }
+      setOriginalAiderProjectOverrides(aiderProjectOverrides);
 
       // Save MCP server changes
       try {
@@ -257,6 +311,8 @@ export const SettingsPage = ({ onClose, initialPageId, initialOptions, openProje
             mcpServers={mcpServers}
             setMcpServers={setMcpServers}
             openProjects={openProjects}
+            aiderProjectOverrides={aiderProjectOverrides}
+            onAiderProjectOverridesChange={handleAiderProjectOverridesChange}
             providers={providers}
             setProviders={setProviders}
             onShowLogs={onShowLogs}

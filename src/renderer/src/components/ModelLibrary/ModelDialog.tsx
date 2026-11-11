@@ -2,6 +2,7 @@ import { startTransition, useEffect, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { Model, ProviderProfile } from '@common/types';
 
+import { ModelModalitiesEditor } from './ModelModalitiesEditor';
 import { ModelParameterOverrides } from './ModelParameterOverrides';
 
 import { Input } from '@/components/common/Input';
@@ -26,6 +27,7 @@ export const ModelDialog = ({ model, providers, onSave, onCancel }: Props) => {
     ...model,
   });
 
+  const [modalitiesEdited, setModalitiesEdited] = useState(false);
   const [errors, setErrors] = useState<Record<string, string>>({});
   const [providerOverrides, setProviderOverrides] = useState<Record<string, unknown>>(model?.providerOverrides || {});
   const [temperatureEnabled, setTemperatureEnabled] = useState(model?.temperature !== undefined);
@@ -52,6 +54,9 @@ export const ModelDialog = ({ model, providers, onSave, onCancel }: Props) => {
         cacheReadInputTokenCost: model.cacheReadInputTokenCost,
         cacheWriteInputTokenCost: model.cacheWriteInputTokenCost,
         supportsTools: model.supportsTools,
+        modalities: model.modalities,
+        requireStreaming: model.requireStreaming,
+        disableStreaming: model.disableStreaming,
         isHidden: model.isHidden,
       };
       const newCostDisplayValues = {
@@ -93,6 +98,7 @@ export const ModelDialog = ({ model, providers, onSave, onCancel }: Props) => {
 
     startTransition(() => {
       setErrors({});
+      setModalitiesEdited(false);
     });
   }, [model, providers]);
 
@@ -151,6 +157,7 @@ export const ModelDialog = ({ model, providers, onSave, onCancel }: Props) => {
       cacheWriteInputTokenCost:
         costDisplayValues.cacheWriteInputTokenCost !== '' ? parseFloat(costDisplayValues.cacheWriteInputTokenCost) / 1000000 : undefined,
       supportsTools: formData.supportsTools,
+      modalities: modalitiesEdited || model?.hasModalitiesOverride ? formData.modalities : undefined,
       isHidden: formData.isHidden,
       isCustom: model?.isCustom || !model,
       providerOverrides,
@@ -165,6 +172,11 @@ export const ModelDialog = ({ model, providers, onSave, onCancel }: Props) => {
     if (errors[field]) {
       setErrors((prev) => ({ ...prev, [field]: '' }));
     }
+  };
+
+  const handleModalitiesChange = (modalities: Model['modalities']) => {
+    setModalitiesEdited(true);
+    handleInputChange('modalities', modalities);
   };
 
   const handleCostBlur = (field: keyof Model, displayField: keyof typeof costDisplayValues, inputValue: string) => {
@@ -336,10 +348,12 @@ export const ModelDialog = ({ model, providers, onSave, onCancel }: Props) => {
           </div>
         </div>
 
+        <ModelModalitiesEditor value={formData.modalities} onChange={handleModalitiesChange} />
+
         {/* Advanced Settings - Provider Overrides */}
         {selectedProvider && (
           <div className="pt-2">
-            <ModelParameterOverrides provider={selectedProvider.provider} overrides={providerOverrides} onChange={setProviderOverrides} />
+            <ModelParameterOverrides provider={selectedProvider.provider} model={formData} overrides={providerOverrides} onChange={setProviderOverrides} />
           </div>
         )}
 
