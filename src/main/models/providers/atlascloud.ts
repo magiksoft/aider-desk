@@ -1,8 +1,8 @@
-import { Model, ProviderProfile, SettingsData } from '@common/types';
+import { Model, ModelModality, ProviderProfile, SettingsData } from '@common/types';
 import { isAtlasCloudProvider, AtlasCloudProvider } from '@common/agent';
 import { createOpenAICompatible } from '@ai-sdk/openai-compatible';
 
-import { getDefaultUsageReport } from './default';
+import { getDefaultModelInfo, getDefaultUsageReport } from './default';
 
 import type { LanguageModel } from 'ai';
 
@@ -12,6 +12,63 @@ import logger from '@/logger';
 import { getEffectiveEnvironmentVariable } from '@/utils';
 
 const ATLASCLOUD_BASE_URL = 'https://api.atlascloud.ai/v1';
+
+interface AtlasCloudPricing {
+  prompt?: string;
+  completion?: string;
+  input_cache_read?: string;
+  input_cache_write?: string;
+}
+
+interface AtlasCloudModel {
+  id: string;
+  context_length?: number;
+  max_output_length?: number;
+  input_modalities?: string[];
+  output_modalities?: string[];
+  pricing?: AtlasCloudPricing;
+}
+
+interface AtlasCloudModelsResponse {
+  data?: AtlasCloudModel[];
+}
+
+// Pricing values are already per-token prices, returned as strings
+const parsePrice = (price: string | undefined): number | undefined => {
+  if (!price) {
+    return undefined;
+  }
+  const value = Number(price);
+  return Number.isFinite(value) && value > 0 ? value : undefined;
+};
+
+const MODALITY_MAP: Record<string, ModelModality> = {
+  text: ModelModality.Text,
+  image: ModelModality.Image,
+  audio: ModelModality.Audio,
+  video: ModelModality.Video,
+  pdf: ModelModality.Pdf,
+};
+
+const parseModalities = (values: string[] | undefined): ModelModality[] =>
+  (values ?? []).map((value) => MODALITY_MAP[value]).filter((value): value is ModelModality => value !== undefined);
+
+const toModel = (model: AtlasCloudModel, profileId: string): Model => {
+  const input = parseModalities(model.input_modalities);
+  const output = parseModalities(model.output_modalities);
+
+  return {
+    id: model.id,
+    providerId: profileId,
+    maxInputTokens: model.context_length,
+    maxOutputTokensLimit: model.max_output_length,
+    inputCostPerToken: parsePrice(model.pricing?.prompt),
+    outputCostPerToken: parsePrice(model.pricing?.completion),
+    cacheWriteInputTokenCost: parsePrice(model.pricing?.input_cache_write),
+    cacheReadInputTokenCost: parsePrice(model.pricing?.input_cache_read),
+    modalities: input.length > 0 || output.length > 0 ? { input, output } : undefined,
+  } satisfies Model;
+};
 
 const loadAtlasCloudModels = async (profile: ProviderProfile, settings: SettingsData): Promise<LoadModelsResponse> => {
   if (!isAtlasCloudProvider(profile.provider)) {
@@ -39,14 +96,8 @@ const loadAtlasCloudModels = async (profile: ProviderProfile, settings: Settings
       return { models: [], success: false, error: errorMsg };
     }
 
-    const data = await response.json();
-    const models =
-      data.data?.map((model: { id: string }) => {
-        return {
-          id: model.id,
-          providerId: profile.id,
-        } satisfies Model;
-      }) || [];
+    const data = (await response.json()) as AtlasCloudModelsResponse;
+    const models = data.data?.map((model) => toModel(model, profile.id)) || [];
 
     logger.info(`Loaded ${models.length} Atlas Cloud models for profile ${profile.id}`);
     return { models, success: true };
@@ -57,7 +108,9 @@ const loadAtlasCloudModels = async (profile: ProviderProfile, settings: Settings
   }
 };
 
-const hasAtlasCloudEnvVars = (): boolean => false;
+const hasAtlasCloudEnvVars = (settings: SettingsData): boolean => {
+  return !!getEffectiveEnvironmentVariable('ATLASCLOUD_API_KEY', settings)?.value;
+};
 
 const getAtlasCloudAiderMapping = (provider: ProviderProfile, modelId: string, settings: SettingsData, projectDir: string): AiderModelMapping => {
   const atlasCloudProvider = provider.provider as AtlasCloudProvider;
@@ -116,4 +169,5 @@ export const atlasCloudProviderStrategy: LlmProviderStrategy = {
   loadModels: loadAtlasCloudModels,
   hasEnvVars: hasAtlasCloudEnvVars,
   getAiderMapping: getAtlasCloudAiderMapping,
+  getModelInfo: getDefaultModelInfo,
 };
