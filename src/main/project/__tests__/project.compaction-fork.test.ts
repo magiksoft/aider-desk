@@ -14,7 +14,7 @@ const createProject = (messages: ContextMessage[] | null) => {
   const prepareTask = vi.fn(async () => fork);
   const sendTaskCreated = vi.fn();
   const project = Object.create(Project.prototype) as Project;
-  Object.assign(project, { tasks: new Map([['source', source]]), prepareTask, eventManager: { sendTaskCreated } });
+  Object.assign(project, { tasks: new Map([['source', source]]), deferredTasks: new Map(), prepareTask, eventManager: { sendTaskCreated } });
   return { project, source, fork, prepareTask, sendTaskCreated };
 };
 

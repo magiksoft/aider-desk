@@ -217,7 +217,7 @@ const api: ApplicationAPI = {
   duplicateTask: (baseDir, taskId) => ipcRenderer.invoke('duplicate-task', baseDir, taskId),
   forkTask: (baseDir, taskId, messageId) => ipcRenderer.invoke('fork-task', baseDir, taskId, messageId),
   forkTaskFromCheckpoint: (baseDir, taskId, checkpointId) => ipcRenderer.invoke('fork-task-from-checkpoint', baseDir, taskId, checkpointId),
-  getTasks: (baseDir) => ipcRenderer.invoke('get-tasks', baseDir),
+  getTasks: (baseDir, includeArchived = false) => ipcRenderer.invoke('get-tasks', baseDir, includeArchived),
   loadTask: (baseDir, taskId) => ipcRenderer.invoke('load-task', baseDir, taskId),
 
   exportTaskToMarkdown: async (baseDir, taskId, copyOnly) => ipcRenderer.invoke('export-task-to-markdown', baseDir, taskId, copyOnly),

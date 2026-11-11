@@ -7,18 +7,32 @@ type Props = {
   tasks: TaskData[];
   selectedTaskId?: string;
   projectDir: string;
+  showArchived: boolean;
+  onShowArchivedChange: (show: boolean) => void;
   onSelectTask: (taskId: string) => void;
   isMobile?: boolean;
   onClose?: () => void;
 };
 
-export const ReadonlyTaskSidebar = ({ tasks, selectedTaskId, onSelectTask, isMobile = false, onClose }: Props) => {
+export const ReadonlyTaskSidebar = ({
+  tasks,
+  selectedTaskId,
+  projectDir,
+  showArchived,
+  onShowArchivedChange,
+  onSelectTask,
+  isMobile = false,
+  onClose,
+}: Props) => {
   const [isCollapsed, setIsCollapsed] = useState(false);
 
   const handleToggleCollapse = () => setIsCollapsed((collapsed) => !collapsed);
 
   return (
     <TaskSidebar
+      projectDir={projectDir}
+      showArchived={showArchived}
+      onShowArchivedChange={onShowArchivedChange}
       loading={false}
       tasks={tasks}
       readonly

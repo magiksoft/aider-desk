@@ -58,6 +58,10 @@ export const ProjectView = ({ projectDir, isProjectActive = false, initialTaskId
   const settingsLoaded = useSettingsStore((state) => !!state.settings);
   const { projectSettings } = useProjectSettings();
   const api = useApi();
+  const [storedShowArchived, setShowArchived] = useLocalStorage(`task-sidebar-show-archived-${projectDir}`, false);
+  const showArchived = storedShowArchived ?? false;
+  const showArchivedRef = useRef(showArchived);
+  showArchivedRef.current = showArchived;
   const { TASK_HOTKEYS, PROJECT_HOTKEYS } = useConfiguredHotkeys();
   const { isMobile } = useResponsive();
   const setItemsProvider = useCommandPaletteStore((state) => state.setItemsProvider);
@@ -79,6 +83,7 @@ export const ProjectView = ({ projectDir, isProjectActive = false, initialTaskId
   const taskSidebarRef = useRef<TaskSidebarRef>(null);
   const taskContentRef = useRef<HTMLDivElement>(null);
   const creatingTaskRef = useRef(false);
+  const archivedTasksRequestedRef = useRef(false);
   const hasActivatedTaskRef = useRef(false);
   const startupAppliedRef = useRef(false);
   const activeTask = activeTaskId ? optimisticTasks.find((task) => task.id === activeTaskId) : null;
@@ -181,7 +186,15 @@ export const ProjectView = ({ projectDir, isProjectActive = false, initialTaskId
     async (tasks: TaskData[]) => {
       // Check if URL specifies a task to activate
       if (initialTaskId) {
-        const initialTask = tasks.find((task) => task.id === initialTaskId);
+        let initialTask = tasks.find((task) => task.id === initialTaskId);
+        if (!initialTask) {
+          archivedTasksRequestedRef.current = true;
+          showArchivedRef.current = true;
+          setShowArchived(true);
+          const allTasks = await api.getTasks(projectDir, true);
+          setProjectTasks(projectDir, allTasks);
+          initialTask = allTasks.find((task) => task.id === initialTaskId);
+        }
         if (initialTask) {
           activateTask(initialTask.id);
           return;
@@ -231,7 +244,7 @@ export const ProjectView = ({ projectDir, isProjectActive = false, initialTaskId
         activateTask(startupTask.id);
       }
     },
-    [initialTaskId, startupMode, api, projectDir, activateTask],
+    [initialTaskId, startupMode, api, projectDir, activateTask, setShowArchived],
   );
 
   useEffect(() => {
@@ -259,7 +272,18 @@ export const ProjectView = ({ projectDir, isProjectActive = false, initialTaskId
       if (existingTask && getTaskDir(existingTask) !== getTaskDir(taskData)) {
         releaseTaskFiles(taskData.id);
       }
-      updateProjectTask(projectDir, taskData);
+      addProjectTask(projectDir, taskData);
+      if ((!existingTask || existingTask.archived) && !taskData.archived) {
+        const refreshTasks = async () => {
+          try {
+            const tasks = await api.getTasks(projectDir, showArchivedRef.current);
+            setProjectTasks(projectDir, tasks);
+          } catch (error) {
+            showErrorNotification(error instanceof Error ? error.message : String(error));
+          }
+        };
+        void refreshTasks();
+      }
     };
 
     const handleTaskStarted = (taskData: TaskData) => {
@@ -313,7 +337,9 @@ export const ProjectView = ({ projectDir, isProjectActive = false, initialTaskId
 
         // Load tasks
         setTasksLoading(true);
-        const tasks = await api.getTasks(projectDir);
+        const includeArchived = showArchivedRef.current;
+        archivedTasksRequestedRef.current = includeArchived;
+        const tasks = await api.getTasks(projectDir, includeArchived);
         setProjectTasks(projectDir, tasks);
         setTasksLoading(false);
 
@@ -356,6 +382,36 @@ export const ProjectView = ({ projectDir, isProjectActive = false, initialTaskId
       cleanupProjectCache(projectDir);
     };
   }, [activateTask, api, projectDir, handleStartupMode]);
+
+  useEffect(() => {
+    if (!showArchived) {
+      archivedTasksRequestedRef.current = false;
+      return;
+    }
+    if (starting || tasksLoading || archivedTasksRequestedRef.current) {
+      return;
+    }
+
+    archivedTasksRequestedRef.current = true;
+    let cancelled = false;
+    const loadArchivedTasks = async () => {
+      try {
+        const tasks = await api.getTasks(projectDir, true);
+        if (!cancelled) {
+          setProjectTasks(projectDir, tasks);
+        }
+      } catch (error) {
+        if (!cancelled) {
+          showErrorNotification(error instanceof Error ? error.message : String(error));
+        }
+      }
+    };
+    void loadArchivedTasks();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [api, projectDir, showArchived, starting, tasksLoading]);
 
   // Startup-on-first-activation: background projects do not load any task until they are first
   // activated, then the configured startup mode is applied once (also serving as a self-healing
@@ -609,7 +665,13 @@ export const ProjectView = ({ projectDir, isProjectActive = false, initialTaskId
         type: PaletteItemType.Action,
         action: () => invokeAction(`task.mode.${mode.name}`),
       }));
-      return [...tasks, ...files, ...siblingAction, ...pinAction, ...customModeActions];
+      const archivedAction: PaletteItem = {
+        id: showArchived ? 'task.hideArchived' : 'task.showArchived',
+        label: t(showArchived ? 'uiActions.hideArchivedTasks' : 'uiActions.showArchivedTasks'),
+        type: PaletteItemType.Action,
+        action: () => invokeAction(showArchived ? 'task.hideArchived' : 'task.showArchived'),
+      };
+      return [...tasks, ...files, ...siblingAction, ...pinAction, ...customModeActions, archivedAction];
     });
   }, [
     isProjectActive,
@@ -625,6 +687,7 @@ export const ProjectView = ({ projectDir, isProjectActive = false, initialTaskId
     t,
     projectDir,
     customModes,
+    showArchived,
   ]);
 
   useEffect(() => {
@@ -712,6 +775,8 @@ export const ProjectView = ({ projectDir, isProjectActive = false, initialTaskId
 
     const actions: Record<string, () => void> = {
       'task.new': () => void createNewTask(),
+      'task.showArchived': () => setShowArchived(true),
+      'task.hideArchived': () => setShowArchived(false),
       'task.newSubtask': () => {
         if (activeTaskId) {
           void createNewTask(activeTaskId);
@@ -879,6 +944,7 @@ export const ProjectView = ({ projectDir, isProjectActive = false, initialTaskId
     handleUpdateOptimisticTaskState,
     optimisticTasks,
     customModes,
+    setShowArchived,
   ]);
 
   if (!projectSettings || !settingsLoaded) {
@@ -886,7 +952,7 @@ export const ProjectView = ({ projectDir, isProjectActive = false, initialTaskId
   }
 
   return (
-    <TasksProvider baseDir={projectDir} tasks={tasks} activeTaskId={activeTaskId}>
+    <TasksProvider baseDir={projectDir} tasks={tasks} activeTaskId={activeTaskId} showArchived={showArchived}>
       <ExtensionsProvider projectDir={projectDir} agentProfile={agentProfile} activateTask={activateTask}>
         <div className="h-full w-full bg-gradient-to-b from-bg-primary to-bg-primary-light relative">
           {isProjectActive && (
@@ -903,6 +969,9 @@ export const ProjectView = ({ projectDir, isProjectActive = false, initialTaskId
 
           {(isTaskSidebarOpen || !isMobile) && (
             <TaskSidebar
+              projectDir={projectDir}
+              showArchived={showArchived}
+              onShowArchivedChange={setShowArchived}
               ref={taskSidebarRef}
               loading={tasksLoading}
               tasks={optimisticTasks}

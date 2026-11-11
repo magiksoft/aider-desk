@@ -92,14 +92,38 @@ describe('TaskSidebar Hierarchy', () => {
   });
 
   it('renders chevron for parent tasks', () => {
-    render(<TaskSidebar loading={false} tasks={mockTasks} activeTaskId="parent-1" onTaskSelect={vi.fn()} isCollapsed={false} onToggleCollapse={vi.fn()} />);
+    render(
+      <TaskSidebar
+        projectDir="/test/project"
+        showArchived={false}
+        onShowArchivedChange={vi.fn()}
+        loading={false}
+        tasks={mockTasks}
+        activeTaskId="parent-1"
+        onTaskSelect={vi.fn()}
+        isCollapsed={false}
+        onToggleCollapse={vi.fn()}
+      />,
+    );
 
     // Chevron should be visible for parent-1
     expect(screen.getByTestId('chevron-parent-1')).toBeInTheDocument();
   });
 
   it('toggles subtask visibility when chevron is clicked', async () => {
-    render(<TaskSidebar loading={false} tasks={mockTasks} activeTaskId="parent-1" onTaskSelect={vi.fn()} isCollapsed={false} onToggleCollapse={vi.fn()} />);
+    render(
+      <TaskSidebar
+        projectDir="/test/project"
+        showArchived={false}
+        onShowArchivedChange={vi.fn()}
+        loading={false}
+        tasks={mockTasks}
+        activeTaskId="parent-1"
+        onTaskSelect={vi.fn()}
+        isCollapsed={false}
+        onToggleCollapse={vi.fn()}
+      />,
+    );
 
     // Child 1 may be visible initially due to Activity component behavior in tests
     // Focus on testing the toggle functionality
@@ -115,7 +139,19 @@ describe('TaskSidebar Hierarchy', () => {
   });
 
   it('persists expanded state in localStorage', async () => {
-    render(<TaskSidebar loading={false} tasks={mockTasks} activeTaskId="parent-1" onTaskSelect={vi.fn()} isCollapsed={false} onToggleCollapse={vi.fn()} />);
+    render(
+      <TaskSidebar
+        projectDir="/test/project"
+        showArchived={false}
+        onShowArchivedChange={vi.fn()}
+        loading={false}
+        tasks={mockTasks}
+        activeTaskId="parent-1"
+        onTaskSelect={vi.fn()}
+        isCollapsed={false}
+        onToggleCollapse={vi.fn()}
+      />,
+    );
 
     const chevron = screen.getByTestId('chevron-parent-1');
 
@@ -129,14 +165,38 @@ describe('TaskSidebar Hierarchy', () => {
   });
 
   it('shows "+ create subtask" button on hover for parent tasks', () => {
-    render(<TaskSidebar loading={false} tasks={mockTasks} activeTaskId="parent-1" onTaskSelect={vi.fn()} isCollapsed={false} onToggleCollapse={vi.fn()} />);
+    render(
+      <TaskSidebar
+        projectDir="/test/project"
+        showArchived={false}
+        onShowArchivedChange={vi.fn()}
+        loading={false}
+        tasks={mockTasks}
+        activeTaskId="parent-1"
+        onTaskSelect={vi.fn()}
+        isCollapsed={false}
+        onToggleCollapse={vi.fn()}
+      />,
+    );
 
     // The button might only be visible on hover in CSS, but it should be in the DOM
     expect(screen.getByTestId('create-subtask-parent-1')).toBeInTheDocument();
   });
 
   it('moves "Pin" button to dropdown menu', () => {
-    render(<TaskSidebar loading={false} tasks={mockTasks} activeTaskId="parent-1" onTaskSelect={vi.fn()} isCollapsed={false} onToggleCollapse={vi.fn()} />);
+    render(
+      <TaskSidebar
+        projectDir="/test/project"
+        showArchived={false}
+        onShowArchivedChange={vi.fn()}
+        loading={false}
+        tasks={mockTasks}
+        activeTaskId="parent-1"
+        onTaskSelect={vi.fn()}
+        isCollapsed={false}
+        onToggleCollapse={vi.fn()}
+      />,
+    );
 
     // Pin should NOT be in the hover actions anymore (or at least not the main one)
     // Actually, the AC says "The Pin action should be moved to the dropdown menu (⋮)"
@@ -153,7 +213,19 @@ describe('TaskSidebar Hierarchy', () => {
       { id: 'grandchild-1', name: 'Grandchild 1', updatedAt: '2023-01-03T00:00:00Z', parentId: 'child-1' },
     ] as TaskData[];
 
-    render(<TaskSidebar loading={false} tasks={nestedTasks} activeTaskId="parent-1" onTaskSelect={vi.fn()} isCollapsed={false} onToggleCollapse={vi.fn()} />);
+    render(
+      <TaskSidebar
+        projectDir="/test/project"
+        showArchived={false}
+        onShowArchivedChange={vi.fn()}
+        loading={false}
+        tasks={nestedTasks}
+        activeTaskId="parent-1"
+        onTaskSelect={vi.fn()}
+        isCollapsed={false}
+        onToggleCollapse={vi.fn()}
+      />,
+    );
 
     await act(async () => {
       fireEvent.click(screen.getByTestId('chevron-parent-1'));

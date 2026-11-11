@@ -76,6 +76,12 @@ describe('ReadonlyApi', () => {
     expect(load).toHaveBeenCalledWith(READONLY_MODE);
   });
 
+  it.each([false, true])('forwards includeArchived=%s to the project', async (includeArchived) => {
+    const response = await fetch(`${baseUrl}/api/readonly/tasks?projectDir=${encodeURIComponent(projectDir)}&includeArchived=${includeArchived}`);
+    expect(response.status).toBe(200);
+    expect(project.getTasks).toHaveBeenCalledWith(includeArchived);
+  });
+
   it('rejects unknown projects and tasks', async () => {
     const projectResponse = await fetch(`${baseUrl}/api/readonly/tasks?projectDir=${encodeURIComponent('/other')}`);
     const taskResponse = await fetch(`${baseUrl}/api/readonly/tasks/missing?projectDir=${encodeURIComponent(projectDir)}`);

@@ -134,7 +134,11 @@ export class ReadonlyApi extends BaseApi {
     router.get(
       '/tasks',
       this.handleRequest(async (req, res) => {
-        const parsed = this.validateRequest(ProjectQuerySchema, req.query, res);
+        const parsed = this.validateRequest(
+          ProjectQuerySchema.extend({ includeArchived: z.enum(['true', 'false']).optional().default('false') }),
+          req.query,
+          res,
+        );
         if (!parsed) {
           return;
         }
@@ -142,7 +146,7 @@ export class ReadonlyApi extends BaseApi {
         if (!project) {
           return;
         }
-        res.status(200).json(await project.getTasks());
+        res.status(200).json(await project.getTasks(parsed.includeArchived === 'true'));
       }),
     );
 

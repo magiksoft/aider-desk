@@ -85,7 +85,17 @@ describe('TaskSidebar Auto Expand', () => {
   const newSubtask = { id: 'subtask-new', name: 'New Subtask', updatedAt: '2023-01-03T00:00:00Z', parentId: 'parent-1' } as TaskData;
 
   const makeSidebar = (tasks: TaskData[], activeTaskId: string) => (
-    <TaskSidebar loading={false} tasks={tasks} activeTaskId={activeTaskId} onTaskSelect={vi.fn()} isCollapsed={false} onToggleCollapse={vi.fn()} />
+    <TaskSidebar
+      projectDir="/test/project"
+      showArchived={false}
+      onShowArchivedChange={vi.fn()}
+      loading={false}
+      tasks={tasks}
+      activeTaskId={activeTaskId}
+      onTaskSelect={vi.fn()}
+      isCollapsed={false}
+      onToggleCollapse={vi.fn()}
+    />
   );
 
   beforeEach(() => {

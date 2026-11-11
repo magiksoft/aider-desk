@@ -223,6 +223,7 @@ export class Task {
     private readonly extensionManager: ExtensionManager,
     private readonly pythonInstaller: PythonDependenciesInstaller,
     initialTaskData?: Partial<TaskData>,
+    taskDataLoaded = false,
   ) {
     this.task = {
       ...EMPTY_TASK_DATA,
@@ -256,7 +257,7 @@ export class Task {
     };
     this.aiderManager = new AiderManager(this, this.store, this.modelManager, this.eventManager, () => this.connectors, this.pythonInstaller);
 
-    this.taskDataLoadPromise = this.loadTaskData();
+    this.taskDataLoadPromise = taskDataLoaded ? Promise.resolve() : this.loadTaskData();
   }
 
   public async waitForTaskDataLoad(): Promise<void> {

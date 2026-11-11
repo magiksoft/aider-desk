@@ -1010,12 +1010,12 @@ export class EventsHandler {
     return await this.projectManager.getProject(baseDir).forkTaskFromCheckpoint(taskId, checkpointId);
   }
 
-  async getTasks(baseDir: string): Promise<TaskData[]> {
-    return this.projectManager.getProject(baseDir).getTasks();
+  async getTasks(baseDir: string, includeArchived = true): Promise<TaskData[]> {
+    return this.projectManager.getProject(baseDir).getTasks(includeArchived);
   }
 
-  async reloadTasks(baseDir: string): Promise<TaskData[]> {
-    return this.projectManager.getProject(baseDir).reloadTasks();
+  async reloadTasks(baseDir: string, includeArchived = true): Promise<TaskData[]> {
+    return this.projectManager.getProject(baseDir).reloadTasks(includeArchived);
   }
 
   async loadTask(baseDir: string, taskId: string): Promise<TaskStateData> {

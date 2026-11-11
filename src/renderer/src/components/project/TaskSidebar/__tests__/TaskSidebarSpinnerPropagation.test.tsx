@@ -92,7 +92,19 @@ describe('TaskSidebar spinner propagation', () => {
   });
 
   const renderSidebar = (tasks: TaskData[]) =>
-    render(<TaskSidebar loading={false} tasks={tasks} activeTaskId="parent-1" onTaskSelect={vi.fn()} isCollapsed={false} onToggleCollapse={vi.fn()} />);
+    render(
+      <TaskSidebar
+        projectDir="/test/project"
+        showArchived={false}
+        onShowArchivedChange={vi.fn()}
+        loading={false}
+        tasks={tasks}
+        activeTaskId="parent-1"
+        onTaskSelect={vi.fn()}
+        isCollapsed={false}
+        onToggleCollapse={vi.fn()}
+      />,
+    );
 
   it('shows spinner on collapsed parent of in-progress subtask', () => {
     const tasks = [

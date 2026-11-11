@@ -234,7 +234,7 @@ export interface ApplicationAPI {
   duplicateTask: (baseDir: string, taskId: string) => Promise<TaskData>;
   forkTask: (baseDir: string, taskId: string, messageId: string) => Promise<TaskData>;
   forkTaskFromCheckpoint: (baseDir: string, taskId: string, checkpointId: string) => Promise<TaskData>;
-  getTasks: (baseDir: string) => Promise<TaskData[]>;
+  getTasks: (baseDir: string, includeArchived?: boolean) => Promise<TaskData[]>;
   loadTask: (baseDir: string, taskId: string) => Promise<TaskStateData>;
   exportTaskToMarkdown: (baseDir: string, taskId: string, copyOnly?: boolean) => Promise<string | void>;
   getRecentProjects: () => Promise<string[]>;

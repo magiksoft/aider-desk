@@ -40,7 +40,6 @@ import { Tooltip } from '@/components/ui/Tooltip';
 import { Checkbox } from '@/components/common/Checkbox';
 import { Toggle } from '@/components/common/Toggle';
 import { getTaskStateLabel, getStateTextClass } from '@/components/common/TaskStateChip';
-import { useTaskSidebarStore } from '@/stores/taskSidebarStore';
 
 export const COLLAPSED_WIDTH = 44;
 export const EXPANDED_WIDTH = 256;
@@ -48,6 +47,9 @@ export const MIN_WIDTH = EXPANDED_WIDTH;
 export const MAX_WIDTH = 600;
 
 type Props = {
+  projectDir: string;
+  showArchived: boolean;
+  onShowArchivedChange: (show: boolean) => void;
   loading: boolean;
   tasks: TaskData[];
   readonly?: boolean;
@@ -76,6 +78,9 @@ export type TaskSidebarRef = {
 
 const TaskSidebarComponent = (
   {
+    projectDir,
+    showArchived,
+    onShowArchivedChange,
     loading,
     tasks,
     readonly = false,
@@ -102,9 +107,8 @@ const TaskSidebarComponent = (
   const { t } = useTranslation();
   const [deleteConfirmTaskId, setDeleteConfirmTaskId] = useState<string | null>(null);
   const [editingTaskId, setEditingTaskId] = useState<string | null>(null);
-  const [selectedStates, setSelectedStates] = useState<Set<string>>(() => new Set([...Object.values(DefaultTaskState)]));
-  const showArchived = useTaskSidebarStore((state) => state.showArchived);
-  const setShowArchived = useTaskSidebarStore((state) => state.setShowArchived);
+  const [selectedStateIds, setSelectedStateIds] = useLocalStorage<string[]>(`task-sidebar-selected-states-${projectDir}`, Object.values(DefaultTaskState));
+  const selectedStates = useMemo(() => new Set(selectedStateIds ?? Object.values(DefaultTaskState)), [selectedStateIds]);
   const [isFilterVisible, setIsFilterVisible] = useState<boolean>(false);
   const [isSearchVisible, setIsSearchVisible] = useState<boolean>(false);
   const [searchQuery, setSearchQuery] = useState<string>('');
@@ -456,9 +460,9 @@ const TaskSidebarComponent = (
 
   const handleToggleShowArchived = useCallback(
     (checked: boolean) => {
-      setShowArchived(checked);
+      onShowArchivedChange(checked);
     },
-    [setShowArchived],
+    [onShowArchivedChange],
   );
 
   const handleArchiveTask = useCallback(
@@ -799,6 +803,7 @@ const TaskSidebarComponent = (
                       <ExtensionComponentWrapper placement="tasks-sidebar-actions-left" />
                       <Tooltip content={t('taskSidebar.filterStates')}>
                         <button
+                          aria-label={t('taskSidebar.filterStates')}
                           className={clsx('p-1.5 rounded-md transition-colors', isFilterVisible ? 'bg-bg-fourth' : 'hover:bg-bg-tertiary')}
                           onClick={() => {
                             setIsFilterVisible(!isFilterVisible);
@@ -839,15 +844,16 @@ const TaskSidebarComponent = (
                 key={state}
                 size="xs"
                 checked={selectedStates.has(state)}
+                aria-label={getTaskStateLabel(t, state)}
                 onChange={(checked) => {
-                  setSelectedStates((prev) => {
-                    const newSet = new Set(prev);
+                  setSelectedStateIds((prev) => {
+                    const newSet = new Set(prev ?? Object.values(DefaultTaskState));
                     if (checked) {
                       newSet.add(state);
                     } else {
                       newSet.delete(state);
                     }
-                    return newSet;
+                    return [...newSet];
                   });
                 }}
                 label={<span className={getStateTextClass(state)}>{getTaskStateLabel(t, state)}</span>}
@@ -1142,6 +1148,8 @@ const TaskSidebarComponent = (
 const arePropsEqual = (prevProps: Props, nextProps: Props): boolean => {
   // Compare primitive props
   if (
+    prevProps.projectDir !== nextProps.projectDir ||
+    prevProps.showArchived !== nextProps.showArchived ||
     prevProps.loading !== nextProps.loading ||
     prevProps.readonly !== nextProps.readonly ||
     prevProps.activeTaskId !== nextProps.activeTaskId ||
@@ -1153,6 +1161,7 @@ const arePropsEqual = (prevProps: Props, nextProps: Props): boolean => {
 
   // Compare function props
   if (
+    prevProps.onShowArchivedChange !== nextProps.onShowArchivedChange ||
     prevProps.onTaskSelect !== nextProps.onTaskSelect ||
     prevProps.onToggleCollapse !== nextProps.onToggleCollapse ||
     prevProps.createNewTask !== nextProps.createNewTask ||

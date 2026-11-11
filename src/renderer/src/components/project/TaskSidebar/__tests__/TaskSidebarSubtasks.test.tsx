@@ -85,6 +85,9 @@ describe('TaskSidebar Subtasks', () => {
     const createNewTask = vi.fn();
     render(
       <TaskSidebar
+        projectDir="/test/project"
+        showArchived={false}
+        onShowArchivedChange={vi.fn()}
         loading={false}
         tasks={mockTasks}
         activeTaskId="parent-1"
@@ -108,11 +111,33 @@ describe('TaskSidebar Subtasks', () => {
     ] as TaskData[];
 
     const { rerender } = render(
-      <TaskSidebar loading={false} tasks={tasks} activeTaskId="parent-1" onTaskSelect={vi.fn()} isCollapsed={false} onToggleCollapse={vi.fn()} />,
+      <TaskSidebar
+        projectDir="/test/project"
+        showArchived={false}
+        onShowArchivedChange={vi.fn()}
+        loading={false}
+        tasks={tasks}
+        activeTaskId="parent-1"
+        onTaskSelect={vi.fn()}
+        isCollapsed={false}
+        onToggleCollapse={vi.fn()}
+      />,
     );
 
     // Change activeTaskId to child-1
-    rerender(<TaskSidebar loading={false} tasks={tasks} activeTaskId="child-1" onTaskSelect={vi.fn()} isCollapsed={false} onToggleCollapse={vi.fn()} />);
+    rerender(
+      <TaskSidebar
+        projectDir="/test/project"
+        showArchived={false}
+        onShowArchivedChange={vi.fn()}
+        loading={false}
+        tasks={tasks}
+        activeTaskId="child-1"
+        onTaskSelect={vi.fn()}
+        isCollapsed={false}
+        onToggleCollapse={vi.fn()}
+      />,
+    );
 
     // Verify that the parent and child are rendered correctly
     expect(screen.getByText('Parent 1')).toBeInTheDocument();

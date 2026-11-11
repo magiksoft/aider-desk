@@ -41,6 +41,7 @@ export class Project {
   private readonly customCommandManager: CustomCommandManager;
   private readonly tasksLoadingPromise: Promise<void> | null = null;
   private readonly tasks = new Map<string, Task>();
+  private readonly deferredTasks = new Map<string, Partial<TaskData>>();
   private tasksReloadingPromise: Promise<TaskData[]> | null = null;
 
   private connectors: Connector[] = [];
@@ -209,11 +210,12 @@ export class Project {
     let id: string;
     do {
       id = uuidv4().substring(0, 8);
-    } while (this.tasks.has(id));
+    } while (this.tasks.has(id) || this.deferredTasks.has(id));
     return id;
   }
 
-  private async prepareTask(taskId: string = this.generateShortTaskId(), initialTaskData?: Partial<TaskData>) {
+  private createTaskInstance(taskId: string, initialTaskData?: Partial<TaskData>) {
+    const deferredData = this.deferredTasks.get(taskId);
     const task = new Task(
       this,
       taskId,
@@ -231,10 +233,17 @@ export class Project {
       this.promptsManager,
       this.extensionManager,
       this.pythonInstaller,
-      initialTaskData,
+      deferredData ?? initialTaskData,
+      deferredData !== undefined,
     );
-    await task.waitForTaskDataLoad();
     this.tasks.set(taskId, task);
+    this.deferredTasks.delete(taskId);
+    return task;
+  }
+
+  private async prepareTask(taskId: string = this.generateShortTaskId(), initialTaskData?: Partial<TaskData>) {
+    const task = this.tasks.get(taskId) ?? this.createTaskInstance(taskId, initialTaskData);
+    await task.waitForTaskDataLoad();
 
     // Allow extensions to modify task data after preparation
     const extResult = await this.extensionManager.dispatchEvent('onTaskPrepared', { task: task.task }, this, task);
@@ -275,13 +284,17 @@ export class Project {
         tasksDir,
       });
 
+      await this.indexTaskMetadata(taskDirs);
       for (const taskId of taskDirs) {
-        await this.prepareTask(taskId);
+        if (!this.isTaskArchived(taskId) || this.deferredTasks.get(taskId)?.state === DefaultTaskState.InProgress) {
+          await this.prepareTask(taskId);
+        }
       }
 
       logger.info('Successfully loaded tasks', {
         baseDir: this.baseDir,
-        loadedTasks: taskDirs.length,
+        loadedTasks: this.tasks.size - 1,
+        deferredTasks: this.deferredTasks.size,
       });
     } catch (error) {
       logger.error('Failed to load tasks', {
@@ -290,6 +303,35 @@ export class Project {
         error: error instanceof Error ? error.message : String(error),
       });
     }
+  }
+
+  private async indexTaskMetadata(taskIds: string[]) {
+    for (const taskId of taskIds) {
+      if (this.tasks.has(taskId)) {
+        continue;
+      }
+      try {
+        const settingsPath = path.join(this.baseDir, AIDER_DESK_TASKS_DIR, taskId, 'settings.json');
+        const data = (await fileExists(settingsPath)) ? (JSON.parse(await fs.readFile(settingsPath, 'utf8')) as Partial<TaskData>) : {};
+        this.deferredTasks.set(taskId, data);
+      } catch (error) {
+        logger.error('Failed to read task metadata', { baseDir: this.baseDir, taskId, error });
+      }
+    }
+  }
+
+  private isTaskArchived(taskId: string): boolean {
+    const visited = new Set<string>();
+    let currentId: string | null | undefined = taskId;
+    while (currentId && !visited.has(currentId)) {
+      visited.add(currentId);
+      const data = this.tasks.get(currentId)?.task ?? this.deferredTasks.get(currentId);
+      if (data?.archived) {
+        return true;
+      }
+      currentId = data?.parentId;
+    }
+    return false;
   }
 
   public getMostRecentTask() {
@@ -305,7 +347,13 @@ export class Project {
   }
 
   public getTask(taskId: string = INTERNAL_TASK_ID) {
-    const task = this.tasks.get(taskId);
+    let task = this.tasks.get(taskId);
+    if (!task && this.deferredTasks.has(taskId)) {
+      task = this.createTaskInstance(taskId);
+      void this.prepareTask(taskId).catch((error) => {
+        logger.error('Failed to prepare deferred task', { baseDir: this.baseDir, taskId, error });
+      });
+    }
     if (!task) {
       logger.warn('Task not found', {
         baseDir: this.baseDir,
@@ -440,7 +488,7 @@ export class Project {
         return true;
       }
     }
-    return false;
+    return Array.from(this.deferredTasks.entries()).some(([id, data]) => id !== excludeTaskId && data.worktree?.path === worktreePath);
   }
 
   private async removeTaskWorktree(taskId: string, taskData: TaskData | undefined): Promise<void> {
@@ -462,7 +510,7 @@ export class Project {
 
   private async deleteTaskInternal(taskId: string): Promise<void> {
     const taskDir = path.join(this.baseDir, AIDER_DESK_TASKS_DIR, taskId);
-    const task = this.tasks.get(taskId);
+    const task = this.deferredTasks.has(taskId) ? await this.prepareTask(taskId) : this.tasks.get(taskId);
     const taskData = task?.task;
 
     if (!task) {
@@ -488,7 +536,8 @@ export class Project {
   public async deleteTask(taskId: string): Promise<void> {
     try {
       // First, find and delete all subtasks recursively
-      const allTasks = await this.getTasks();
+      await this.tasksLoadingPromise;
+      const allTasks = [...Array.from(this.tasks.values(), (task) => task.task), ...Array.from(this.deferredTasks, ([id, data]) => ({ ...data, id }))];
 
       const collectDescendantIds = (parentId: string, visited: Set<string>): string[] =>
         allTasks
@@ -554,7 +603,7 @@ export class Project {
   }
 
   public async duplicateTask(taskId: string): Promise<TaskData> {
-    const sourceTask = this.tasks.get(taskId);
+    const sourceTask = this.getTask(taskId);
     if (!sourceTask) {
       throw new Error(`Task with id ${taskId} not found`);
     }
@@ -576,7 +625,7 @@ export class Project {
   }
 
   public async forkTask(taskId: string, messageId: string): Promise<TaskData> {
-    const sourceTask = this.tasks.get(taskId);
+    const sourceTask = this.getTask(taskId);
     if (!sourceTask) {
       throw new Error(`Task with id ${taskId} not found`);
     }
@@ -585,7 +634,7 @@ export class Project {
   }
 
   public async forkTaskFromCheckpoint(taskId: string, checkpointId: string): Promise<TaskData> {
-    const sourceTask = this.tasks.get(taskId);
+    const sourceTask = this.getTask(taskId);
     if (!sourceTask) {
       throw new Error(`Task with id ${taskId} not found`);
     }
@@ -609,15 +658,21 @@ export class Project {
     return newTask.task;
   }
 
-  async getTasks(): Promise<TaskData[]> {
+  async getTasks(includeArchived = true): Promise<TaskData[]> {
     await this.tasksLoadingPromise;
+
+    for (const taskId of this.deferredTasks.keys()) {
+      if (includeArchived || !this.isTaskArchived(taskId)) {
+        await this.prepareTask(taskId);
+      }
+    }
 
     return Array.from(this.tasks.values())
       .map((task) => task.task)
-      .filter((task) => task.id !== INTERNAL_TASK_ID);
+      .filter((task) => task.id !== INTERNAL_TASK_ID && (includeArchived || !this.isTaskArchived(task.id)));
   }
 
-  async reloadTasks(): Promise<TaskData[]> {
+  async reloadTasks(includeArchived = true): Promise<TaskData[]> {
     await this.tasksLoadingPromise;
 
     if (!this.tasksReloadingPromise) {
@@ -626,12 +681,20 @@ export class Project {
       });
     }
 
-    return this.tasksReloadingPromise;
+    await this.tasksReloadingPromise;
+    return this.getTasks(includeArchived);
   }
 
   private async reloadTasksInternal(): Promise<TaskData[]> {
     const taskIdsOnDisk = await this.getTaskIdsFromDisk();
     const taskIdsOnDiskSet = new Set(taskIdsOnDisk);
+
+    for (const taskId of this.deferredTasks.keys()) {
+      if (!taskIdsOnDiskSet.has(taskId)) {
+        this.deferredTasks.delete(taskId);
+      }
+    }
+    await this.indexTaskMetadata(taskIdsOnDisk);
 
     for (const [taskId, task] of this.tasks) {
       if (taskId === INTERNAL_TASK_ID || taskIdsOnDiskSet.has(taskId)) {
@@ -652,6 +715,9 @@ export class Project {
     for (const taskId of taskIdsOnDisk) {
       const task = this.tasks.get(taskId);
       if (!task) {
+        if (this.isTaskArchived(taskId)) {
+          continue;
+        }
         const newTask = await this.prepareTask(taskId);
         this.eventManager.sendTaskCreated(newTask.task);
         continue;
@@ -667,7 +733,7 @@ export class Project {
       }
     }
 
-    return this.getTasks();
+    return this.getTasks(false);
   }
 
   forEachTask(callback: (task: Task) => void, initializedOnly = true) {

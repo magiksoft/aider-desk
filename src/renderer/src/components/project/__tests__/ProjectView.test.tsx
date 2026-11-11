@@ -91,6 +91,9 @@ const taskSidebarMock = vi.hoisted(() => ({
 }));
 
 interface TaskSidebarMockProps {
+  projectDir: string;
+  showArchived: boolean;
+  onShowArchivedChange: (show: boolean) => void;
   tasks: TaskData[];
   onTaskSelect: (taskId: string) => void;
   deleteTask?: (taskId: string) => Promise<void>;
@@ -99,12 +102,15 @@ interface TaskSidebarMockProps {
 // Mock components
 vi.mock('@/components/project/TaskSidebar/TaskSidebar', async () => {
   const { forwardRef, useImperativeHandle } = await import('react');
-  const TaskSidebar = forwardRef(({ tasks, onTaskSelect }: TaskSidebarMockProps, ref) => {
+  const TaskSidebar = forwardRef(({ tasks, onTaskSelect, projectDir, showArchived, onShowArchivedChange }: TaskSidebarMockProps, ref) => {
     useImperativeHandle(ref, () => ({
       startRenaming: taskSidebarMock.startRenaming,
     }));
     return (
       <div data-testid="task-sidebar">
+        <button data-testid={`archive-toggle-${projectDir}`} onClick={() => onShowArchivedChange(!showArchived)}>
+          Toggle archives
+        </button>
         {tasks.map((task) => (
           <button key={task.id} onClick={() => onTaskSelect(task.id)} data-testid={`task-${task.id}`}>
             {task.name}
@@ -160,6 +166,7 @@ describe('ProjectView', () => {
 
   beforeEach(() => {
     vi.clearAllMocks();
+    localStorage.clear();
     commandPaletteStoreMock.reset();
     mockApi.getTasks.mockResolvedValue([{ id: 'task-1', name: 'Task 1' }] as TaskData[]);
     mockApi.getCustomModes.mockResolvedValue([]);
@@ -185,8 +192,142 @@ describe('ProjectView', () => {
 
     await waitFor(() => {
       expect(mockApi.startProject).toHaveBeenCalledWith(projectDir);
-      expect(mockApi.getTasks).toHaveBeenCalledWith(projectDir);
+      expect(mockApi.getTasks).toHaveBeenCalledWith(projectDir, false);
     });
+  });
+
+  it('loads archived tasks only after the archive filter is enabled', async () => {
+    render(<ProjectView projectDir={projectDir} isProjectActive={true} />);
+    await waitFor(() => expect(mockApi.getTasks).toHaveBeenCalledWith(projectDir, false));
+    expect(mockApi.getTasks).not.toHaveBeenCalledWith(projectDir, true);
+
+    mockApi.getTasks.mockResolvedValue([
+      { id: 'task-1', name: 'Task 1' },
+      { id: 'archived', name: 'Archived task', archived: true },
+    ] as TaskData[]);
+    fireEvent.click(screen.getByTestId(`archive-toggle-${projectDir}`));
+
+    await waitFor(() => expect(screen.getByTestId('task-archived')).toBeInTheDocument());
+    expect(mockApi.getTasks).toHaveBeenCalledWith(projectDir, true);
+
+    const calls = mockApi.getTasks.mock.calls.length;
+    fireEvent.click(screen.getByTestId(`archive-toggle-${projectDir}`));
+    expect(mockApi.getTasks).toHaveBeenCalledTimes(calls);
+  });
+
+  it('does not load another project archives when toggling the active project filter', async () => {
+    const otherProjectDir = '/other/project';
+    render(
+      <>
+        <ProjectView projectDir={projectDir} isProjectActive={true} />
+        <ProjectView projectDir={otherProjectDir} isProjectActive={false} />
+      </>,
+    );
+    await waitFor(() => {
+      expect(mockApi.getTasks).toHaveBeenCalledWith(projectDir, false);
+      expect(mockApi.getTasks).toHaveBeenCalledWith(otherProjectDir, false);
+    });
+    mockApi.getTasks.mockClear();
+
+    fireEvent.click(screen.getByTestId(`archive-toggle-${projectDir}`));
+
+    await waitFor(() => expect(mockApi.getTasks).toHaveBeenCalledWith(projectDir, true));
+    expect(mockApi.getTasks).not.toHaveBeenCalledWith(otherProjectDir, true);
+    expect(mockApi.startProject).toHaveBeenCalledTimes(2);
+    expect(localStorage.getItem(`task-sidebar-show-archived-${otherProjectDir}`)).toBe('false');
+  });
+
+  it('persists the archive filter across project remounts', async () => {
+    const view = render(<ProjectView projectDir={projectDir} isProjectActive={true} />);
+    await waitFor(() => expect(mockApi.getTasks).toHaveBeenCalledWith(projectDir, false));
+    fireEvent.click(screen.getByTestId(`archive-toggle-${projectDir}`));
+    await waitFor(() => expect(mockApi.getTasks).toHaveBeenCalledWith(projectDir, true));
+    view.unmount();
+    mockApi.getTasks.mockClear();
+
+    render(<ProjectView projectDir={projectDir} isProjectActive={true} />);
+
+    await waitFor(() => expect(mockApi.getTasks).toHaveBeenCalledExactlyOnceWith(projectDir, true));
+  });
+
+  it('routes archive palette commands to the active project after switching projects', async () => {
+    const otherProjectDir = '/other/project';
+    const view = render(
+      <>
+        <ProjectView projectDir={projectDir} isProjectActive={true} />
+        <ProjectView projectDir={otherProjectDir} isProjectActive={false} />
+      </>,
+    );
+    await waitFor(() => expect(mockApi.getTasks).toHaveBeenCalledWith(otherProjectDir, false));
+    act(() => invokeAction('task.showArchived'));
+    await waitFor(() => expect(mockApi.getTasks).toHaveBeenCalledWith(projectDir, true));
+    expect(commandPaletteStoreMock.collectItems().has('task.hideArchived')).toBe(true);
+    expect(commandPaletteStoreMock.collectItems().has('task.showArchived')).toBe(false);
+
+    view.rerender(
+      <>
+        <ProjectView projectDir={projectDir} isProjectActive={false} />
+        <ProjectView projectDir={otherProjectDir} isProjectActive={true} />
+      </>,
+    );
+    expect(commandPaletteStoreMock.collectItems().has('task.showArchived')).toBe(true);
+    act(() => invokeAction('task.showArchived'));
+    await waitFor(() => expect(mockApi.getTasks).toHaveBeenCalledWith(otherProjectDir, true));
+    act(() => invokeAction('task.hideArchived'));
+    expect(localStorage.getItem(`task-sidebar-show-archived-${projectDir}`)).toBe('true');
+    expect(localStorage.getItem(`task-sidebar-show-archived-${otherProjectDir}`)).toBe('false');
+  });
+
+  it('enables the archive filter to open an archived task from a deep link', async () => {
+    mockApi.getTasks.mockImplementation(async (_projectDir, includeArchived) =>
+      includeArchived ? ([{ id: 'archived', name: 'Archived task', archived: true }] as TaskData[]) : ([{ id: 'task-1', name: 'Task 1' }] as TaskData[]),
+    );
+    render(<ProjectView projectDir={projectDir} initialTaskId="archived" isProjectActive={true} />);
+
+    await waitFor(() => {
+      expect(screen.getByTestId('task-view')).toHaveTextContent('Archived task');
+    });
+    expect(localStorage.getItem(`task-sidebar-show-archived-${projectDir}`)).toBe('true');
+    expect(mockApi.getTasks.mock.calls).toEqual([
+      [projectDir, false],
+      [projectDir, true],
+    ]);
+  });
+
+  it('includes archives in the initial request when the filter is already enabled', async () => {
+    localStorage.setItem(`task-sidebar-show-archived-${projectDir}`, 'true');
+    render(<ProjectView projectDir={projectDir} isProjectActive={true} />);
+
+    await waitFor(() => expect(screen.getByTestId('task-task-1')).toBeInTheDocument());
+    expect(mockApi.getTasks).toHaveBeenCalledExactlyOnceWith(projectDir, true);
+  });
+
+  it.each([false, true])('respects showArchived=%s when resyncing after reconnect', async (showArchived) => {
+    localStorage.setItem(`task-sidebar-show-archived-${projectDir}`, String(showArchived));
+    render(<ProjectView projectDir={projectDir} isProjectActive={true} />);
+    await waitFor(() => expect(screen.getByTestId('task-task-1')).toBeInTheDocument());
+    const reconnect = mockApi.addSocketReconnectListener.mock.calls.at(-1)![0];
+    mockApi.getTasks.mockClear();
+
+    act(() => reconnect());
+
+    await waitFor(() => expect(mockApi.getTasks).toHaveBeenCalledWith(projectDir, showArchived));
+  });
+
+  it('fetches deferred descendants when a parent is unarchived', async () => {
+    render(<ProjectView projectDir={projectDir} isProjectActive={true} />);
+    await waitFor(() => expect(screen.getByTestId('task-task-1')).toBeInTheDocument());
+    const onTaskUpdated = mockApi.addTaskUpdatedListener.mock.calls[0][1];
+    mockApi.getTasks.mockResolvedValue([
+      { id: 'task-1', name: 'Task 1' },
+      { id: 'parent', name: 'Restored parent', archived: false },
+      { id: 'child', name: 'Restored child', parentId: 'parent' },
+    ] as TaskData[]);
+
+    act(() => onTaskUpdated({ id: 'parent', name: 'Restored parent', archived: false } as TaskData));
+
+    await waitFor(() => expect(screen.getByTestId('task-child')).toBeInTheDocument());
+    expect(mockApi.getTasks).toHaveBeenLastCalledWith(projectDir, false);
   });
 
   it('renders task sidebar and active task view', async () => {
@@ -207,7 +348,7 @@ describe('ProjectView', () => {
     ] as TaskData[]);
 
     const { rerender } = render(<ProjectView projectDir={projectDir} isProjectActive={false} />);
-    await waitFor(() => expect(mockApi.getTasks).toHaveBeenCalledWith(projectDir));
+    await waitFor(() => expect(mockApi.getTasks).toHaveBeenCalledWith(projectDir, false));
 
     expect(mockApi.createNewTask).not.toHaveBeenCalled();
     expect(mockApi.loadTask).not.toHaveBeenCalled();
@@ -234,7 +375,7 @@ describe('ProjectView', () => {
       return newTask;
     });
     const { rerender } = render(<ProjectView projectDir={projectDir} isProjectActive={false} />);
-    await waitFor(() => expect(mockApi.getTasks).toHaveBeenCalledWith(projectDir));
+    await waitFor(() => expect(mockApi.getTasks).toHaveBeenCalledWith(projectDir, false));
     expect(mockApi.createNewTask).not.toHaveBeenCalled();
 
     rerender(<ProjectView projectDir={projectDir} isProjectActive={true} />);
@@ -533,7 +674,7 @@ describe('ProjectView', () => {
     // Wait for API calls to complete
     await waitFor(() => {
       expect(mockApi.startProject).toHaveBeenCalledWith(projectDir);
-      expect(mockApi.getTasks).toHaveBeenCalledWith(projectDir);
+      expect(mockApi.getTasks).toHaveBeenCalledWith(projectDir, false);
     });
   });
 });

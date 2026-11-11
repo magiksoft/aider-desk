@@ -91,10 +91,11 @@ type Props = {
   baseDir: string;
   tasks: TaskData[];
   activeTaskId?: string | null;
+  showArchived?: boolean;
   children: ReactNode;
 };
 
-export const TasksProvider = ({ baseDir, tasks, activeTaskId, children }: Props) => {
+export const TasksProvider = ({ baseDir, tasks, activeTaskId, showArchived = false, children }: Props) => {
   const taskActions = useTaskActions({ baseDir });
   const api = useApi();
   const inactivityCheckIntervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
@@ -159,7 +160,7 @@ export const TasksProvider = ({ baseDir, tasks, activeTaskId, children }: Props)
     lastResyncAtRef.current = now;
 
     try {
-      const actualTasks = await api.getTasks(baseDir);
+      const actualTasks = await api.getTasks(baseDir, showArchived);
       setProjectTasks(baseDir, actualTasks);
 
       const taskStateMap = useTaskStore.getState().taskStateMap;
@@ -168,7 +169,7 @@ export const TasksProvider = ({ baseDir, tasks, activeTaskId, children }: Props)
       // eslint-disable-next-line no-console
       console.error('Failed to resync state after reconnect:', error);
     }
-  }, [api, baseDir, taskActions]);
+  }, [api, baseDir, taskActions, showArchived]);
 
   useEffect(() => {
     return api.addSocketReconnectListener(() => {

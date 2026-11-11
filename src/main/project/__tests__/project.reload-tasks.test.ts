@@ -36,6 +36,7 @@ describe('Project - reloadTasks', () => {
     project = Object.create(Project.prototype) as Project;
     Object.assign(project, {
       tasks,
+      deferredTasks: new Map(),
       tasksLoadingPromise: Promise.resolve(),
       eventManager,
     });

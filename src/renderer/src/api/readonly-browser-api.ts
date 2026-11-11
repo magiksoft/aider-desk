@@ -96,8 +96,8 @@ export class ReadonlyBrowserApi implements ExtensionDisplayAPI {
     return () => this.listeners.delete(callback);
   }
 
-  async getTasks(): Promise<TaskData[]> {
-    const response = await this.client.get<TaskData[]>('/tasks', { params: { projectDir: this.projectDir } });
+  async getTasks(includeArchived = false): Promise<TaskData[]> {
+    const response = await this.client.get<TaskData[]>('/tasks', { params: { projectDir: this.projectDir, includeArchived: String(includeArchived) } });
     return response.data;
   }
 

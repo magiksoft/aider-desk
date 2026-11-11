@@ -321,8 +321,8 @@ export const setupIpcHandlers = (eventsHandler: EventsHandler, serverController:
     return await eventsHandler.forkTaskFromCheckpoint(baseDir, taskId, checkpointId);
   });
 
-  ipcMain.handle('get-tasks', async (_, baseDir: string) => {
-    return await eventsHandler.getTasks(baseDir);
+  ipcMain.handle('get-tasks', async (_, baseDir: string, includeArchived = false) => {
+    return await eventsHandler.getTasks(baseDir, includeArchived);
   });
 
   ipcMain.handle('load-task', async (_, baseDir: string, taskId: string) => {

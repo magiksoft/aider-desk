@@ -11,6 +11,7 @@
 - fixed missing German translations in main-process messages
 - fixed Langfuse tracing with trailing slashes in host URLs
 - added copy branch name action to Git branch menus
+- improved task loading by loading archived tasks only when shown and persisted task filters per project
 
 ## [0.91.0]
 

@@ -226,6 +226,10 @@ const LoadTaskSchema = z.object({
 
 const ListTasksSchema = z.object({
   projectDir: z.string().min(1, 'Project directory is required'),
+  includeArchived: z
+    .union([z.boolean(), z.enum(['true', 'false']).transform((value) => value === 'true')])
+    .optional()
+    .default(true),
 });
 
 const DeleteTaskSchema = z.object({
@@ -773,8 +777,8 @@ export class ProjectApi extends BaseApi {
           return;
         }
 
-        const { projectDir } = parsed;
-        const tasks = await this.eventsHandler.getTasks(projectDir);
+        const { projectDir, includeArchived } = parsed;
+        const tasks = await this.eventsHandler.getTasks(projectDir, includeArchived);
         res.status(200).json(tasks);
       }),
     );
@@ -788,8 +792,8 @@ export class ProjectApi extends BaseApi {
           return;
         }
 
-        const { projectDir } = parsed;
-        const tasks = await this.eventsHandler.reloadTasks(projectDir);
+        const { projectDir, includeArchived } = parsed;
+        const tasks = await this.eventsHandler.reloadTasks(projectDir, includeArchived);
         res.status(200).json(tasks);
       }),
     );

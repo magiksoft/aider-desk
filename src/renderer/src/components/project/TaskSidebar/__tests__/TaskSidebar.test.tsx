@@ -1,7 +1,7 @@
 import { ReactNode } from 'react';
 import { screen, fireEvent, waitFor } from '@testing-library/react';
 import { describe, it, expect, vi, beforeEach } from 'vitest';
-import { TaskData } from '@common/types';
+import { DefaultTaskState, TaskData } from '@common/types';
 
 import { TaskSidebar } from '../TaskSidebar';
 
@@ -95,20 +95,100 @@ describe('TaskSidebar', () => {
   ] as TaskData[];
 
   beforeEach(() => {
+    localStorage.clear();
     vi.mocked(useTask).mockReturnValue(createMockTaskContext());
     vi.mocked(useOptimizedTaskState).mockReturnValue(EMPTY_TASK_STATE);
   });
 
   it('renders a list of tasks', () => {
-    render(<TaskSidebar loading={false} tasks={mockTasks} activeTaskId="task-1" onTaskSelect={vi.fn()} isCollapsed={false} onToggleCollapse={vi.fn()} />);
+    render(
+      <TaskSidebar
+        projectDir="/test/project"
+        showArchived={false}
+        onShowArchivedChange={vi.fn()}
+        loading={false}
+        tasks={mockTasks}
+        activeTaskId="task-1"
+        onTaskSelect={vi.fn()}
+        isCollapsed={false}
+        onToggleCollapse={vi.fn()}
+      />,
+    );
 
     expect(screen.getByText('Task 1')).toBeInTheDocument();
     expect(screen.getByText('Task 2')).toBeInTheDocument();
   });
 
+  it('persists selected state filters across remounts without affecting other projects', () => {
+    const tasks = [
+      { id: 'todo', name: 'Todo task', state: DefaultTaskState.Todo },
+      { id: 'done', name: 'Done task', state: DefaultTaskState.Done },
+    ] as TaskData[];
+    const props = {
+      tasks,
+      loading: false,
+      activeTaskId: null,
+      onTaskSelect: vi.fn(),
+      isCollapsed: false,
+      onToggleCollapse: vi.fn(),
+      showArchived: false,
+      onShowArchivedChange: vi.fn(),
+    };
+    const view = render(<TaskSidebar {...props} projectDir="/project-a" />);
+    fireEvent.click(screen.getByRole('button', { name: 'taskSidebar.filterStates' }));
+    fireEvent.click(screen.getByRole('checkbox', { name: `taskState.${DefaultTaskState.Todo}` }));
+
+    expect(screen.queryByText('Todo task')).not.toBeInTheDocument();
+    expect(screen.getByText('Done task')).toBeInTheDocument();
+    expect(JSON.parse(localStorage.getItem('task-sidebar-selected-states-/project-a')!)).not.toContain(DefaultTaskState.Todo);
+    view.unmount();
+
+    const restored = render(<TaskSidebar {...props} projectDir="/project-a" />);
+    expect(screen.queryByText('Todo task')).not.toBeInTheDocument();
+    expect(screen.getByText('Done task')).toBeInTheDocument();
+    restored.unmount();
+
+    render(<TaskSidebar {...props} projectDir="/project-b" />);
+    expect(screen.getByText('Todo task')).toBeInTheDocument();
+    expect(screen.getByText('Done task')).toBeInTheDocument();
+  });
+
+  it('preserves an explicitly empty state selection', () => {
+    localStorage.setItem('task-sidebar-selected-states-/test/project', '[]');
+    const tasks = [{ id: 'todo', name: 'Todo task', state: DefaultTaskState.Todo }] as TaskData[];
+    render(
+      <TaskSidebar
+        projectDir="/test/project"
+        showArchived={false}
+        onShowArchivedChange={vi.fn()}
+        loading={false}
+        tasks={tasks}
+        activeTaskId={null}
+        onTaskSelect={vi.fn()}
+        isCollapsed={false}
+        onToggleCollapse={vi.fn()}
+      />,
+    );
+
+    expect(screen.queryByText('Todo task')).not.toBeInTheDocument();
+    expect(localStorage.getItem('task-sidebar-selected-states-/test/project')).toBe('[]');
+  });
+
   it('calls onTaskSelect when a task is clicked', () => {
     const onTaskSelect = vi.fn();
-    render(<TaskSidebar loading={false} tasks={mockTasks} activeTaskId="task-1" onTaskSelect={onTaskSelect} isCollapsed={false} onToggleCollapse={vi.fn()} />);
+    render(
+      <TaskSidebar
+        projectDir="/test/project"
+        showArchived={false}
+        onShowArchivedChange={vi.fn()}
+        loading={false}
+        tasks={mockTasks}
+        activeTaskId="task-1"
+        onTaskSelect={onTaskSelect}
+        isCollapsed={false}
+        onToggleCollapse={vi.fn()}
+      />,
+    );
 
     fireEvent.click(screen.getByText('Task 2'));
     expect(onTaskSelect).toHaveBeenCalledWith('task-2');
@@ -118,6 +198,9 @@ describe('TaskSidebar', () => {
     const createNewTask = vi.fn();
     render(
       <TaskSidebar
+        projectDir="/test/project"
+        showArchived={false}
+        onShowArchivedChange={vi.fn()}
         loading={false}
         tasks={mockTasks}
         activeTaskId="task-1"
@@ -136,6 +219,9 @@ describe('TaskSidebar', () => {
     const onTaskSelect = vi.fn();
     render(
       <TaskSidebar
+        projectDir="/test/project"
+        showArchived={false}
+        onShowArchivedChange={vi.fn()}
         loading={false}
         tasks={mockTasks}
         readonly={true}
@@ -153,7 +239,19 @@ describe('TaskSidebar', () => {
   });
 
   it('filters tasks based on search query', async () => {
-    render(<TaskSidebar loading={false} tasks={mockTasks} activeTaskId="task-1" onTaskSelect={vi.fn()} isCollapsed={false} onToggleCollapse={vi.fn()} />);
+    render(
+      <TaskSidebar
+        projectDir="/test/project"
+        showArchived={false}
+        onShowArchivedChange={vi.fn()}
+        loading={false}
+        tasks={mockTasks}
+        activeTaskId="task-1"
+        onTaskSelect={vi.fn()}
+        isCollapsed={false}
+        onToggleCollapse={vi.fn()}
+      />,
+    );
 
     fireEvent.click(screen.getByTestId('search-toggle-button'));
 
@@ -178,7 +276,17 @@ describe('TaskSidebar', () => {
     ] as TaskData[];
 
     const { container } = render(
-      <TaskSidebar loading={false} tasks={tasks} activeTaskId="task-2" onTaskSelect={vi.fn()} isCollapsed={false} onToggleCollapse={vi.fn()} />,
+      <TaskSidebar
+        projectDir="/test/project"
+        showArchived={false}
+        onShowArchivedChange={vi.fn()}
+        loading={false}
+        tasks={tasks}
+        activeTaskId="task-2"
+        onTaskSelect={vi.fn()}
+        isCollapsed={false}
+        onToggleCollapse={vi.fn()}
+      />,
     );
 
     const taskItems = container.querySelectorAll('[data-task-id]');
@@ -192,7 +300,19 @@ describe('TaskSidebar', () => {
       { id: 'task-2', name: 'Task 2', archived: true },
     ] as TaskData[];
 
-    render(<TaskSidebar loading={false} tasks={tasks} activeTaskId="task-1" onTaskSelect={vi.fn()} isCollapsed={false} onToggleCollapse={vi.fn()} />);
+    render(
+      <TaskSidebar
+        projectDir="/test/project"
+        showArchived={false}
+        onShowArchivedChange={vi.fn()}
+        loading={false}
+        tasks={tasks}
+        activeTaskId="task-1"
+        onTaskSelect={vi.fn()}
+        isCollapsed={false}
+        onToggleCollapse={vi.fn()}
+      />,
+    );
 
     expect(screen.getByText('Task 1')).toBeInTheDocument();
     expect(screen.queryByText('Task 2')).not.toBeInTheDocument();
