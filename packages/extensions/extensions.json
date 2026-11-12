@@ -442,7 +442,7 @@
       "capabilities": [
         "metrics"
       ],
-      "installCount": 122
+      "installCount": 123
     },
     {
       "id": "verifier",
@@ -481,7 +481,7 @@
         "providers",
         "agent-loop"
       ],
-      "installCount": 30
+      "installCount": 31
     },
     {
       "id": "auggie-sdk",
@@ -557,7 +557,7 @@
         "tools",
         "search"
       ],
-      "installCount": 94
+      "installCount": 95
     },
     {
       "id": "kanban",
@@ -644,7 +644,7 @@
       "capabilities": [
         "ui"
       ],
-      "installCount": 182
+      "installCount": 183
     },
     {
       "id": "task-scheduler",
