@@ -1006,6 +1006,15 @@ export interface TaskContext {
   getTaskDir(): string;
 
   /**
+   * Get the directory where this task's data is stored.
+   * This is `<project base dir>/.aider-desk/tasks/<task id>` and is independent of the
+   * task's working directory (worktree or project dir), so files saved here never
+   * pollute the working repository.
+   * @returns Absolute filesystem path to the task's data directory
+   */
+  getTaskDataDir(): string;
+
+  /**
    * Get a list of files that can be added to the task's context.
    * Returns all files in the task directory that are not already in the context,
    * optionally filtered by a regex pattern.

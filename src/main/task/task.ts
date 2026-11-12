@@ -775,6 +775,10 @@ export class Task {
     return this.task.worktree ? this.task.worktree.path : this.project.baseDir;
   }
 
+  public getTaskDataDir() {
+    return path.join(this.project.baseDir, AIDER_DESK_TASKS_DIR, this.taskId);
+  }
+
   public getContextSnapshotDir() {
     return this.contextManager.getSnapshotDir();
   }

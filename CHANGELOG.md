@@ -12,6 +12,7 @@
 - fixed Langfuse tracing with trailing slashes in host URLs
 - added copy branch name action to Git branch menus
 - improved task loading by loading archived tasks only when shown and persisted task filters per project
+- added getTaskDataDir to the extension TaskContext API
 
 ## [0.91.0]
 

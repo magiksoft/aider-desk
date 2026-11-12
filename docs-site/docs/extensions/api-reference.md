@@ -226,6 +226,7 @@ interface TaskContext {
   // Task Management
   updateTask(updates: Partial<TaskData>): Promise<TaskData>;
   getTaskDir(): string;
+  getTaskDataDir(): string;
   getTaskAgentProfile(): Promise<AgentProfile | null>;
   isInitialized(): boolean;
 

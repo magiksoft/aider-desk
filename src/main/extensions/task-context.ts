@@ -125,6 +125,10 @@ export class TaskContextImpl implements TaskContext {
     return this.task.getTaskDir();
   }
 
+  getTaskDataDir(): string {
+    return this.task.getTaskDataDir();
+  }
+
   async getAddableFiles(searchRegex?: string): Promise<string[]> {
     return this.task.getAddableFiles(searchRegex);
   }
