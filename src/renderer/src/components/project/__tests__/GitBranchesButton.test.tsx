@@ -830,13 +830,50 @@ describe('GitBranchesButton', () => {
       expect(mockApi.getSyncCommits).toHaveBeenCalledTimes(1);
     });
 
-    it('reloads branches on menu opening without refreshing fresh sync data', async () => {
+    it('reloads branches and fresh sync data on every menu opening', async () => {
       render(<GitBranchesButton {...defaultProps} />);
       await advance();
       fireEvent.click(screen.getByRole('button', { name: /task-123/i }));
       await advance();
       expect(mockApi.listGitBranches).toHaveBeenCalledTimes(2);
-      expect(mockApi.getSyncCommits).toHaveBeenCalledTimes(1);
+      expect(mockApi.getSyncCommits).toHaveBeenCalledTimes(2);
+      fireEvent.click(screen.getByRole('button', { name: /task-123/i }));
+      fireEvent.click(screen.getByRole('button', { name: /task-123/i }));
+      await advance();
+      expect(mockApi.listGitBranches).toHaveBeenCalledTimes(3);
+      expect(mockApi.getSyncCommits).toHaveBeenCalledTimes(3);
+    });
+
+    it('keeps cached branches visible and shows a spinner until branches and sync data finish reloading', async () => {
+      localStorage.clear();
+      render(<GitBranchesButton {...defaultProps} />);
+      await advance();
+      let resolveBranches: (value: BranchInfo[]) => void = () => {};
+      let resolveSync: (value: GitSyncCommits) => void = () => {};
+      mockApi.listGitBranches.mockImplementationOnce(
+        () =>
+          new Promise((resolve) => {
+            resolveBranches = resolve;
+          }),
+      );
+      mockApi.getSyncCommits.mockImplementationOnce(
+        () =>
+          new Promise((resolve) => {
+            resolveSync = resolve;
+          }),
+      );
+      fireEvent.click(screen.getByRole('button', { name: /task-123/i }));
+      expect(screen.getByRole('status')).toHaveAttribute('aria-label', 'common.loading');
+      expect(screen.getByText('main', { selector: 'span.truncate' })).toBeInTheDocument();
+      await act(async () => {
+        resolveBranches([{ name: 'updated-branch', isCurrent: false, hasWorktree: false }]);
+      });
+      expect(screen.getByText('updated-branch')).toBeInTheDocument();
+      expect(screen.getByRole('status')).toBeInTheDocument();
+      await act(async () => {
+        resolveSync({ outgoing: { count: 0, commits: [] }, incoming: { count: 0, commits: [] } });
+      });
+      expect(screen.queryByRole('status')).not.toBeInTheDocument();
     });
 
     it('refreshes after branch changes even when sync data is fresh', async () => {

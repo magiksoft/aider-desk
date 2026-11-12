@@ -72,6 +72,25 @@ describe('GitBranchesPopup', () => {
     expect(screen.queryByText('git.copyBranchName')).not.toBeInTheDocument();
   });
 
+  it('shows a small loading indicator without hiding cached branches', () => {
+    const { rerender } = renderPopup({ loading: true });
+
+    expect(screen.getByRole('status')).toHaveAttribute('aria-label', 'common.loading');
+    expect(screen.getByText('feature-x')).toBeInTheDocument();
+
+    rerender(<GitBranchesPopup {...defaultProps} loading={false} />);
+
+    expect(screen.queryByRole('status')).not.toBeInTheDocument();
+    expect(screen.getByText('feature-x')).toBeInTheDocument();
+  });
+
+  it('shows the initial loading state instead of the empty branch message', () => {
+    renderPopup({ loading: true, branches: [] });
+
+    expect(screen.getByRole('status')).toHaveTextContent('common.loading');
+    expect(screen.queryByText('git.noBranchesFound')).not.toBeInTheDocument();
+  });
+
   describe('local mode', () => {
     it('shows checkout actions in the branch submenu', () => {
       renderPopup();

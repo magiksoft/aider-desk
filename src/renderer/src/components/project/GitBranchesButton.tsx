@@ -113,6 +113,7 @@ export const GitBranchesButton = ({
   const [isOpen, setIsOpen] = useState(false);
   const [branches, setBranches] = useState<BranchInfo[]>([]);
   const [loading, setLoading] = useState(false);
+  const [syncLoading, setSyncLoading] = useState(false);
   const [syncCommits, setSyncCommits] = useState<GitSyncCommits>({ outgoing: { count: 0, commits: [] }, incoming: { count: 0, commits: [] } });
   const [pullStrategy, setPullStrategy] = useLocalStorage<PullStrategy>('git-pull-strategy', PullStrategy.Merge);
   const [recentBranches, setRecentBranches] = useState<string[]>(() => {
@@ -279,6 +280,7 @@ export const GitBranchesButton = ({
         return Promise.resolve();
       }
 
+      setSyncLoading(true);
       refreshState.syncRequest = (async () => {
         try {
           const result = await refreshState.querySyncCommits();
@@ -292,6 +294,9 @@ export const GitBranchesButton = ({
           }
         } finally {
           refreshState.syncRequest = null;
+          if (refreshState.valid) {
+            setSyncLoading(false);
+          }
         }
       })();
       return refreshState.syncRequest;
@@ -313,11 +318,12 @@ export const GitBranchesButton = ({
 
   useEffect(() => {
     if (isActive && isOpen) {
+      refreshState.lastSyncAt = null;
       void loadBranches();
       void loadMainBranch();
       void loadSyncCommits(false);
     }
-  }, [isActive, isOpen, loadBranches, loadMainBranch, loadSyncCommits]);
+  }, [isActive, isOpen, refreshState, loadBranches, loadMainBranch, loadSyncCommits]);
 
   useEffect(() => {
     if (!isActive) {
@@ -1120,7 +1126,7 @@ export const GitBranchesButton = ({
           <GitBranchesPopup
             branches={branches}
             currentBranch={currentBranch}
-            loading={loading}
+            loading={loading || syncLoading}
             recentBranches={recentBranchesWithCurrent}
             worktreeMode={isWorktree}
             onSelect={handleSelect}

@@ -503,6 +503,11 @@ export const GitBranchesPopup = ({
             autoFocus
           />
         </div>
+        {loading && branches.length > 0 && (
+          <span role="status" aria-label={t('common.loading')}>
+            <CgSpinner className="h-3 w-3 animate-spin text-text-muted" />
+          </span>
+        )}
       </div>
 
       <div
@@ -510,7 +515,7 @@ export const GitBranchesPopup = ({
         onScroll={() => setOpenSubmenu(null)}
       >
         {loading && branches.length === 0 ? (
-          <div className="flex items-center justify-center gap-2 py-4 text-2xs text-text-muted">
+          <div role="status" className="flex items-center justify-center gap-2 py-4 text-2xs text-text-muted">
             <CgSpinner className="h-3 w-3 animate-spin" />
             {t('common.loading')}
           </div>
