@@ -1,0 +1,12 @@
+{
+  "name": "agent-browser",
+  "version": "1.0.0",
+  "main": "index.ts",
+  "description": "Browser automation tools powered by the agent-browser CLI, with bundled fallback and version-fresh skills",
+  "scripts": {
+    "postinstall": "node scripts/fetch-skills.js"
+  },
+  "dependencies": {
+    "agent-browser": "0.41.2"
+  }
+}
