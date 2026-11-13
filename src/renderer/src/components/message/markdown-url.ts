@@ -17,7 +17,7 @@ export const getFileLinkPath = (href: string): string | null => {
 };
 
 export const messageUrlTransform: UrlTransform = (url, key, node) => {
-  if (key === 'href' && node.tagName === 'a' && getFileLinkPath(url)) {
+  if (((key === 'href' && node.tagName === 'a') || (key === 'src' && node.tagName === 'img')) && getFileLinkPath(url)) {
     return url;
   }
   return defaultUrlTransform(url);

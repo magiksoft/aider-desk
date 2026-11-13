@@ -8,6 +8,7 @@ import { useParsedContent } from '@/hooks/useParsedContent';
 
 type Props = {
   baseDir: string;
+  taskId?: string;
   message: ResponseMessage;
   allFiles: string[];
   renderMarkdown: boolean;
@@ -21,6 +22,7 @@ type Props = {
 
 export const ResponseMessageBlock = ({
   baseDir,
+  taskId,
   message,
   allFiles,
   renderMarkdown,
@@ -33,7 +35,7 @@ export const ResponseMessageBlock = ({
 }: Props) => {
   const baseClasses = 'rounded-md max-w-full text-xs bg-bg-secondary text-text-primary';
 
-  const parsedContent = useParsedContent(baseDir, message.content, allFiles, renderMarkdown, showThinking, message.reasoning);
+  const parsedContent = useParsedContent(baseDir, message.content, allFiles, renderMarkdown, showThinking, message.reasoning, taskId);
 
   if (!parsedContent || (Array.isArray(parsedContent) && parsedContent.length === 0)) {
     return null;

@@ -48,6 +48,8 @@ import { compareBaseDirs, normalizeBaseDir } from '@common/utils';
 // @ts-expect-error istextorbinary is not typed properly
 import { isBinary } from 'istextorbinary';
 
+import { readTaskImage } from './utils/read-task-image';
+
 import type { ModeDefinition, ExtensionConfigComponent, ExtensionOperationResult, ExtensionUIComponent } from '@common/types';
 import type { WindowManager } from '@/window-manager';
 import type { GitAskpassManager } from '@/git/git-askpass-manager';
@@ -768,6 +770,14 @@ export class EventsHandler {
   async restoreFile(baseDir: string, taskId: string, filePath: string, previousPath?: string): Promise<void> {
     const task = this.getTaskOrThrow(baseDir, taskId);
     await task.restoreFile(filePath, previousPath);
+  }
+
+  async readImage(baseDir: string, taskId: string, filePath: string): Promise<string> {
+    const task = this.projectManager.getProject(baseDir).getTask(taskId);
+    if (!task) {
+      throw new Error('Task not found');
+    }
+    return readTaskImage(task.getTaskDir(), filePath);
   }
 
   async readFile(baseDir: string, taskId: string, filePath: string): Promise<string> {

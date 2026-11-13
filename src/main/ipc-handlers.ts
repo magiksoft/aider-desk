@@ -609,6 +609,10 @@ export const setupIpcHandlers = (eventsHandler: EventsHandler, serverController:
     await eventsHandler.restoreFile(baseDir, taskId, filePath, previousPath);
   });
 
+  ipcMain.handle('read-image', async (_, baseDir: string, taskId: string, filePath: string) => {
+    return await eventsHandler.readImage(baseDir, taskId, filePath);
+  });
+
   ipcMain.handle('read-file', async (_, baseDir: string, taskId: string, filePath: string) => {
     return await eventsHandler.readFile(baseDir, taskId, filePath);
   });

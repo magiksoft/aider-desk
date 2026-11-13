@@ -108,9 +108,10 @@ describe('file links in Markdown', () => {
     },
   );
 
-  it('does not allow file URLs in image sources', () => {
-    const { container } = renderMessage(createMockApi(), `![Local image](${href})`);
-    expect(container.querySelector('img')).not.toHaveAttribute('src', href);
+  it('does not render local images without a task identity', () => {
+    renderMessage(createMockApi(), `![Local image](${href})`);
+    expect(screen.queryByRole('img')).not.toBeInTheDocument();
+    expect(screen.getByText('Local image')).toBeInTheDocument();
   });
 });
 

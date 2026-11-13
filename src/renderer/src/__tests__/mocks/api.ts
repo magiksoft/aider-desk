@@ -43,6 +43,7 @@ import {
  */
 export const createMockApi = (overrides: Partial<ApplicationAPI> = {}): MockedObject<ApplicationAPI> => {
   const defaultMock: ApplicationAPI = {
+    readImage: vi.fn().mockRejectedValue(new Error('Image not found')),
     // Process operations
     getRendererProcessMemoryInfo: vi.fn(() => Promise.resolve(null)),
 

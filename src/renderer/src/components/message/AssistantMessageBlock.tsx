@@ -23,7 +23,7 @@ const AssistantMessageBlockComponent = ({ baseDir, taskId, message, allFiles, re
   const { responseMessage, toolMessages } = message;
   const containerRef = useRef<HTMLDivElement>(null);
 
-  const parsedContent = useParsedContent(baseDir, responseMessage?.content, allFiles, renderMarkdown, true, responseMessage?.reasoning);
+  const parsedContent = useParsedContent(baseDir, responseMessage?.content, allFiles, renderMarkdown, true, responseMessage?.reasoning, taskId);
 
   const hasContent = parsedContent && (!Array.isArray(parsedContent) || parsedContent.length > 0);
 

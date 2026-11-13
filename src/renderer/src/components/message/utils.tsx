@@ -21,6 +21,7 @@ import { CompactionSnippetBlock } from './CompactionSnippetBlock';
 import { CustomCommandBashBlock } from './CustomCommandBashBlock';
 import { ThinkingAnswerBlock } from './ThinkingAnswerBlock';
 import { MarkdownLink } from './MarkdownLink';
+import { MarkdownImage } from './MarkdownImage';
 import { messageUrlTransform } from './markdown-url';
 
 import { CodeBlock } from '@/components/common/CodeBlock';
@@ -101,18 +102,21 @@ export const parseMessageContent = (
   renderMarkdown = false,
   renderThinking = true,
   reasoning?: string | null,
+  taskId?: string,
 ) => {
   // Use the reasoning property directly if available
   if (reasoning) {
     if (renderThinking) {
-      return <ThinkingAnswerBlock thinking={reasoning} answer={content} baseDir={baseDir} allFiles={allFiles} renderMarkdown={renderMarkdown} />;
+      return (
+        <ThinkingAnswerBlock thinking={reasoning} answer={content} baseDir={baseDir} allFiles={allFiles} renderMarkdown={renderMarkdown} taskId={taskId} />
+      );
     } else {
-      return parseMessageContent(baseDir, content || reasoning, allFiles, renderMarkdown);
+      return parseMessageContent(baseDir, content || reasoning, allFiles, renderMarkdown, renderThinking, undefined, taskId);
     }
   }
 
   // Fallback: check if the content matches the thinking/answer format (for legacy messages)
-  const thinkingAnswerContent = parseThinkingAnswerFormat(content, baseDir, allFiles, renderMarkdown, renderThinking);
+  const thinkingAnswerContent = parseThinkingAnswerFormat(content, baseDir, allFiles, renderMarkdown, renderThinking, taskId);
   if (thinkingAnswerContent) {
     return thinkingAnswerContent;
   }
@@ -152,7 +156,10 @@ export const parseMessageContent = (
             urlTransform={messageUrlTransform}
             remarkPlugins={REMARK_PLUGINS}
             rehypePlugins={REHYPE_PLUGINS}
-            components={MARKDOWN_COMPONENTS}
+            components={{
+              ...MARKDOWN_COMPONENTS,
+              img: ({ src, alt, title }) => <MarkdownImage src={src} alt={alt} title={title} baseDir={baseDir} taskId={taskId} />,
+            }}
           >
             {normalizeListBlocks(currentText.trimEnd())}
           </ReactMarkdown>,
@@ -374,6 +381,7 @@ export const parseThinkingAnswerFormat = (
   allFiles: string[] = [],
   renderMarkdown = false,
   renderThinking = true,
+  taskId?: string,
 ): ReactNode | null => {
   // Check for the thinking section first
   const thinkingRegex = /[-]{3,}\s*\n\s*►\s*\*\*THINKING\*\*\s*\n\s*([\s\S]*?)(?:\s*[-]{3,}\s*\n\s*►\s*\*\*ANSWER\*\*|$)/i;
@@ -389,9 +397,9 @@ export const parseThinkingAnswerFormat = (
     const answer = answerMatch && answerMatch[1].trim();
 
     return renderThinking ? (
-      <ThinkingAnswerBlock thinking={thinking} answer={answer} baseDir={baseDir} allFiles={allFiles} renderMarkdown={renderMarkdown} />
+      <ThinkingAnswerBlock thinking={thinking} answer={answer} baseDir={baseDir} allFiles={allFiles} renderMarkdown={renderMarkdown} taskId={taskId} />
     ) : (
-      parseMessageContent(baseDir, answer || thinking, allFiles, renderMarkdown)
+      parseMessageContent(baseDir, answer || thinking, allFiles, renderMarkdown, renderThinking, undefined, taskId)
     );
   }
 

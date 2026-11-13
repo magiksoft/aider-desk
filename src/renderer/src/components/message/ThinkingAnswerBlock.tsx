@@ -12,14 +12,15 @@ type Props = {
   thinking: string;
   answer?: string | null;
   baseDir?: string;
+  taskId?: string;
   allFiles?: string[];
   renderMarkdown: boolean;
 };
 
-export const ThinkingAnswerBlock = ({ thinking, answer, baseDir = '', allFiles = [], renderMarkdown }: Props) => {
+export const ThinkingAnswerBlock = ({ thinking, answer, baseDir = '', allFiles = [], renderMarkdown, taskId }: Props) => {
   const { t } = useTranslation();
-  const parsedThinking = useParsedContent(baseDir, thinking, allFiles, renderMarkdown);
-  const parsedAnswer = useParsedContent(baseDir, answer, allFiles, renderMarkdown);
+  const parsedThinking = useParsedContent(baseDir, thinking, allFiles, renderMarkdown, true, undefined, taskId);
+  const parsedAnswer = useParsedContent(baseDir, answer, allFiles, renderMarkdown, true, undefined, taskId);
   const hasAnswer = Boolean(answer && parsedAnswer);
 
   // Internal state for manual toggle control

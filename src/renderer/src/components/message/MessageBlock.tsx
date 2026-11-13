@@ -156,6 +156,7 @@ const MessageBlockComponent = ({
     return (
       <ResponseMessageBlock
         baseDir={baseDir}
+        taskId={taskId}
         message={message}
         allFiles={allFiles}
         renderMarkdown={renderMarkdown}

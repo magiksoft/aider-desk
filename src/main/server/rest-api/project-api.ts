@@ -1185,6 +1185,19 @@ export class ProjectApi extends BaseApi {
       }),
     );
 
+    router.post(
+      '/project/read-image',
+      this.handleRequest(async (req, res) => {
+        const parsed = this.validateRequest(ReadFileSchema, req.body, res);
+        if (!parsed) {
+          return;
+        }
+        const { projectDir, taskId, filePath } = parsed;
+        const content = await this.eventsHandler.readImage(projectDir, taskId, filePath);
+        res.status(200).json({ content });
+      }),
+    );
+
     // Read file
     router.post(
       '/project/read-file',

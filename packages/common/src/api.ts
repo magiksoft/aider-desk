@@ -157,6 +157,7 @@ export interface ApplicationAPI {
   ) => Promise<{ oldContent: string; newContent: string }>;
   addFileToGit: (baseDir: string, taskId: string, filePath: string) => Promise<void>;
   restoreFile: (baseDir: string, taskId: string, filePath: string, previousPath?: string) => Promise<void>;
+  readImage: (baseDir: string, taskId: string, filePath: string) => Promise<string>;
   readFile: (baseDir: string, taskId: string, filePath: string) => Promise<string>;
   saveFile: (baseDir: string, taskId: string, filePath: string, content: string) => Promise<void>;
   generateCommitMessage: (baseDir: string, taskId: string, filePaths?: string[]) => Promise<string>;
