@@ -224,9 +224,5 @@ export const DefaultTaskStateActions = ({
     );
   }
 
-  if (state && !Object.values(DefaultTaskState).includes(state as DefaultTaskState)) {
-    return renderSection(undefined, state.replace(/_/g, ' ').toLowerCase(), null);
-  }
-
   return null;
 };
