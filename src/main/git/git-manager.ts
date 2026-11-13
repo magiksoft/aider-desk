@@ -3360,10 +3360,11 @@ export class GitManager {
 
   async getUncommittedDiff(worktreePath: string, filePaths?: string[]): Promise<string | null> {
     const pathspecArgs = filePaths && filePaths.length > 0 ? ['--', ...filePaths] : [];
+    let diffText = '';
 
     try {
       const { stdout } = await execWithShellPath(['git', 'diff', 'HEAD', ...pathspecArgs], { cwd: worktreePath });
-      return stdout || null;
+      diffText = stdout || '';
     } catch (error) {
       // Unborn HEAD (repository with no commits yet): fall back to diffing against the empty tree
       let headExists = false;
@@ -3378,17 +3379,15 @@ export class GitManager {
         logger.error('Failed to get uncommitted diff:', error);
         return null;
       }
+
+      try {
+        const { stdout } = await execWithShellPath(['git', 'diff', '4b825dc642cb6eb9a060e54bf8d69288fbee4904', ...pathspecArgs], { cwd: worktreePath });
+        diffText = stdout || '';
+      } catch (error) {
+        logger.warn('Failed to get diff against empty tree:', error);
+      }
     }
 
-    let diffText = '';
-    try {
-      const { stdout } = await execWithShellPath(['git', 'diff', '4b825dc642cb6eb9a060e54bf8d69288fbee4904', ...pathspecArgs], { cwd: worktreePath });
-      diffText = stdout || '';
-    } catch (error) {
-      logger.warn('Failed to get diff against empty tree:', error);
-    }
-
-    // The empty tree diff only shows staged changes - also include untracked files
     try {
       const { stdout: untrackedOutput } = await execWithShellPath('git ls-files --others --exclude-standard -z', { cwd: worktreePath });
       for (const filePath of untrackedOutput.split('\0').filter((untrackedPath) => untrackedPath.length > 0)) {

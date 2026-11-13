@@ -13,6 +13,7 @@
 - added copy branch name action to Git branch menus
 - improved task loading by loading archived tasks only when shown and persisted task filters per project
 - added getTaskDataDir to the extension TaskContext API
+- fixed commit message generation excluding selected untracked files
 
 ## [0.91.0]
 
