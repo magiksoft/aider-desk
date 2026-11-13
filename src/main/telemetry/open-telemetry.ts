@@ -19,6 +19,8 @@ if (langfuseSpanProcessor || traceExporter) {
 
   sdk = new NodeSDK({
     serviceName: 'aider-desk',
+    logRecordProcessors: [],
+    metricReaders: [],
     ...(langfuseSpanProcessor ? { spanProcessors: [langfuseSpanProcessor] } : { traceExporter }),
     instrumentations: [getNodeAutoInstrumentations()],
   });

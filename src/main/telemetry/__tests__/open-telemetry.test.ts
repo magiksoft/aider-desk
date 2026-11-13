@@ -45,7 +45,13 @@ describe('OpenTelemetry backend selection and lifecycle', () => {
 
     await import('../open-telemetry');
 
-    expect(NodeSDK).toHaveBeenCalledWith({ serviceName: 'aider-desk', spanProcessors: [processor], instrumentations: [[]] });
+    expect(NodeSDK).toHaveBeenCalledWith({
+      serviceName: 'aider-desk',
+      logRecordProcessors: [],
+      metricReaders: [],
+      spanProcessors: [processor],
+      instrumentations: [[]],
+    });
     expect(start).toHaveBeenCalledOnce();
     expect(initializePostHogExporter).not.toHaveBeenCalled();
     expect(LangfuseVercelAiSdkIntegration).toHaveBeenCalledOnce();
@@ -58,7 +64,13 @@ describe('OpenTelemetry backend selection and lifecycle', () => {
 
     await import('../open-telemetry');
 
-    expect(NodeSDK).toHaveBeenCalledWith({ serviceName: 'aider-desk', traceExporter: exporter, instrumentations: [[]] });
+    expect(NodeSDK).toHaveBeenCalledWith({
+      serviceName: 'aider-desk',
+      logRecordProcessors: [],
+      metricReaders: [],
+      traceExporter: exporter,
+      instrumentations: [[]],
+    });
     expect(start).toHaveBeenCalledOnce();
     expect(LangfuseVercelAiSdkIntegration).not.toHaveBeenCalled();
     expect(registerTelemetry).toHaveBeenCalledExactlyOnceWith(vi.mocked(OpenTelemetry).mock.instances[0]);

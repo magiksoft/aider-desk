@@ -14,6 +14,7 @@
 - improved task loading by loading archived tasks only when shown and persisted task filters per project
 - added getTaskDataDir to the extension TaskContext API
 - fixed commit message generation excluding selected untracked files
+- improved app shutdown performance by disabling unintended OpenTelemetry log and metric exporters
 
 ## [0.91.0]
 
