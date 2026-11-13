@@ -2,7 +2,10 @@ import { defaultUrlTransform, type UrlTransform } from 'react-markdown';
 
 export const getFileLinkPath = (href: string): string | null => {
   try {
-    const url = new URL(href);
+    if (href.startsWith('//') || (href.startsWith('/') && (href.includes('\\') || Array.from(href).some((char) => char.charCodeAt(0) < 32)))) {
+      return null;
+    }
+    const url = href.startsWith('/') ? new URL(href, 'file:///') : new URL(href);
     if (url.protocol !== 'file:' || (url.hostname && url.hostname !== 'localhost')) {
       return null;
     }

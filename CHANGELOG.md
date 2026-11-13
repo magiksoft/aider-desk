@@ -17,6 +17,7 @@
 - improved app shutdown performance by disabling unintended OpenTelemetry log and metric exporters
 - fixed manual skill commands not running without a prompt and ensured the user message appears before skill activation
 - added local Markdown image rendering with clickable thumbnails and expanded previews in agent responses
+- fixed absolute file path links in messages to open locally on desktop and offer downloads in browsers
 
 ## [0.91.0]
 

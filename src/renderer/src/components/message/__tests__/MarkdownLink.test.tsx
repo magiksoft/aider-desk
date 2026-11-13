@@ -42,6 +42,43 @@ describe('file links in Markdown', () => {
     expect(screen.queryByText('fileLink.downloadPrompt')).not.toBeInTheDocument();
   });
 
+  it.each(['/tmp/aiderdesk-skill-proof.png', '/tmp/aiderdesk-skill-order-proof.json', '/tmp/my%20proof.json'])(
+    'opens absolute path link %s in the desktop app',
+    async (url) => {
+      const api = createMockApi({ openPath: vi.fn().mockResolvedValue(true) });
+      renderMessage(api, `[Proof](${url})`);
+      fireEvent.click(screen.getByRole('link'));
+      await waitFor(() => expect(api.openPath).toHaveBeenCalledWith(decodeURIComponent(url)));
+    },
+  );
+
+  it('asks before downloading an absolute path link in the browser', async () => {
+    renderMessage(browserApi, '[JSON proof](/tmp/proof.json)');
+    fireEvent.click(screen.getByRole('link'));
+    expect(screen.getByText('fileLink.downloadPrompt')).toBeInTheDocument();
+    expect(downloadFile).not.toHaveBeenCalled();
+    fireEvent.click(screen.getByRole('button', { name: 'fileLink.download' }));
+    await waitFor(() => expect(downloadFile).toHaveBeenCalledWith('/tmp/proof.json'));
+  });
+
+  it('keeps absolute path downloads disabled in readonly views', () => {
+    const api = createMockApi();
+    renderMessage(api, '[Proof](/tmp/proof.json)', true);
+    fireEvent.click(screen.getByRole('link'));
+    expect(screen.getByRole('button', { name: 'fileLink.download' })).toBeDisabled();
+    expect(api.openPath).not.toHaveBeenCalled();
+    expect(downloadFile).not.toHaveBeenCalled();
+  });
+
+  it.each(['#section', 'https://example.com/page', '//example.com/page'])('preserves non-file link %s', (url) => {
+    const api = createMockApi();
+    renderMessage(api, `[Link](${url})`);
+    expect(screen.getByRole('link')).toHaveAttribute('href', url);
+    fireEvent.click(screen.getByRole('link'));
+    expect(api.openPath).not.toHaveBeenCalled();
+    expect(screen.queryByText('fileLink.downloadPrompt')).not.toBeInTheDocument();
+  });
+
   it('reports desktop opening failures', async () => {
     renderMessage(createMockApi({ openPath: vi.fn().mockResolvedValue(false) }));
     fireEvent.click(screen.getByRole('link'));
@@ -121,6 +158,17 @@ describe('file URL paths', () => {
     ['file://localhost/tmp/a.html', '/tmp/a.html'],
     ['file:///C:/Users/me/mockup.html', 'C:/Users/me/mockup.html'],
     ['file:///tmp/mockup.html#section', '/tmp/mockup.html'],
+    ['/tmp/proof.png', '/tmp/proof.png'],
+    ['/tmp/my%20proof.json', '/tmp/my proof.json'],
+    ['/tmp/proof.html#section', '/tmp/proof.html'],
+    ['//example.com/proof.json', null],
+    ['/%2fremote/share', null],
+    ['/tmp/%5cremote', null],
+    ['/tmp/bad%00.json', null],
+    ['/tmp/%zz', null],
+    ['/tmp/\\remote', null],
+    ['#section', null],
+    ['relative/proof.json', null],
     ['https://example.com', null],
     ['file://remote/share/file.html', null],
     ['file:///tmp/%zz', null],
