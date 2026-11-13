@@ -503,11 +503,6 @@ export const GitBranchesPopup = ({
             autoFocus
           />
         </div>
-        {loading && branches.length > 0 && (
-          <span role="status" aria-label={t('common.loading')}>
-            <CgSpinner className="h-3 w-3 animate-spin text-text-muted" />
-          </span>
-        )}
       </div>
 
       <div

@@ -72,10 +72,10 @@ describe('GitBranchesPopup', () => {
     expect(screen.queryByText('git.copyBranchName')).not.toBeInTheDocument();
   });
 
-  it('shows a small loading indicator without hiding cached branches', () => {
+  it('keeps cached branches visible without a loading indicator beside search', () => {
     const { rerender } = renderPopup({ loading: true });
 
-    expect(screen.getByRole('status')).toHaveAttribute('aria-label', 'common.loading');
+    expect(screen.queryByRole('status')).not.toBeInTheDocument();
     expect(screen.getByText('feature-x')).toBeInTheDocument();
 
     rerender(<GitBranchesPopup {...defaultProps} loading={false} />);

@@ -864,6 +864,8 @@ describe('GitBranchesButton', () => {
       );
       fireEvent.click(screen.getByRole('button', { name: /task-123/i }));
       expect(screen.getByRole('status')).toHaveAttribute('aria-label', 'common.loading');
+      expect(screen.getByRole('status').previousElementSibling).toHaveTextContent('task-123');
+      expect(screen.getByRole('status').parentElement).not.toContainElement(screen.getByPlaceholderText('git.searchBranches'));
       expect(screen.getByText('main', { selector: 'span.truncate' })).toBeInTheDocument();
       await act(async () => {
         resolveBranches([{ name: 'updated-branch', isCurrent: false, hasWorktree: false }]);

@@ -3,6 +3,7 @@ import { FaArrowsRotate, FaBan, FaCodeMerge, FaCompress, FaDownload, FaFileLines
 import { TbDeviceImacDown } from 'react-icons/tb';
 import { FaPencilAlt } from 'react-icons/fa';
 import { IoGitBranch } from 'react-icons/io5';
+import { CgSpinner } from 'react-icons/cg';
 import { VscWorktreeSmall } from 'react-icons/vsc';
 import { MdKeyboardArrowDown } from 'react-icons/md';
 import { useTranslation } from 'react-i18next';
@@ -961,6 +962,11 @@ export const GitBranchesButton = ({
               <div className="flex items-center gap-1.5 min-w-0">
                 <IoGitBranch className="w-3 h-3 text-text-muted shrink-0" />
                 <span className="text-2xs text-text-muted truncate">{currentBranch || t('git.noCurrentBranch')}</span>
+                {(loading || syncLoading) && (
+                  <span role="status" aria-label={t('common.loading')} className="shrink-0">
+                    <CgSpinner className="h-3 w-3 animate-spin text-text-muted" />
+                  </span>
+                )}
               </div>
               {currentBranch && (
                 <Tooltip content={t('worktree.renameBranch')}>
