@@ -10,7 +10,7 @@
  * how many controllers were constructed by agent code.
  */
 import { describe, expect, it, vi } from 'vitest';
-import { DefaultTaskState, type AgentProfile } from '@common/types';
+import { DefaultTaskState, type AgentProfile, type ContextMessage } from '@common/types';
 
 import type { Task } from '@/task';
 
@@ -168,5 +168,62 @@ describe('Agent.runAgent error propagation', () => {
     await expect(agent.runAgent(task, profile, 'prompt')).resolves.toBeDefined();
     expect(task.updateTask).toHaveBeenCalledWith({ state: DefaultTaskState.Interrupted });
     expect(agent.isRunning()).toBe(false);
+  });
+});
+
+describe('Agent.runAgent explicit skill activation', () => {
+  it.each(['caller', 'extension'])('adds disabled skills requested by the %s to context', async (source) => {
+    const { agent, extensionManager } = createAgent();
+    const task = createTask();
+    const skillManager = { getEnabledSkills: vi.fn(async () => []) };
+    const skillMessages: ContextMessage[] = [
+      { id: 'skill-assistant', role: 'assistant', content: 'Skill activation' },
+      { id: 'skill-result', role: 'tool', content: [] },
+    ];
+    task.getSkillManager = vi.fn(() => skillManager as unknown as ReturnType<Task['getSkillManager']>);
+    task.createSkillMessages = vi.fn(async () => skillMessages);
+    if (source === 'extension') {
+      extensionManager.dispatchEvent.mockImplementation(async (_eventName: string, event: Record<string, unknown>) => ({
+        ...event,
+        skillsToActivate: ['disabled-skill'],
+      }));
+    }
+    const args: RunAgentArgs = [
+      task,
+      profile,
+      'prompt',
+      'agent',
+      undefined,
+      undefined,
+      undefined,
+      undefined,
+      true,
+      undefined,
+      undefined,
+      source === 'caller' ? ['disabled-skill'] : undefined,
+    ];
+
+    await stopExpected(agent.runAgent(...args));
+
+    expect(task.createSkillMessages).toHaveBeenCalledWith('disabled-skill');
+    expect(skillManager.getEnabledSkills).not.toHaveBeenCalled();
+    expect(task.addContextMessage).toHaveBeenNthCalledWith(1, expect.objectContaining({ role: 'user', content: 'prompt' }));
+    expect(task.addContextMessage).toHaveBeenNthCalledWith(2, skillMessages[0]);
+    expect(task.addContextMessage).toHaveBeenNthCalledWith(3, skillMessages[1]);
+  });
+
+  it('respects an extension clearing explicitly requested skills', async () => {
+    const { agent, extensionManager } = createAgent();
+    const task = createTask();
+    task.createSkillMessages = vi.fn();
+    extensionManager.dispatchEvent.mockImplementation(async (_eventName: string, event: Record<string, unknown>) => ({
+      ...event,
+      skillsToActivate: [],
+    }));
+    const args: RunAgentArgs = [task, profile, 'prompt', 'agent', undefined, undefined, undefined, undefined, true, undefined, undefined, ['skill']];
+
+    await stopExpected(agent.runAgent(...args));
+
+    expect(task.createSkillMessages).not.toHaveBeenCalled();
   });
 });
