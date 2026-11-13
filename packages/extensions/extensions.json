@@ -413,7 +413,7 @@
         "tools",
         "search"
       ],
-      "installCount": 36
+      "installCount": 37
     },
     {
       "id": "seek",
@@ -442,7 +442,7 @@
       "capabilities": [
         "metrics"
       ],
-      "installCount": 123
+      "installCount": 124
     },
     {
       "id": "verifier",
