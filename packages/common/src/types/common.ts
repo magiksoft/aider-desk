@@ -1393,6 +1393,7 @@ export type InputPromptType = 'password' | 'text' | 'confirmation';
 
 export interface InputPromptData {
   id: string;
+  dismissed?: boolean;
   title?: string;
   titleParams?: Record<string, string | number>;
   message: string;

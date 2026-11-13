@@ -34,6 +34,7 @@ import type {
   AiderPromptFinishedEvent,
   AiderPromptStartedEvent,
   BeforeCommitEvent,
+  BashExecutionEvent,
   CommandDefinition,
   CommandExecutedEvent,
   CustomCommandExecutedEvent,
@@ -161,6 +162,7 @@ export type ExtensionEventMap = {
   onAiderPromptFinished: AiderPromptFinishedEvent;
   onToolApproval: ToolApprovalEvent;
   onToolCalled: ToolCalledEvent;
+  onBashExecution: BashExecutionEvent;
   onToolFinished: ToolFinishedEvent;
   onToolsetCreated: ToolsetCreatedEvent;
   onFilesAdded: FilesAddedEvent;
@@ -2365,6 +2367,9 @@ export class ExtensionManager {
         }
       } catch (error) {
         logger.error(`[Extensions] Error in '${String(eventName)}' handler for extension '${metadata.name}':`, error);
+        if (eventName === 'onBashExecution') {
+          throw new Error('Bash execution setup failed.');
+        }
         // Continue to next extension - errors don't stop the chain
       }
     }

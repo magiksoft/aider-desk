@@ -12,6 +12,8 @@ import { spawn } from 'child_process';
 
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
+import type { BashExecutionEvent } from '@common/extensions';
+
 const mockGetShellInitCommand = vi.fn();
 const mockGetShellCommandArgs = vi.fn();
 const mockGetShellPath = vi.fn(() => '/usr/bin:/bin');
@@ -56,6 +58,7 @@ describe('Power Tools - bash shell initialization', () => {
 
     mockTask = {
       taskId: 'current-task-id',
+      dispatchExtensionEvent: vi.fn(async (_name: string, event: BashExecutionEvent) => event),
       getTaskDir: vi.fn(() => '/mock/task/dir'),
       addToolMessage: vi.fn(),
       addLogMessage: vi.fn(),
@@ -116,6 +119,42 @@ describe('Power Tools - bash shell initialization', () => {
       exitCode: number;
     }>;
   };
+
+  describe('private execution configuration', () => {
+    it('applies private environment and post-init setup without recording them', async () => {
+      const cleanup = vi.fn();
+      mockGetShellInitCommand.mockReturnValue('source /etc/profile;');
+      mockTask.dispatchExtensionEvent.mockImplementation(async (_name: string, event: BashExecutionEvent) => {
+        event.addCleanup(cleanup);
+        return { ...event, commandPrefix: 'export PRIVATE_SETUP=1;', env: { ...event.env, PRIVATE_TOKEN: 'execution-only-token' } };
+      });
+      await execBash('sudo id');
+      expect(lastSpawnOptions.env.PRIVATE_TOKEN).toBe('execution-only-token');
+      expect(lastSpawnArgs[1]).toBe('source /etc/profile; export PRIVATE_SETUP=1; sudo id');
+      expect(JSON.stringify(mockTask.addToolMessage.mock.calls)).not.toContain('execution-only-token');
+      expect(JSON.stringify(mockTask.addToolMessage.mock.calls)).not.toContain('PRIVATE_SETUP');
+      expect(cleanup).toHaveBeenCalledOnce();
+    });
+
+    it('fails closed and cleans resources when setup fails', async () => {
+      const cleanup = vi.fn();
+      mockTask.dispatchExtensionEvent.mockImplementation(async (_name: string, event: BashExecutionEvent) => {
+        event.addCleanup(cleanup);
+        throw new Error('Setup failed');
+      });
+      await expect(execBash('sudo id')).rejects.toThrow('Setup failed');
+      expect(spawn).not.toHaveBeenCalled();
+      expect(cleanup).toHaveBeenCalledOnce();
+    });
+
+    it('does not configure an execution when approval is denied', async () => {
+      const approvalModule = await import('../approval-manager');
+      vi.mocked(approvalModule.ApprovalManager.prototype.handleToolApproval).mockResolvedValue([false, undefined]);
+      await execBash('sudo id');
+      expect(mockTask.dispatchExtensionEvent).not.toHaveBeenCalled();
+      expect(spawn).not.toHaveBeenCalled();
+    });
+  });
 
   describe('command construction with shell init prefix', () => {
     it('prepends the bash init prefix to the user command', async () => {

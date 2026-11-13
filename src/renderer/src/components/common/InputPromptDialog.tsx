@@ -21,7 +21,7 @@ export const InputPromptDialog = ({ promptData: controlledPromptData, onRespond 
     }
 
     return api.onInputPrompt((data) => {
-      setInternalPromptData(data);
+      setInternalPromptData((current) => (data.dismissed ? (current?.id === data.id ? null : current) : data));
     });
   }, [api, controlledPromptData]);
 

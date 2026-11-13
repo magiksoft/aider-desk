@@ -1,9 +1,10 @@
+import { getInputPromptBroker } from './input-prompt-broker';
 import { ProjectContextImpl } from './project-context';
 import { TaskContextImpl } from './task-context';
 
 import type { DisposableStore } from './disposable-store';
-import type { ElectronApp, ExtensionContext, MemoryContext, ProjectContext, TaskContext } from '@common/extensions';
-import type { McpServerConfig, Model, ProviderProfile, SettingsData } from '@common/types';
+import type { ElectronApp, ExtensionContext, MemoryContext, ProjectContext, TaskContext, ExtensionInputResponse } from '@common/extensions';
+import type { InputPromptData, McpServerConfig, Model, ProviderProfile, SettingsData } from '@common/types';
 import type { McpConfigManager } from '@/agent/mcp-config-manager';
 import type { EventManager } from '@/events';
 import type { MemoryManager } from '@/memory/memory-manager';
@@ -15,6 +16,8 @@ import type { Task } from '@/task';
 import logger from '@/logger';
 import { truncateToolResult } from '@/agent/utils';
 import { openUrl as openUrlUtil } from '@/utils/open-url';
+
+const inputControllers = new WeakMap<DisposableStore, Set<AbortController>>();
 
 export class ExtensionContextImpl implements ExtensionContext {
   private readonly taskContext: TaskContext | null;
@@ -49,6 +52,32 @@ export class ExtensionContextImpl implements ExtensionContext {
   log(message: string, type: 'info' | 'error' | 'warn' | 'debug' = 'info'): void {
     const logFn = logger[type];
     logFn(`[Extension:${this.extensionName}] ${message}`);
+  }
+
+  async requestInput(prompt: Omit<InputPromptData, 'id'>, signal?: AbortSignal): Promise<ExtensionInputResponse> {
+    if (!this.eventManager) {
+      throw new Error('Input prompts are unavailable.');
+    }
+    let controllers = inputControllers.get(this.disposableStore);
+    if (!controllers) {
+      controllers = new Set();
+      inputControllers.set(this.disposableStore, controllers);
+      const pending = controllers;
+      this.disposableStore.addExtensionDisposable(() => {
+        for (const controller of pending) {
+          controller.abort();
+        }
+        pending.clear();
+        inputControllers.delete(this.disposableStore);
+      });
+    }
+    const controller = new AbortController();
+    controllers.add(controller);
+    try {
+      return await getInputPromptBroker(this.eventManager).request(prompt, AbortSignal.any([controller.signal, ...(signal ? [signal] : [])]));
+    } finally {
+      controllers.delete(controller);
+    }
   }
 
   getProjectDir(): string {

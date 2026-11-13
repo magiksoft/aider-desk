@@ -804,113 +804,109 @@ Do not use escape characters \\ in the string like \\n or \\" and others. Do not
         }
       };
 
-      return await new Promise((resolve) => {
-        const stdoutAccumulator = new BoundedOutputAccumulator();
-        const stderrAccumulator = new BoundedOutputAccumulator();
-        let exitCode = 0;
-        let stderrOverride: string | null = null;
-        let timeoutHandle: NodeJS.Timeout | null = null;
-        let isResolved = false;
-        let childProcess: ChildProcess | null = null;
-        let abortListener: (() => void) | null = null;
-        let lastStreamingUpdateAt = 0;
-        let streamingUpdateQueued = false;
+      const cleanups: (() => void | Promise<void>)[] = [];
+      try {
+        const execution = await task.dispatchExtensionEvent('onBashExecution', {
+          toolCallId,
+          command,
+          cwd: absoluteCwd,
+          shell: getShellCommandArgs(command).shell,
+          abortSignal,
+          env: {
+            ...process.env,
+            TERM: 'dumb',
+            DEBIAN_FRONTEND: 'noninteractive',
+            PATH: getShellPath(),
+          },
+          addCleanup: (cleanup) => cleanups.push(cleanup),
+        });
+        if (abortSignal?.aborted) {
+          return {
+            stdout: '',
+            stderr: 'Operation was cancelled by user.',
+            exitCode: 130,
+          };
+        }
+        return await new Promise((resolve) => {
+          const stdoutAccumulator = new BoundedOutputAccumulator();
+          const stderrAccumulator = new BoundedOutputAccumulator();
+          let exitCode = 0;
+          let stderrOverride: string | null = null;
+          let timeoutHandle: NodeJS.Timeout | null = null;
+          let isResolved = false;
+          let childProcess: ChildProcess | null = null;
+          let abortListener: (() => void) | null = null;
+          let lastStreamingUpdateAt = 0;
+          let streamingUpdateQueued = false;
 
-        const cleanup = () => {
-          if (timeoutHandle) {
-            clearTimeout(timeoutHandle);
-            timeoutHandle = null;
-          }
-          // Remove abort listener to prevent memory leaks
-          if (abortListener) {
-            abortSignal?.removeEventListener('abort', abortListener);
-          }
-        };
+          const cleanup = () => {
+            if (timeoutHandle) {
+              clearTimeout(timeoutHandle);
+              timeoutHandle = null;
+            }
+            // Remove abort listener to prevent memory leaks
+            if (abortListener) {
+              abortSignal?.removeEventListener('abort', abortListener);
+            }
+          };
 
-        const finishOutput = async (accumulator: BoundedOutputAccumulator): Promise<string> => {
-          const content = await accumulator.finish();
-          const didSpill = accumulator.didSpill();
-          return truncateToolResult(content, 1000, 50, 10000, !didSpill, didSpill ? `Full output saved to ${accumulator.getSpillFilePath()}.` : undefined);
-        };
+          const finishOutput = async (accumulator: BoundedOutputAccumulator): Promise<string> => {
+            const content = await accumulator.finish();
+            const didSpill = accumulator.didSpill();
+            return truncateToolResult(content, 1000, 50, 10000, !didSpill, didSpill ? `Full output saved to ${accumulator.getSpillFilePath()}.` : undefined);
+          };
 
-        const resolveWithResult = async () => {
-          if (isResolved) {
-            return;
-          }
-          isResolved = true;
-          cleanup();
+          const resolveWithResult = async () => {
+            if (isResolved) {
+              return;
+            }
+            isResolved = true;
+            cleanup();
 
-          try {
-            const truncatedStdout = await finishOutput(stdoutAccumulator);
-            const truncatedStderr = stderrOverride ?? (await finishOutput(stderrAccumulator));
+            try {
+              const truncatedStdout = await finishOutput(stdoutAccumulator);
+              const truncatedStderr = stderrOverride ?? (await finishOutput(stderrAccumulator));
 
-            resolve({ stdout: truncatedStdout, stderr: truncatedStderr, exitCode });
-          } catch (error) {
-            resolve({
-              stdout: '',
-              stderr: `Error processing command output: ${error instanceof Error ? error.message : String(error)}`,
-              exitCode: 1,
-            });
-          }
-        };
+              resolve({
+                stdout: truncatedStdout,
+                stderr: truncatedStderr,
+                exitCode,
+              });
+            } catch (error) {
+              resolve({
+                stdout: '',
+                stderr: `Error processing command output: ${error instanceof Error ? error.message : String(error)}`,
+                exitCode: 1,
+              });
+            }
+          };
 
-        const sendStreamingUpdate = () => {
-          const now = Date.now();
-          if (now - lastStreamingUpdateAt < BASH_STREAMING_UPDATE_INTERVAL_MS) {
-            streamingUpdateQueued = true;
-            return;
-          }
-          lastStreamingUpdateAt = now;
-          streamingUpdateQueued = false;
-          task.addToolMessage(
-            toolCallId,
-            TOOL_GROUP_NAME,
-            TOOL_BASH,
-            { command, description, cwd, timeout },
-            JSON.stringify({
-              stdout: stdoutAccumulator.getPreview(BASH_STREAMING_PREVIEW_CHARS),
-              stderr: stderrAccumulator.getPreview(BASH_STREAMING_PREVIEW_CHARS),
-              exitCode: null,
-            }),
-            undefined,
-            promptContext,
-            false,
-            false, // not finished yet
-          );
-        };
+          const sendStreamingUpdate = () => {
+            const now = Date.now();
+            if (now - lastStreamingUpdateAt < BASH_STREAMING_UPDATE_INTERVAL_MS) {
+              streamingUpdateQueued = true;
+              return;
+            }
+            lastStreamingUpdateAt = now;
+            streamingUpdateQueued = false;
+            task.addToolMessage(
+              toolCallId,
+              TOOL_GROUP_NAME,
+              TOOL_BASH,
+              { command, description, cwd, timeout },
+              JSON.stringify({
+                stdout: stdoutAccumulator.getPreview(BASH_STREAMING_PREVIEW_CHARS),
+                stderr: stderrAccumulator.getPreview(BASH_STREAMING_PREVIEW_CHARS),
+                exitCode: null,
+              }),
+              undefined,
+              promptContext,
+              false,
+              false, // not finished yet
+            );
+          };
 
-        abortListener = () => {
-          if (isResolved) {
-            return;
-          }
-
-          if (childProcess?.pid) {
-            killProcess(childProcess.pid);
-          }
-
-          // Use the standard resolution method with proper type
-          stderrOverride = 'Operation was cancelled by user.';
-          exitCode = 130; // Standard cancel exit code (128 + SIGINT=2)
-          void resolveWithResult();
-        };
-
-        // Listen for abort signal
-        abortSignal?.addEventListener('abort', abortListener);
-
-        try {
-          const shellInitCommand = getShellInitCommand();
-          const fullCommand = shellInitCommand ? `${shellInitCommand} ${command}` : command;
-          const { shell: shellExec, args: shellArgs } = getShellCommandArgs(fullCommand);
-          childProcess = spawn(shellExec, shellArgs, {
-            cwd: absoluteCwd,
-            env: { ...process.env, TERM: 'dumb', DEBIAN_FRONTEND: 'noninteractive', PATH: getShellPath() },
-            stdio: ['ignore', 'pipe', 'pipe'], // Explicitly pipe stdout and stderr to capture output from piped commands
-            detached: isPosix,
-            signal: abortSignal,
-          });
-
-          // Set timeout
-          timeoutHandle = setTimeout(() => {
+          abortListener = () => {
             if (isResolved) {
               return;
             }
@@ -918,65 +914,106 @@ Do not use escape characters \\ in the string like \\n or \\" and others. Do not
             if (childProcess?.pid) {
               killProcess(childProcess.pid);
             }
-            stderrOverride = `Error: Command timed out after ${timeout}ms. Consider increasing the timeout parameter.`;
-            exitCode = 124;
+
+            // Use the standard resolution method with proper type
+            stderrOverride = 'Operation was cancelled by user.';
+            exitCode = 130; // Standard cancel exit code (128 + SIGINT=2)
             void resolveWithResult();
-          }, timeout);
+          };
 
-          childProcess.stdout?.on('data', (data: Buffer) => {
-            if (isResolved) {
-              return;
-            }
+          // Listen for abort signal
+          abortSignal?.addEventListener('abort', abortListener);
 
-            stdoutAccumulator.append(data);
+          try {
+            const shellInitCommand = getShellInitCommand();
+            const executionCommand = execution.commandPrefix ? `${execution.commandPrefix} ${command}` : command;
+            const fullCommand = shellInitCommand ? `${shellInitCommand} ${executionCommand}` : executionCommand;
+            const { shell: shellExec, args: shellArgs } = getShellCommandArgs(fullCommand);
+            childProcess = spawn(shellExec, shellArgs, {
+              cwd: absoluteCwd,
+              env: execution.env,
+              stdio: ['ignore', 'pipe', 'pipe'], // Explicitly pipe stdout and stderr to capture output from piped commands
+              detached: isPosix,
+              signal: abortSignal,
+            });
 
-            // Send throttled bounded streaming update
-            if (streamingUpdateQueued || Date.now() - lastStreamingUpdateAt >= BASH_STREAMING_UPDATE_INTERVAL_MS) {
-              sendStreamingUpdate();
-            }
-          });
+            // Set timeout
+            timeoutHandle = setTimeout(() => {
+              if (isResolved) {
+                return;
+              }
 
-          childProcess.stderr?.on('data', (data: Buffer) => {
-            if (isResolved) {
-              return;
-            }
+              if (childProcess?.pid) {
+                killProcess(childProcess.pid);
+              }
+              stderrOverride = `Error: Command timed out after ${timeout}ms. Consider increasing the timeout parameter.`;
+              exitCode = 124;
+              void resolveWithResult();
+            }, timeout);
 
-            stderrAccumulator.append(data);
+            childProcess.stdout?.on('data', (data: Buffer) => {
+              if (isResolved) {
+                return;
+              }
 
-            // Send throttled bounded streaming update
-            if (streamingUpdateQueued || Date.now() - lastStreamingUpdateAt >= BASH_STREAMING_UPDATE_INTERVAL_MS) {
-              sendStreamingUpdate();
-            }
-          });
+              stdoutAccumulator.append(data);
 
-          childProcess.on('error', (error: Error) => {
+              // Send throttled bounded streaming update
+              if (streamingUpdateQueued || Date.now() - lastStreamingUpdateAt >= BASH_STREAMING_UPDATE_INTERVAL_MS) {
+                sendStreamingUpdate();
+              }
+            });
+
+            childProcess.stderr?.on('data', (data: Buffer) => {
+              if (isResolved) {
+                return;
+              }
+
+              stderrAccumulator.append(data);
+
+              // Send throttled bounded streaming update
+              if (streamingUpdateQueued || Date.now() - lastStreamingUpdateAt >= BASH_STREAMING_UPDATE_INTERVAL_MS) {
+                sendStreamingUpdate();
+              }
+            });
+
+            childProcess.on('error', (error: Error) => {
+              if (!isResolved) {
+                stderrOverride = error.message;
+                exitCode = 1;
+                void resolveWithResult();
+              }
+            });
+
+            childProcess.on('exit', (code: number | null, signal: string | null) => {
+              if (!isResolved) {
+                if (code !== null) {
+                  exitCode = code;
+                } else if (signal === 'SIGTERM') {
+                  exitCode = 124; // Timeout exit code
+                } else {
+                  exitCode = 1;
+                }
+                void resolveWithResult();
+              }
+            });
+          } catch (error: unknown) {
             if (!isResolved) {
-              stderrOverride = error.message;
+              stderrOverride = error instanceof Error ? error.message : String(error);
               exitCode = 1;
               void resolveWithResult();
             }
-          });
-
-          childProcess.on('exit', (code: number | null, signal: string | null) => {
-            if (!isResolved) {
-              if (code !== null) {
-                exitCode = code;
-              } else if (signal === 'SIGTERM') {
-                exitCode = 124; // Timeout exit code
-              } else {
-                exitCode = 1;
-              }
-              void resolveWithResult();
-            }
-          });
-        } catch (error: unknown) {
-          if (!isResolved) {
-            stderrOverride = error instanceof Error ? error.message : String(error);
-            exitCode = 1;
-            void resolveWithResult();
+          }
+        });
+      } finally {
+        for (const cleanup of cleanups.reverse()) {
+          try {
+            await cleanup();
+          } catch {
+            logger.warn('Bash execution cleanup failed.');
           }
         }
-      });
+      }
     },
   });
 

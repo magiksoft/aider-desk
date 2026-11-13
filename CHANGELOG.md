@@ -19,6 +19,7 @@
 - added local Markdown image rendering with clickable thumbnails and expanded previews in agent responses
 - fixed absolute file path links in messages to open locally on desktop and offer downloads in browsers
 - added task ID matching to the task sidebar search filter
+- added extension APIs for private input dialogs and per-command bash execution setup
 
 ## [0.91.0]
 

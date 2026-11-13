@@ -2,8 +2,10 @@ import { describe, it, expect, beforeEach, vi } from 'vitest';
 
 import { ExtensionContextImpl } from '../extension-context';
 import { DisposableStore } from '../disposable-store';
+import { getInputPromptBroker } from '../input-prompt-broker';
 
-import type { Model, ProviderModelsData, ProviderProfile, SettingsData } from '@common/types';
+import type { EventManager } from '@/events';
+import type { InputPromptData, Model, ProviderModelsData, ProviderProfile, SettingsData } from '@common/types';
 import type { ModelManager } from '@/models';
 import type { Project } from '@/project';
 import type { Store } from '@/store';
@@ -54,6 +56,26 @@ describe('ExtensionContextImpl', () => {
     vi.clearAllMocks();
     store = new DisposableStore(extensionName);
     context = new ExtensionContextImpl(extensionId, extensionName, store);
+  });
+
+  describe('requestInput', () => {
+    it('rejects unavailable prompts instead of falling back to conversation questions', async () => {
+      await expect(context.requestInput({ message: 'Password', type: 'password' })).rejects.toThrow('Input prompts are unavailable');
+    });
+
+    it('routes private responses and cancels pending prompts on extension disposal', async () => {
+      const prompts: InputPromptData[] = [];
+      const events = { sendInputPrompt: (data: InputPromptData) => prompts.push(data) } as unknown as EventManager;
+      const privateContext = new ExtensionContextImpl(extensionId, extensionName, store, undefined, undefined, events);
+      const response = privateContext.requestInput({ message: 'Password', type: 'password' });
+      getInputPromptBroker(events).respond(prompts[0].id, 'secret', true);
+      expect(await response).toEqual({ value: 'secret', rememberSession: true });
+      const pending = privateContext.requestInput({ message: 'Next password', type: 'password' });
+      await store.disposeExtension();
+      expect(await pending).toEqual({ value: null, rememberSession: false });
+      expect(prompts.at(-1)?.dismissed).toBe(true);
+      expect(JSON.stringify(prompts)).not.toContain('secret');
+    });
   });
 
   describe('constructor', () => {

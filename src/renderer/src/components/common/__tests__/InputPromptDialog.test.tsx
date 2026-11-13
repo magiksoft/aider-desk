@@ -52,6 +52,16 @@ describe('InputPromptDialog', () => {
     expect(screen.queryByRole('heading')).not.toBeInTheDocument();
   });
 
+  it('dismisses cancelled prompts without closing a different active prompt', () => {
+    renderComponent();
+    act(() => promptCallback!({ id: 'current', message: 'Current password', type: 'password' }));
+    act(() => promptCallback!({ id: 'previous', message: '', dismissed: true }));
+    expect(screen.getByText('Current password')).toBeInTheDocument();
+    act(() => promptCallback!({ id: 'current', message: '', dismissed: true }));
+    expect(screen.queryByText('Current password')).not.toBeInTheDocument();
+    expect(mockRespondInputPrompt).not.toHaveBeenCalled();
+  });
+
   it('renders password prompt and submits password', async () => {
     renderComponent();
 

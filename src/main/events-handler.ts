@@ -81,6 +81,7 @@ import {
 import { expandTilde } from '@/agent/utils';
 import { AIDER_DESK_TMP_DIR, LOGS_DIR } from '@/constants';
 import { EventManager } from '@/events';
+import { getInputPromptBroker } from '@/extensions/input-prompt-broker';
 import { isElectron } from '@/app';
 import { NetworkManager } from '@/network-manager';
 
@@ -502,7 +503,9 @@ export class EventsHandler {
   }
 
   respondInputPrompt(id: string, value: string | null, rememberSession?: boolean): void {
-    this.gitAskpassManager?.respond(id, value, rememberSession);
+    if (!getInputPromptBroker(this.eventManager).respond(id, value, rememberSession)) {
+      this.gitAskpassManager?.respond(id, value, rememberSession);
+    }
   }
 
   removeQueuedPrompt(baseDir: string, taskId: string, promptId: string): void {

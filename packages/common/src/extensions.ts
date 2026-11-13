@@ -11,6 +11,7 @@ import {
   CreateTaskParams,
   CustomCommand,
   InvocationMode,
+  InputPromptData,
   JSONValue,
   McpServerConfig,
   MemoryEntry,
@@ -613,6 +614,25 @@ export interface ToolCalledEvent {
   readonly abortSignal?: AbortSignal;
   input: Record<string, unknown> | undefined;
   output?: unknown;
+}
+
+/** Ephemeral execution configuration, dispatched after bash approval. Never persisted in tool history. */
+export interface BashExecutionEvent {
+  readonly toolCallId: string;
+  readonly command: string;
+  readonly cwd: string;
+  readonly shell: string;
+  readonly abortSignal?: AbortSignal;
+  /** Trusted shell setup run after shell initialization, never added to persisted command arguments. */
+  commandPrefix?: string;
+  env: Record<string, string | undefined>;
+  /** Register cleanup before allocating resources; runs on completion, failure, cancellation or timeout. */
+  readonly addCleanup: (cleanup: () => void | Promise<void>) => void;
+}
+
+export interface ExtensionInputResponse {
+  value: string | null;
+  rememberSession: boolean;
 }
 
 /** Event payload for tool finished events */
@@ -1693,6 +1713,9 @@ export interface ExtensionContext {
    */
   log(message: string, type?: 'info' | 'error' | 'warn' | 'debug'): void;
 
+  /** Request masked or plain input outside conversation history. Null means cancelled or timed out. */
+  requestInput(prompt: Omit<InputPromptData, 'id'>, signal?: AbortSignal): Promise<ExtensionInputResponse>;
+
   /**
    * Get the current project directory path.
    * Only available when the context is created within a project scope (e.g., event handlers,
@@ -2245,6 +2268,9 @@ export interface Extension {
    * @returns void or partial event to modify tool call
    */
   onToolCalled?(event: ToolCalledEvent, context: ExtensionContext): Promise<void | Partial<ToolCalledEvent>>;
+
+  /** Configure a single approved Power bash execution. Handler errors prevent execution. */
+  onBashExecution?(event: BashExecutionEvent, context: ExtensionContext): Promise<void | Partial<BashExecutionEvent>>;
 
   /**
    * Called after tool execution completes
