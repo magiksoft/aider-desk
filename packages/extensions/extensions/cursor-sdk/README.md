@@ -44,9 +44,11 @@ Cursor SDK tools are translated to AiderDesk's built-in power tools where possib
 
 ## Supported Models
 
-Models are loaded dynamically from `Cursor.models.list()` at runtime. Available models depend on your Cursor API key and account. Parameterized variants are shown with readable aliases based on their effort and context, such as `cursor-sdk/claude-fable-5-high[1m]`. The `[1m]` suffix appears only for variants with 1M context.
+Models are loaded dynamically from `Cursor.models.list()` at runtime. Available models depend on your Cursor API key and account. Parameterized variants have readable aliases for reasoning (`effort`, `reasoning`, or `reasoning_effort`), speed, and context, such as `cursor-sdk/grok-4.7-high-fast` or `cursor-sdk/claude-fable-5-high[1m]`. Standard context is omitted from the name; larger contexts use their advertised value, such as `[500k]` or `[1m]`. A 1M context always retains the `[1m]` suffix. Other varying parameters are included as `parameter=value` suffixes rather than opaque numbered variants.
 
-Variants with an effort setting are listed only when Cursor enables thinking for them. The extension retains the exact Cursor parameter set internally when the selected alias is executed.
+Variants with disabled reasoning or explicitly disabled thinking are excluded when they have a reasoning setting. The extension retains the exact Cursor parameter set internally. Saved numbered aliases and serialized parameter selections remain supported. Plain `-fast` compatibility aliases select an advertised fast variant with standard context and the default reasoning level when available; actual catalog model IDs take precedence. Explicit context selections are never silently downgraded.
+
+Some extended-context / Max-mode variants advertised by Cursor may be rejected by its runtime. For example, if a Grok 500K selection returns `Invalid parameters for registry model`, select its standard-context variant instead.
 
 ## Configuration
 

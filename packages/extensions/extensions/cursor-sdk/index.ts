@@ -5,7 +5,7 @@ import { Agent, Cursor } from '@cursor/sdk';
 
 import { CursorRunSession } from './lifecycle';
 import { formatCursorError } from './diagnostics';
-import { createModelAliases, resolveModelSelection } from './model-selection';
+import { createModelAliases, createModelSelections, resolveModelSelection } from './model-selection';
 import {
   completeCursorTaskPromptContext,
   createCursorTaskPromptContext,
@@ -649,7 +649,7 @@ const configComponentJsx = readFileSync(join(__dirname, './ConfigComponent.jsx')
 export default class CursorSdkExtension implements Extension {
   static metadata = {
     name: 'Cursor SDK',
-    version: '4.8.1',
+    version: '4.8.2',
     description: 'Integrates the Cursor SDK as a provider with cursor-sdk/ prefix, overriding the agent loop',
     author: 'wladimiiir',
     iconUrl: 'https://raw.githubusercontent.com/magiksoft/aider-desk/refs/heads/main/packages/extensions/extensions/cursor-sdk/icon.png',
@@ -700,9 +700,10 @@ export default class CursorSdkExtension implements Extension {
             }
             try {
               const cursorModels = await Cursor.models.list({ apiKey });
-              this.modelSelections.clear();
+              this.modelSelections = createModelSelections(cursorModels);
+              const reservedIds = new Set(cursorModels.map((model) => model.id));
               const models: Model[] = cursorModels.flatMap((cursorModel) => {
-                const aliases = createModelAliases(cursorModel);
+                const aliases = createModelAliases(cursorModel, reservedIds);
                 if (aliases.length > 1) {
                   context.log(
                     `Cursor model variants for ${cursorModel.id}: ${aliases
@@ -711,10 +712,7 @@ export default class CursorSdkExtension implements Extension {
                     'debug',
                   );
                 }
-                return aliases.map((alias) => {
-                  this.modelSelections.set(alias.id, alias.selection);
-                  return { id: alias.id, providerId: profile.id };
-                });
+                return aliases.map((alias) => ({ id: alias.id, providerId: profile.id }));
               });
               return { models, success: true };
             } catch (err) {
@@ -823,12 +821,7 @@ export default class CursorSdkExtension implements Extension {
     if (!this.modelSelections.has(rawModelId)) {
       try {
         const cursorModels = await Cursor.models.list({ apiKey });
-        this.modelSelections.clear();
-        for (const cursorModel of cursorModels) {
-          for (const alias of createModelAliases(cursorModel)) {
-            this.modelSelections.set(alias.id, alias.selection);
-          }
-        }
+        this.modelSelections = createModelSelections(cursorModels);
       } catch (err) {
         context.log(`Failed to refresh Cursor models: ${formatCursorError(err, [apiKey])}`, 'warn');
       }
