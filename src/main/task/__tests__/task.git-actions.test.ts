@@ -5,8 +5,12 @@
  * and error reporting via reportGitActionError.
  */
 
+import fs from 'fs/promises';
+
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { CONFLICT_RESOLUTION_PROFILE } from '@common/agent';
+
+import { Task } from '../task';
 
 const { runConflictAgent } = vi.hoisted(() => ({ runConflictAgent: vi.fn() }));
 
@@ -127,8 +131,7 @@ vi.mock('uuid', () => ({
   v4: vi.fn(() => 'test-uuid'),
 }));
 
-import { Task } from '../task';
-
+import type { PromptContext } from '@common/types';
 import type { PromptsManager } from '@/prompts';
 
 import { execWithShellPath } from '@/utils';
@@ -433,6 +436,9 @@ describe('Task - git actions', () => {
   describe('resolveConflictsWithAgent', () => {
     beforeEach(() => {
       runConflictAgent.mockReset().mockResolvedValue(undefined);
+      vi.mocked(fs.readFile).mockReset().mockResolvedValue('resolved content');
+      vi.mocked(fs.mkdir).mockReset().mockResolvedValue(undefined);
+      vi.mocked(execWithShellPath).mockReset().mockResolvedValue({ stdout: '', stderr: '' });
       mockGitManager.getRebaseState.mockResolvedValue({ inProgress: false, hasUnmergedPaths: true, unmergedFiles: ['message.txt'] });
       mockGitManager.listConflictedFiles = vi.fn().mockResolvedValue(['message.txt']);
       mockGitManager.collectConflictContext = vi.fn().mockResolvedValue({
@@ -475,6 +481,99 @@ describe('Task - git actions', () => {
       expect(execWithShellPath).not.toHaveBeenCalled();
       expect(mockEventManager.sendUpdatedFilesUpdated).toHaveBeenCalledOnce();
       expect(mockEventManager.sendTaskGitStatusUpdated).toHaveBeenCalledOnce();
+    });
+
+    it.each(['<<<<<<< HEAD', '=======', '>>>>>>> branch', '||||||| base', '<<<<<<<<<< HEAD'])(
+      'does not stage or report success when %s remains in the file',
+      async (marker) => {
+        prepareResolution(task);
+        vi.mocked(fs.readFile).mockResolvedValue(`before\n${marker}\nafter`);
+
+        await task.resolveConflictsWithAgent();
+
+        expect(execWithShellPath).not.toHaveBeenCalled();
+        expect(task.addLogMessage).toHaveBeenCalledWith(
+          'error',
+          'Failed to resolve message.txt: Conflict markers remain in the file',
+          true,
+          expect.objectContaining({ group: expect.objectContaining({ name: 'Failed to resolve message.txt', finished: true }) }),
+        );
+        expect(task.addLogMessage).not.toHaveBeenCalledWith('info', 'Resolved message.txt', true, expect.anything());
+      },
+    );
+
+    it('reports usage-limit failures in the resolution group without staging', async () => {
+      prepareResolution(task);
+      runConflictAgent.mockRejectedValueOnce(new Error('Usage limit reached'));
+
+      await task.resolveConflictsWithAgent();
+
+      expect(execWithShellPath).not.toHaveBeenCalled();
+      expect(task.addLogMessage).toHaveBeenCalledWith(
+        'error',
+        'Failed to resolve message.txt: Usage limit reached',
+        true,
+        expect.objectContaining({ group: expect.objectContaining({ name: 'Failed to resolve message.txt', finished: true }) }),
+      );
+    });
+
+    it('waits for other files to finish when one resolution fails', async () => {
+      prepareResolution(task);
+      mockGitManager.listConflictedFiles.mockResolvedValue(['failed.txt', 'resolved.txt']);
+      runConflictAgent.mockImplementation(async (_task: Task, _profile: unknown, _prompt: string, _mode: string, context: PromptContext) => {
+        if (context.group?.name === 'Resolving failed.txt...') {
+          throw new Error('Usage limit reached');
+        }
+      });
+
+      await task.resolveConflictsWithAgent();
+
+      expect(execWithShellPath).toHaveBeenCalledExactlyOnceWith('git add -- "resolved.txt"', { cwd: baseDir });
+      expect(task.addLogMessage).toHaveBeenCalledWith('info', 'Resolved resolved.txt', true, expect.anything());
+      expect(mockEventManager.sendUpdatedFilesUpdated).toHaveBeenCalledOnce();
+    });
+
+    it('does not stage interrupted resolutions', async () => {
+      prepareResolution(task);
+      runConflictAgent.mockImplementation(async (...args: unknown[]) => {
+        const signal = args[9] as AbortSignal;
+        Object.defineProperty(signal, 'aborted', { value: true });
+      });
+
+      await task.resolveConflictsWithAgent();
+
+      expect(execWithShellPath).not.toHaveBeenCalled();
+      expect(task.addLogMessage).toHaveBeenCalledWith(
+        'warning',
+        'Resolution of message.txt interrupted',
+        true,
+        expect.objectContaining({ group: expect.objectContaining({ finished: true }) }),
+      );
+    });
+
+    it('does not report success when staging fails', async () => {
+      prepareResolution(task);
+      vi.mocked(execWithShellPath).mockRejectedValueOnce(new Error('Staging failed'));
+
+      await task.resolveConflictsWithAgent();
+
+      expect(task.addLogMessage).toHaveBeenCalledWith('error', 'Failed to resolve message.txt: Staging failed', true, expect.anything());
+      expect(task.addLogMessage).not.toHaveBeenCalledWith('info', 'Resolved message.txt', true, expect.anything());
+    });
+
+    it('marks context collection failures as failed and finishes the group', async () => {
+      prepareResolution(task);
+      mockGitManager.collectConflictContext.mockRejectedValueOnce(new Error('Cannot read conflict context'));
+
+      await task.resolveConflictsWithAgent();
+
+      expect(execWithShellPath).not.toHaveBeenCalled();
+      expect(task.addLogMessage).toHaveBeenCalledWith(
+        'error',
+        'Failed to resolve message.txt: Cannot read conflict context',
+        true,
+        expect.objectContaining({ group: expect.objectContaining({ finished: true }) }),
+      );
     });
 
     it('refreshes Updated Files when conflicts disappear before resolution starts', async () => {

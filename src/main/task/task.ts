@@ -5579,26 +5579,21 @@ ${error.stderr}`,
 
         this.addLogMessage('loading', `Resolving ${filePath}...`, false, promptContext);
 
-        const ctx = await this.gitManager.collectConflictContext(directoryPath, filePath);
-
-        // Create temp directory structure for conflict files
         const conflictsDir = path.join(this.project.baseDir, AIDER_DESK_TMP_DIR, 'conflicts');
         const conflictFileDir = path.join(conflictsDir, filePath);
-        await fs.mkdir(path.dirname(conflictFileDir), { recursive: true });
-
-        // Create version files using the relative path structure
         const basePath = `${conflictFileDir}.base`;
         const oursPath = `${conflictFileDir}.ours`;
         const theirsPath = `${conflictFileDir}.theirs`;
 
-        // Write version files
-        await Promise.all([
-          ctx.base ? fs.writeFile(basePath, ctx.base, 'utf8') : Promise.resolve(),
-          ctx.ours ? fs.writeFile(oursPath, ctx.ours, 'utf8') : Promise.resolve(),
-          ctx.theirs ? fs.writeFile(theirsPath, ctx.theirs, 'utf8') : Promise.resolve(),
-        ]);
-
         try {
+          const ctx = await this.gitManager.collectConflictContext(directoryPath, filePath);
+          await fs.mkdir(path.dirname(conflictFileDir), { recursive: true });
+          await Promise.all([
+            ctx.base ? fs.writeFile(basePath, ctx.base, 'utf8') : Promise.resolve(),
+            ctx.ours ? fs.writeFile(oursPath, ctx.ours, 'utf8') : Promise.resolve(),
+            ctx.theirs ? fs.writeFile(theirsPath, ctx.theirs, 'utf8') : Promise.resolve(),
+          ]);
+
           const prompt = await this.promptsManager.getConflictResolutionPrompt(this, filePath, {
             ...ctx,
             basePath: ctx.base ? basePath : undefined,
@@ -5620,23 +5615,43 @@ ${error.stderr}`,
             abortController.signal,
           );
 
-          // Update context based on whether it was interrupted or resolved
-          if (promptContext.group) {
-            if (abortController.signal.aborted) {
+          if (abortController.signal.aborted) {
+            if (promptContext.group) {
               promptContext.group.name = `Resolution of ${filePath} interrupted`;
               promptContext.group.finished = true;
-              this.addLogMessage('warning', `Resolution of ${filePath} interrupted`, true, promptContext);
-              interruptedCount++;
-            } else {
-              promptContext.group.name = `Resolved ${filePath}`;
-              promptContext.group.finished = true;
-              this.addLogMessage('info', `Resolved ${filePath}`, true, promptContext);
-
-              // Stage the file
-              await execWithShellPath(`git add -- "${filePath}"`, {
-                cwd: directoryPath,
-              });
             }
+            this.addLogMessage('warning', `Resolution of ${filePath} interrupted`, true, promptContext);
+            interruptedCount++;
+            return;
+          }
+
+          const content = await fs.readFile(path.join(directoryPath, filePath), 'utf8');
+          if (/^(<{7,}|\|{7,}|={7,}|>{7,})(?:\s|$)/m.test(content)) {
+            throw new Error('Conflict markers remain in the file');
+          }
+
+          await execWithShellPath(`git add -- "${filePath}"`, {
+            cwd: directoryPath,
+          });
+
+          if (promptContext.group) {
+            promptContext.group.name = `Resolved ${filePath}`;
+            promptContext.group.finished = true;
+          }
+          this.addLogMessage('info', `Resolved ${filePath}`, true, promptContext);
+        } catch (error) {
+          const interrupted = abortController.signal.aborted;
+          const message = interrupted ? `Resolution of ${filePath} interrupted` : `Failed to resolve ${filePath}`;
+          if (promptContext.group) {
+            promptContext.group.name = message;
+            promptContext.group.finished = true;
+          }
+          if (interrupted) {
+            interruptedCount++;
+            this.addLogMessage('warning', message, true, promptContext);
+          } else {
+            logger.error(`Failed to resolve conflicts in ${filePath}:`, error);
+            this.addLogMessage('error', `${message}: ${error instanceof Error ? error.message : String(error)}`, true, promptContext);
           }
         } finally {
           // Clean up temp files
@@ -5648,8 +5663,14 @@ ${error.stderr}`,
 
       await Promise.all(resolutionPromises);
 
-      if (interruptedCount > 0 && interruptedCount < files.length) {
-        this.addLogMessage('warning', 'Some conflicts were resolved, but some were interrupted. You can continue the rebase.', true, undefined, []);
+      if (interruptedCount > 0) {
+        this.addLogMessage(
+          'warning',
+          'Conflict resolution was interrupted. Resolve all remaining conflicts before continuing the rebase.',
+          true,
+          undefined,
+          [],
+        );
       }
     } catch (error) {
       logger.error('Failed to resolve conflicts with agent:', error);

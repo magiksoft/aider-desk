@@ -20,6 +20,7 @@
 - fixed absolute file path links in messages to open locally on desktop and offer downloads in browsers
 - added task ID matching to the task sidebar search filter
 - added extension APIs for private input dialogs and per-command bash execution setup
+- fixed agent conflict resolution reporting success and staging unresolved files after agent errors
 
 ## [0.91.0]
 

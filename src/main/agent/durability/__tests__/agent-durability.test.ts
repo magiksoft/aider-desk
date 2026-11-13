@@ -2,7 +2,7 @@ import { describe, expect, it, vi } from 'vitest';
 import { z } from 'zod';
 import { generateText, type ToolSet } from 'ai';
 import { MockLanguageModelV4 } from 'ai/test';
-import { ModelModality, ToolRecoveryMode, ContextCompactionType, type ContextMessage, type TaskSettings } from '@common/types';
+import { ModelModality, ToolRecoveryMode, ContextCompactionType, DefaultTaskState, type ContextMessage, type TaskSettings } from '@common/types';
 
 import { DurabilityManager } from '../durability-manager';
 
@@ -225,6 +225,33 @@ describe('Agent execution recovery', () => {
     });
     return { fixture, agent, profile, execute, model, persisted };
   };
+
+  it.each([true, false])('handles streamed usage-limit errors without silently succeeding (isSubagent=%s)', async (isSubagent) => {
+    const { fixture, agent, profile, model } = await createRecoveryFixture();
+    const error = new Error('Usage limit reached');
+    model.doStream = vi.fn(async () => ({
+      stream: new ReadableStream({
+        start(controller) {
+          controller.enqueue({ type: 'error', error });
+          controller.close();
+        },
+      }),
+    }));
+    vi.mocked(agent['modelManager'].isStreamingDisabled).mockReturnValue(false);
+    Object.assign(agent['modelManager'], { isToolCallStreamingDisabled: vi.fn(() => false) });
+
+    const run = agent.runAgent(fixture.task, { ...profile, isSubagent }, 'Resolve conflicts', 'conflict-resolution', undefined, [], [], undefined, false);
+
+    if (isSubagent) {
+      await expect(run).rejects.toBe(error);
+      expect(fixture.task.updateTask).not.toHaveBeenCalled();
+    } else {
+      await expect(run).resolves.toBeDefined();
+      expect(fixture.task.updateTask).toHaveBeenCalledWith({ state: DefaultTaskState.Interrupted });
+    }
+    expect(model.doStream).toHaveBeenCalledOnce();
+    expect(agent.isRunning()).toBe(false);
+  });
 
   it.each([ContextCompactionType.Smart, ContextCompactionType.Compact])('checkpoints the actual child compaction path (%s)', async (compactionType) => {
     const { fixture, agent, profile } = await createRecoveryFixture();

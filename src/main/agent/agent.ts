@@ -1495,6 +1495,9 @@ export class Agent {
             retryCount++;
             continue;
           } else {
+            if (profile.isSubagent) {
+              throw iterationError;
+            }
             await task.updateTask({
               state: DefaultTaskState.Interrupted,
             });
