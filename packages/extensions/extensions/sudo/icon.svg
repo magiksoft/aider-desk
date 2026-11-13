@@ -1,0 +1,36 @@
+<svg width="256" height="256" viewBox="0 0 256 256" xmlns="http://www.w3.org/2000/svg">
+  <rect width="256" height="256" fill="#ffffff"/>
+  <rect width="256" height="256" rx="56" fill="#171e2c"/>
+
+  <!-- Shield -->
+  <path
+    d="M128 34 L204 62 V124 C204 172 170 206 128 222 C86 206 52 172 52 124 V62 Z"
+    fill="#212b3f"
+    stroke="#f5b73d"
+    stroke-width="10"
+    stroke-linejoin="round"
+  />
+
+  <!-- Root prompt '#' -->
+  <g stroke="#e8edf5" stroke-width="14" stroke-linecap="round">
+    <line x1="112" y1="88" x2="100" y2="164"/>
+    <line x1="152" y1="88" x2="140" y2="164"/>
+    <line x1="86" y1="112" x2="166" y2="112"/>
+    <line x1="82" y1="140" x2="162" y2="140"/>
+  </g>
+
+  <!-- Lock badge -->
+  <g transform="translate(166, 158)">
+    <circle cx="24" cy="24" r="30" fill="#171e2c"/>
+    <path
+      d="M14 20 V14 A10 10 0 0 1 34 14 V20"
+      fill="none"
+      stroke="#f5b73d"
+      stroke-width="6"
+      stroke-linecap="round"
+    />
+    <rect x="8" y="20" width="32" height="24" rx="6" fill="#f5b73d"/>
+    <circle cx="24" cy="30" r="3.5" fill="#171e2c"/>
+    <rect x="22.5" y="31" width="3" height="6" rx="1.5" fill="#171e2c"/>
+  </g>
+</svg>

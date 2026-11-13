@@ -1,6 +1,18 @@
 {
   "extensions": [
     {
+      "id": "sudo",
+      "name": "Sudo",
+      "description": "Linux sudo password dialog with optional in-memory session remembering for Power bash",
+      "folder": "sudo",
+      "type": "folder",
+      "hasDependencies": false,
+      "capabilities": [
+        "commands",
+        "security"
+      ]
+    },
+    {
       "id": "opencode-free",
       "name": "OpenCode Free",
       "description": "Free OpenCode models with native shell/read and AiderDesk tools over MCP",

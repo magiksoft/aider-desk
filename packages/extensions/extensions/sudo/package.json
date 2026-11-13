@@ -1,0 +1,8 @@
+{
+  "name": "aiderdesk-sudo-extension",
+  "version": "1.0.0",
+  "description": "Secure sudo askpass support for Power bash on Linux",
+  "main": "index.ts",
+  "author": "AiderDesk",
+  "license": "MIT"
+}
