@@ -10,7 +10,8 @@
       "capabilities": [
         "commands",
         "security"
-      ]
+      ],
+      "installCount": 0
     },
     {
       "id": "opencode-free",
@@ -34,7 +35,7 @@
       "capabilities": [
         "tools"
       ],
-      "installCount": 20
+      "installCount": 21
     },
     {
       "id": "binary-files",
@@ -212,7 +213,7 @@
       "capabilities": [
         "notifications"
       ],
-      "installCount": 39
+      "installCount": 40
     },
     {
       "id": "sandbox",
@@ -682,7 +683,7 @@
       "capabilities": [
         "ui"
       ],
-      "installCount": 156
+      "installCount": 157
     },
     {
       "id": "dbx",
