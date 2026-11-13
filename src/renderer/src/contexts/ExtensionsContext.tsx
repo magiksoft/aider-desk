@@ -1,7 +1,10 @@
 import { createContext, ReactNode, useContext, useEffect, useMemo } from 'react';
 import { UIComponentProps, UIComponents } from '@common/extensions';
+import { BUILT_IN_TASK_STATE_DEFINITIONS } from '@common/task-states';
 import { AgentProfile, TaskData, Message } from '@common/types';
 
+import { useTaskStatesStore } from '@/stores/taskStatesStore';
+import { useOptionalApi } from '@/contexts/ApiContext';
 import { iconPackStubs, useReactIcons } from '@/utils/extension-icons';
 import { useOptionalModelProviders } from '@/contexts/ModelProviderContext';
 import { ConfirmDialog } from '@/components/common/ConfirmDialog';
@@ -44,6 +47,25 @@ type Props = ExtensionsContextValue & {
 };
 
 export const ExtensionsProvider = ({ projectDir, task, agentProfile, messages, message, activateTask, children }: Props) => {
+  const api = useOptionalApi();
+  const parentContext = useContext(ExtensionsContext);
+  const inheritsTaskStates = parentContext !== undefined && parentContext.projectDir === projectDir;
+  useEffect(() => {
+    if (!api || inheritsTaskStates) {
+      return;
+    }
+    const load = () => {
+      void useTaskStatesStore.getState().load(api, projectDir, true);
+    };
+    const unsubscribe = api.onExtensionUIRefresh((data) => {
+      if (data.reloadTaskStates && (data.projectDir === undefined || data.projectDir === projectDir)) {
+        load();
+      }
+    });
+    void useTaskStatesStore.getState().load(api, projectDir, true);
+    return unsubscribe;
+  }, [api, projectDir, inheritsTaskStates]);
+
   useEffect(() => {
     initExtensionLibraryLoader().catch((error) => {
       // eslint-disable-next-line no-console
@@ -64,6 +86,12 @@ export const ExtensionsProvider = ({ projectDir, task, agentProfile, messages, m
   );
 
   return <ExtensionsContext.Provider value={value}>{children}</ExtensionsContext.Provider>;
+};
+
+export const useTaskStates = (projectDir?: string) => {
+  const context = useContext(ExtensionsContext);
+  const scope = projectDir ?? context?.projectDir;
+  return useTaskStatesStore((state) => state.definitions.get(scope)) ?? BUILT_IN_TASK_STATE_DEFINITIONS;
 };
 
 const useExtensionsContext = (): ExtensionsContextValue => {

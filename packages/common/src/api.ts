@@ -84,11 +84,12 @@ import {
   SkillDefinition,
   SkillsUpdatedData,
   ExtensionOperationResult,
+  TaskStateDefinition,
 } from '@common/types';
 
 export type ExtensionDisplayAPI = Pick<
   ApplicationAPI,
-  'getExtensionUIComponents' | 'getUIExtensionData' | 'executeUIExtensionAction' | 'onExtensionUIRefresh' | 'loadExtensionLibrary'
+  'getTaskStateDefinitions' | 'getExtensionUIComponents' | 'getUIExtensionData' | 'executeUIExtensionAction' | 'onExtensionUIRefresh' | 'loadExtensionLibrary'
 >;
 
 export type RendererProcessMemoryInfo = {
@@ -207,6 +208,7 @@ export interface ApplicationAPI {
   uninstallExtension: (extensionId: string, projectDir?: string) => Promise<boolean>;
   updateExtension: (extensionId: string, repositoryUrl: string, projectDir?: string) => Promise<ExtensionOperationResult>;
   reloadExtension: (filePath: string, projectDir?: string) => Promise<boolean>;
+  getTaskStateDefinitions: (projectDir?: string) => Promise<TaskStateDefinition[]>;
   getExtensionUIComponents: (placement?: string, projectDir?: string, taskId?: string) => Promise<ExtensionUIComponent[]>;
   getUIExtensionData: (extensionId: string, componentId: string, projectDir?: string, taskId?: string) => Promise<unknown>;
   executeUIExtensionAction: (

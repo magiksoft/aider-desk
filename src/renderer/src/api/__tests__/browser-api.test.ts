@@ -4,12 +4,14 @@ import { TaskExecutionMode } from '@common/types';
 import { BrowserApi } from '../browser-api';
 
 const mocks = vi.hoisted(() => ({
+  get: vi.fn(),
   post: vi.fn(),
   on: vi.fn(),
 }));
 
 vi.mock('axios', () => ({
   create: () => ({
+    get: mocks.get,
     post: mocks.post,
     interceptors: { response: { use: vi.fn() } },
   }),
@@ -223,5 +225,22 @@ describe('BrowserApi file downloads', () => {
     await expect(new BrowserApi().downloadFile('/missing')).rejects.toThrow('File not found');
     expect(createObjectURL).not.toHaveBeenCalled();
     expect(HTMLAnchorElement.prototype.click).not.toHaveBeenCalled();
+  });
+});
+
+describe('BrowserApi task-state definitions', () => {
+  it('fetches merged definitions with project scope and transports refresh flags', async () => {
+    vi.clearAllMocks();
+    const definitions = [{ id: 'custom', name: 'Custom', color: '#abc', priority: 25 }];
+    mocks.get.mockResolvedValue({ data: definitions });
+    const api = new BrowserApi();
+    await expect(api.getTaskStateDefinitions('/project')).resolves.toEqual(definitions);
+    expect(mocks.get).toHaveBeenCalledWith('/extensions/task-states', { params: { projectDir: '/project' } });
+    const listener = vi.fn();
+    api.onExtensionUIRefresh(listener);
+    const event = mocks.on.mock.calls.find((call) => call[0] === 'event')?.[1];
+    const data = { projectDir: '/project', reloadTaskStates: true };
+    event({ type: 'extension-ui-refresh', data });
+    expect(listener).toHaveBeenCalledWith(data);
   });
 });

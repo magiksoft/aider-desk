@@ -7,6 +7,7 @@ import { CodeInline } from '@/components/common/CodeInline';
 import { CopyMessageButton } from '@/components/message/CopyMessageButton';
 import { IconButton } from '@/components/common/IconButton';
 import { useApi } from '@/contexts/ApiContext';
+import { useTaskStates } from '@/contexts/ExtensionsContext';
 import { getTaskStateLabel } from '@/components/common/TaskStateChip';
 
 type Props = {
@@ -18,6 +19,7 @@ type Props = {
 export const TaskInfoPanel = ({ task, messageCount, onClose }: Props) => {
   const { t } = useTranslation();
   const api = useApi();
+  const definitions = useTaskStates(task.baseDir);
 
   const handleOpenFolder = async (path: string) => {
     try {
@@ -55,7 +57,7 @@ export const TaskInfoPanel = ({ task, messageCount, onClose }: Props) => {
         {task.state && (
           <div className="text-2xs flex items-center gap-2">
             <span className="text-text-muted">{t('taskInfo.state')}:</span>
-            <span className="text-text-secondary">{getTaskStateLabel(t, task.state)}</span>
+            <span className="text-text-secondary">{getTaskStateLabel(t, task.state, definitions)}</span>
           </div>
         )}
 

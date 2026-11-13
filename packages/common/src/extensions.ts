@@ -33,6 +33,7 @@ import {
   ResponseCompletedData,
   SettingsData,
   TaskData,
+  TaskStateDefinition,
   SwitchToLocalOptions,
   SwitchToWorktreeOptions,
   TodoItem,
@@ -78,7 +79,7 @@ export interface ContextGenerationResult<T> {
 }
 
 export type AgentStepResult = unknown;
-export type { ModeDefinition };
+export type { ModeDefinition, TaskStateDefinition };
 
 export const AIDER_DESK_EXTENSIONS_REPO_URL = 'https://github.com/magiksoft/aider-desk/tree/main/packages/extensions/extensions/';
 
@@ -1808,6 +1809,9 @@ export interface ExtensionContext {
    */
   triggerUIComponentsReload(): void;
 
+  /** Re-fetch task-state definitions in this context's project, or all projects for a global context. */
+  triggerTaskStatesRefresh(): void;
+
   /**
    * Open a URL in the specified target.
    * - 'external': Opens in the system's default browser via `shell.openExternal`.
@@ -2024,6 +2028,14 @@ export interface Extension {
    * @param context - Extension context
    */
   getSkills?(context: ExtensionContext): SkillDefinition[];
+
+  /**
+   * Additional project-scoped task states. Built-in IDs cannot be overridden.
+   * Colors must be hex (#RGB, #RGBA, #RRGGBB, #RRGGBBAA); priority is finite and sorts ascending.
+   * IDs must match [A-Za-z0-9][A-Za-z0-9_-]*; names must be non-empty and trimmed.
+   * Call triggerTaskStatesRefresh() after changing definitions outside saveConfigData().
+   */
+  getTaskStates?(context: ExtensionContext): TaskStateDefinition[];
 
   /**
    * Called when a user updates an extension-provided agent profile

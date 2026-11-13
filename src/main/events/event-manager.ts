@@ -486,7 +486,14 @@ export class EventManager {
         data && typeof data === 'object'
           ? ((data as { baseDir?: string; projectDir?: string }).baseDir ?? (data as { projectDir?: string }).projectDir)
           : undefined;
-      if (connector.baseDirs && (!eventProjectDir || !connector.baseDirs.includes(eventProjectDir))) {
+      const isGlobalTaskStateInvalidation =
+        eventType === 'extension-ui-refresh' &&
+        data !== null &&
+        typeof data === 'object' &&
+        Object.keys(data).length === 1 &&
+        Object.keys(data)[0] === 'reloadTaskStates' &&
+        (data as ExtensionUIRefreshData).reloadTaskStates === true;
+      if (connector.baseDirs && !isGlobalTaskStateInvalidation && (!eventProjectDir || !connector.baseDirs.includes(eventProjectDir))) {
         if (log) {
           logger.debug('Skipping event broadcast to connector, base dir not included:', { baseDir: eventProjectDir, connectorBaseDirs: connector.baseDirs });
         }
@@ -527,8 +534,18 @@ export class EventManager {
   }
 
   // Extension UI events
-  sendExtensionUIRefresh(options: { projectDir?: string; extensionId?: string; componentId?: string; taskId?: string; reloadComponents?: boolean }): void {
-    const data: ExtensionUIRefreshData = options;
+  sendExtensionUIRefresh(options: {
+    projectDir?: string;
+    extensionId?: string;
+    componentId?: string;
+    taskId?: string;
+    reloadComponents?: boolean;
+    reloadTaskStates?: boolean;
+  }): void {
+    const data: ExtensionUIRefreshData =
+      options.reloadTaskStates === true && Object.entries(options).every(([key, value]) => key === 'reloadTaskStates' || value === undefined)
+        ? { reloadTaskStates: true }
+        : options;
     this.sendToWindows('extension-ui-refresh', data);
     this.broadcastToEventConnectors('extension-ui-refresh', data);
   }

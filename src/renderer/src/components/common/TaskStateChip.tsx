@@ -1,8 +1,10 @@
 import { useTranslation } from 'react-i18next';
 import { twMerge } from 'tailwind-merge';
-import { DefaultTaskState } from '@common/types';
+import { DEFAULT_TASK_STATES, TaskStateDefinition, DefaultTaskState } from '@common/types';
 
 import type { TFunction } from 'i18next';
+
+import { useTaskStates } from '@/contexts/ExtensionsContext';
 
 export const getStateTextClass = (state: string): string => {
   switch (state) {
@@ -27,7 +29,13 @@ export const getStateTextClass = (state: string): string => {
   }
 };
 
-export const getTaskStateLabel = (t: TFunction, state: string) => {
+export const getTaskStateLabel = (t: TFunction, state: string, definitions: TaskStateDefinition[] = []) => {
+  if (!DEFAULT_TASK_STATES.has(state)) {
+    const definition = definitions.find((definition) => definition.id === state);
+    if (definition) {
+      return definition.name;
+    }
+  }
   return t(`taskState.${state}`, {
     defaultValue: state
       .replace(/[-_]/g, ' ')
@@ -39,16 +47,22 @@ export const getTaskStateLabel = (t: TFunction, state: string) => {
 type Props = {
   state: string;
   className?: string;
+  projectDir?: string;
 };
 
-export const TaskStateChip = ({ state, className = '' }: Props) => {
+export const TaskStateChip = ({ state, className = '', projectDir }: Props) => {
   const { t } = useTranslation();
 
+  const definitions = useTaskStates(projectDir);
+  const color = definitions.find((definition) => definition.id === state)?.color;
   const stateTextClass = getStateTextClass(state);
 
   return (
-    <span className={twMerge('text-4xs px-1 rounded border border-border-dark-light bg-bg-tertiary-emphasis whitespace-nowrap', stateTextClass, className)}>
-      {getTaskStateLabel(t, state)}
+    <span
+      style={DEFAULT_TASK_STATES.has(state) ? undefined : { color }}
+      className={twMerge('text-4xs px-1 rounded border border-border-dark-light bg-bg-tertiary-emphasis whitespace-nowrap', stateTextClass, className)}
+    >
+      {getTaskStateLabel(t, state, definitions)}
     </span>
   );
 };

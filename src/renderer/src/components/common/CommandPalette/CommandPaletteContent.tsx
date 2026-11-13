@@ -299,7 +299,7 @@ export const CommandPaletteContent = () => {
                 {item.description && <span className="min-w-0 truncate text-text-muted text-3xs">{item.description}</span>}
               </span>
               <span className="flex items-center gap-2 shrink-0">
-                {item.state && <TaskStateChip state={item.state} />}
+                {item.state && <TaskStateChip state={item.state} projectDir={item.projectDir} />}
                 {activeTab === PaletteTab.All && search.trim() && (
                   <span className="text-3xs uppercase text-text-muted">{t(`commandPalette.tabs.${item.type}`)}</span>
                 )}

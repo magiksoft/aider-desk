@@ -1155,6 +1155,13 @@ export enum DefaultTaskState {
   Done = 'DONE',
 }
 
+export interface TaskStateDefinition {
+  id: string;
+  name: string;
+  color: string;
+  priority: number;
+}
+
 export const DEFAULT_TASK_STATES = new Set<string>(Object.values(DefaultTaskState));
 
 export const TaskStateEmoji: Record<DefaultTaskState, string> = {
@@ -1359,6 +1366,7 @@ export interface ExtensionUIRefreshData {
   componentId?: string;
   taskId?: string;
   reloadComponents?: boolean;
+  reloadTaskStates?: boolean;
 }
 
 export interface ExtensionsUpdatedData {

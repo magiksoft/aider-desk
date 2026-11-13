@@ -30,6 +30,48 @@ export default class MyExtension implements Extension {
 }
 ```
 
+## Task-State Definitions
+
+Extensions can contribute additional task statuses through `getTaskStates(context)`. These extend the built-in states; they do not change task execution or replace built-in state IDs.
+
+```typescript
+import type { Extension, TaskStateDefinition } from '@aiderdesk/extensions';
+
+export default class WorkflowStates implements Extension {
+  getTaskStates(): TaskStateDefinition[] {
+    return [{
+      id: 'WAITING_FOR_QA',
+      name: 'Waiting for QA',
+      color: '#a78bfa',
+      priority: 65,
+    }];
+  }
+}
+```
+
+Each definition requires:
+
+- **`id`**: a stable, case-sensitive ID matching `[A-Za-z0-9][A-Za-z0-9_-]*`. Prefer a unique extension-specific prefix to avoid collisions. Do not rename IDs just to change display labels.
+- **`name`**: a non-empty, trimmed display name. Custom names are rendered literally as text, not as translation keys or HTML.
+- **`color`**: a hex color in `#RGB`, `#RGBA`, `#RRGGBB`, or `#RRGGBBAA` format. CSS expressions, URLs, and arbitrary class names are not accepted.
+- **`priority`**: a finite number controlling ascending **state selection order only**, not task sorting or execution priority. Negative and fractional priorities are allowed. Equal priorities sort by case-sensitive ID, using code-point order.
+
+Built-in priorities are Todo **10**, Ready for Implementation **20**, In Progress **30**, Interrupted **40**, Delegated **50**, More Info Needed **60**, Ready for Review **70**, and Done **80**. Their labels remain localized and their colors remain theme-aware. In Progress, Interrupted, and Delegated remain lifecycle-managed and are not offered as manual choices. Change state also remains unavailable on running or unsaved tasks. All registered custom states are manually selectable on saved, non-running tasks.
+
+Only initialized, enabled extensions contribute states. A project receives global contributions plus its own project extensions, never another project's extensions. Requests without a project receive only global contributions. `context` carries the requested project when available; a global request has no project context, so global extensions should check `context.getProjectDir()` before accessing project-only APIs.
+
+Built-in IDs always win collisions. For duplicate custom IDs, project extensions take precedence over global extensions; within each scope, extensions are ordered by case-sensitive extension ID, then file path. The first valid definition wins, including duplicates within one extension's array. Invalid entries and throwing/malformed contribution methods are logged and skipped without preventing other extensions from contributing.
+
+Definitions are re-fetched after extension load, unload, reload, enable/disable, and successful `saveConfigData()` calls. For changes made elsewhere (such as commands, file watchers, or background updates), call:
+
+```typescript
+context.triggerTaskStatesRefresh();
+```
+
+A project context refreshes that project's definitions; a global context refreshes all projects. The host exposes the merged list through `getTaskStateDefinitions(projectDir?)` (Electron IPC and `GET /extensions/task-states?projectDir=...`), and notifies renderers through `onExtensionUIRefresh` with `reloadTaskStates: true` and an optional `projectDir`.
+
+Assign a state using the existing task API, for example `await taskContext.updateTask({ state: 'WAITING_FOR_QA' })`. Registration is not required to preserve or assign an ID: unknown or removed IDs stay on tasks and render with a neutral color and an ID-derived fallback label. Only currently registered states participate in sidebar filtering; unknown states remain visible. New states default to visible without resetting saved filter choices, and explicit exclusions survive extension removal and re-registration.
+
 ## Single-File Extensions
 
 The simplest form is a single `.ts` or `.js` file in the extensions directory.

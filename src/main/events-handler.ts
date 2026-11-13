@@ -1491,6 +1491,14 @@ export class EventsHandler {
     return await this.extensionManager.updateExtension(extensionId, repositoryUrl, project);
   }
 
+  getTaskStateDefinitions(projectDir?: string) {
+    const project = projectDir !== undefined ? this.projectManager.getOpenProject(projectDir) : undefined;
+    if (projectDir !== undefined && !project) {
+      throw new Error('Project not found');
+    }
+    return this.extensionManager.getTaskStateDefinitions(project);
+  }
+
   getUIComponents(placement?: string, projectDir?: string, taskId?: string): ExtensionUIComponent[] {
     const project = projectDir ? this.projectManager.getProject(projectDir) : undefined;
     const task = taskId && project ? (project.getTask(taskId) ?? undefined) : undefined;

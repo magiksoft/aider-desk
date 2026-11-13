@@ -4,6 +4,7 @@ import { z } from 'zod';
 import { BaseApi } from './base-api';
 
 import type { EventsHandler } from '@/events-handler';
+import type { ProjectManager } from '@/project';
 
 const GetInstalledExtensionsSchema = z.object({
   projectDir: z.string().optional(),
@@ -42,11 +43,28 @@ const ReloadExtensionSchema = z.object({
 });
 
 export class ExtensionsApi extends BaseApi {
-  constructor(private readonly eventsHandler: EventsHandler) {
+  constructor(
+    private readonly eventsHandler: EventsHandler,
+    private readonly projectManager: ProjectManager,
+  ) {
     super();
   }
 
   registerRoutes(router: Router): void {
+    router.get(
+      '/extensions/task-states',
+      this.handleRequest(async (req, res) => {
+        const parsed = this.validateRequest(GetInstalledExtensionsSchema, req.query, res);
+        if (!parsed) {
+          return;
+        }
+        if (parsed.projectDir !== undefined && !this.findProject(this.projectManager.getOpenProject(parsed.projectDir), parsed.projectDir, res)) {
+          return;
+        }
+        res.status(200).json(this.eventsHandler.getTaskStateDefinitions(parsed.projectDir));
+      }),
+    );
+
     // Get installed extensions
     router.get(
       '/extensions',

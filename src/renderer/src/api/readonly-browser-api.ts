@@ -1,5 +1,5 @@
 import { ExtensionDisplayAPI } from '@common/api';
-import { BrowserBootstrap, ExtensionUIComponent, ExtensionUIRefreshData, TaskData, TaskStateData } from '@common/types';
+import { BrowserBootstrap, ExtensionUIComponent, ExtensionUIRefreshData, TaskData, TaskStateData, TaskStateDefinition } from '@common/types';
 import { type AxiosInstance, create } from 'axios';
 import { io, Socket } from 'socket.io-client';
 
@@ -103,6 +103,13 @@ export class ReadonlyBrowserApi implements ExtensionDisplayAPI {
 
   async loadTask(taskId: string): Promise<TaskStateData> {
     const response = await this.client.get<TaskStateData>(`/tasks/${encodeURIComponent(taskId)}`, { params: { projectDir: this.projectDir } });
+    return response.data;
+  }
+
+  async getTaskStateDefinitions(projectDir?: string): Promise<TaskStateDefinition[]> {
+    const response = await this.client.get<TaskStateDefinition[]>('/extensions/task-states', {
+      params: { projectDir: projectDir ?? this.projectDir },
+    });
     return response.data;
   }
 

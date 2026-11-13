@@ -621,6 +621,7 @@ export const ProjectView = ({ projectDir, isProjectActive = false, initialTaskId
           id: `task.switch.${projectDir}.${task.id}`,
           label: task.name,
           state: task.state,
+          projectDir,
           archived: task.archived,
           type: PaletteItemType.Task,
           action: () => handleTaskSelect(task.id),

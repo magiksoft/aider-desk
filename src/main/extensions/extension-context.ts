@@ -194,6 +194,10 @@ export class ExtensionContextImpl implements ExtensionContext {
     });
   }
 
+  triggerTaskStatesRefresh(): void {
+    this.eventManager?.sendExtensionUIRefresh({ projectDir: this.project?.baseDir, reloadTaskStates: true });
+  }
+
   triggerUIComponentsReload(): void {
     if (!this.eventManager) {
       this.log('EventManager not available, cannot trigger UI components reload', 'warn');

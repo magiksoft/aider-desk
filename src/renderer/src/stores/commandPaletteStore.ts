@@ -13,6 +13,7 @@ export type PaletteItem = {
   label: string;
   description?: string;
   state?: string;
+  projectDir?: string;
   archived?: boolean;
   type: PaletteItemType;
   shortcut?: string;

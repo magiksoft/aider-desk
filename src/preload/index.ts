@@ -170,6 +170,7 @@ const api: ApplicationAPI = {
   updateExtension: (extensionId: string, repositoryUrl: string, projectDir?: string) =>
     ipcRenderer.invoke('update-extension', extensionId, repositoryUrl, projectDir),
   reloadExtension: (filePath: string, projectDir?: string) => ipcRenderer.invoke('reload-extension', filePath, projectDir),
+  getTaskStateDefinitions: (projectDir?: string) => ipcRenderer.invoke('get-task-state-definitions', projectDir),
   getExtensionUIComponents: (placement?: string, projectDir?: string, taskId?: string) =>
     ipcRenderer.invoke('get-extension-ui-components', placement, projectDir, taskId),
   getUIExtensionData: (extensionId: string, componentId: string, projectDir?: string, taskId?: string) =>

@@ -57,6 +57,9 @@ interface Extension {
   /** Return array of skills this extension provides. Each skill must have name, description, location, and dirPath. */
   getSkills?(context: ExtensionContext): SkillDefinition[];
 
+  /** Additional task states in the current project scope; built-in IDs are reserved. */
+  getTaskStates?(context: ExtensionContext): TaskStateDefinition[];
+
   /** Return array of React UI components this extension provides (as JSX strings). */
   getUIComponents?(context: ExtensionContext): UIComponentDefinition[];
 
@@ -366,6 +369,9 @@ interface ExtensionContext {
 
   /** Trigger a full reload of all UI component definitions for this extension. */
   triggerUIComponentsReload(): void;
+
+  /** Re-fetch task-state definitions in the context's project, or all projects for global contexts. */
+  triggerTaskStatesRefresh(): void;
 
   /** Open a URL. Target: 'external' (system browser), 'window' (new Electron window), or 'modal-overlay' (iframe in modal). */
   openUrl(url: string, target?: 'external' | 'window' | 'modal-overlay'): Promise<void>;
@@ -1476,3 +1482,22 @@ interface AfterCommitEvent {
 ```
 
 </details>
+
+## Task-State Contributions
+
+`TaskStateDefinition` is exported by `@aiderdesk/extensions`:
+
+```typescript
+interface TaskStateDefinition {
+  id: string;
+  name: string;
+  color: string;
+  priority: number;
+}
+```
+
+IDs must match `[A-Za-z0-9][A-Za-z0-9_-]*`, names must be non-empty and trimmed, colors must be hex (`#RGB`, `#RGBA`, `#RRGGBB`, or `#RRGGBBAA`), and priorities must be finite numbers. Priority orders state selections ascending, not task execution or task sorting. Built-in priorities are TODO 10, READY_FOR_IMPLEMENTATION 20, IN_PROGRESS 30, INTERRUPTED 40, DELEGATED 50, MORE_INFO_NEEDED 60, READY_FOR_REVIEW 70, DONE 80. Equal priorities sort by case-sensitive ID.
+
+Only enabled, initialized global and matching project extensions contribute. Global queries exclude project extensions. Built-in IDs cannot be overridden. For duplicate custom IDs, project scope wins over global scope, followed by case-sensitive extension ID and file path; the first valid definition wins. Invalid entries are skipped. Built-in labels/colors and operational manual-selection restrictions remain unchanged; custom states are selectable for saved, non-running tasks.
+
+Assign IDs with `taskContext.updateTask({ state: id })`. Call `context.triggerTaskStatesRefresh()` after external changes; host configuration saves and lifecycle changes refresh automatically. Removed definitions never rewrite task state IDs. Unknown states use neutral, ID-derived rendering and stay visible; new registered states default to visible while saved filter exclusions are retained.

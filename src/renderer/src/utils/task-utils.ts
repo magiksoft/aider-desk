@@ -56,13 +56,19 @@ const createMostRecentUpdatedAtResolver = (allTasks: TaskData[]): ((task: TaskDa
   return resolve;
 };
 
-export const getSortedVisibleTasks = (tasks: TaskData[], selectedStates: Set<string>, showArchived: boolean = false, searchQuery: string = ''): TaskData[] => {
+export const getSortedVisibleTasks = (
+  tasks: TaskData[],
+  selectedStates: Set<string>,
+  showArchived: boolean = false,
+  searchQuery: string = '',
+  knownStates: ReadonlySet<string> = DEFAULT_TASK_STATES,
+): TaskData[] => {
   const filteredTasks = tasks
     .filter((task) => {
       if (task.archived && !showArchived) {
         return false;
       }
-      if (task.state && DEFAULT_TASK_STATES.has(task.state) && !selectedStates.has(task.state)) {
+      if (task.state && knownStates.has(task.state) && !selectedStates.has(task.state)) {
         return false;
       }
       return true;
@@ -149,8 +155,9 @@ export const flattenTasksForVirtualization = (
   selectedStates: Set<string>,
   showArchived: boolean = false,
   searchQuery: string = '',
+  knownStates: ReadonlySet<string> = DEFAULT_TASK_STATES,
 ): VirtualTaskItem[] => {
-  const sortedTasks = getSortedVisibleTasks(tasks, selectedStates, showArchived, searchQuery);
+  const sortedTasks = getSortedVisibleTasks(tasks, selectedStates, showArchived, searchQuery, knownStates);
   const sortedTaskIds = new Set(sortedTasks.map((task) => task.id));
   const topLevelTasks = sortedTasks.filter((task) => !task.parentId || !sortedTaskIds.has(task.parentId));
   const subtasksByParentId = groupByParentId(sortedTasks);

@@ -39,7 +39,9 @@ import { ConfirmDialog } from '@/components/common/ConfirmDialog';
 import { Tooltip } from '@/components/ui/Tooltip';
 import { Checkbox } from '@/components/common/Checkbox';
 import { Toggle } from '@/components/common/Toggle';
-import { getTaskStateLabel, getStateTextClass } from '@/components/common/TaskStateChip';
+import { useTaskStates } from '@/contexts/ExtensionsContext';
+import { getSelectedTaskStates, mergeTaskStateFilterPreferences, TaskStateFilterPreferences } from '@/utils/task-state-filters';
+import { getTaskStateLabel } from '@/components/common/TaskStateChip';
 
 export const COLLAPSED_WIDTH = 44;
 export const EXPANDED_WIDTH = 256;
@@ -107,8 +109,21 @@ const TaskSidebarComponent = (
   const { t } = useTranslation();
   const [deleteConfirmTaskId, setDeleteConfirmTaskId] = useState<string | null>(null);
   const [editingTaskId, setEditingTaskId] = useState<string | null>(null);
-  const [selectedStateIds, setSelectedStateIds] = useLocalStorage<string[]>(`task-sidebar-selected-states-${projectDir}`, Object.values(DefaultTaskState));
-  const selectedStates = useMemo(() => new Set(selectedStateIds ?? Object.values(DefaultTaskState)), [selectedStateIds]);
+  const definitions = useTaskStates(projectDir);
+  const knownStates = useMemo(() => new Set(definitions.map((state) => state.id)), [definitions]);
+  const [legacySelectedStateIds] = useLocalStorage<string[]>(`task-sidebar-selected-states-${projectDir}`, Object.values(DefaultTaskState));
+  const [statePreferences, setStatePreferences] = useLocalStorage<TaskStateFilterPreferences>(`task-sidebar-state-filters-${projectDir}`, null, {
+    serializer: { read: JSON.parse, write: JSON.stringify },
+  });
+  const effectiveStatePreferences = useMemo(
+    () =>
+      statePreferences ?? {
+        knownIds: Object.values(DefaultTaskState),
+        selectedIds: legacySelectedStateIds ?? Object.values(DefaultTaskState),
+      },
+    [statePreferences, legacySelectedStateIds],
+  );
+  const selectedStates = useMemo(() => getSelectedTaskStates(effectiveStatePreferences, knownStates), [effectiveStatePreferences, knownStates]);
   const [isFilterVisible, setIsFilterVisible] = useState<boolean>(false);
   const [isSearchVisible, setIsSearchVisible] = useState<boolean>(false);
   const [searchQuery, setSearchQuery] = useState<string>('');
@@ -285,8 +300,8 @@ const TaskSidebarComponent = (
   }, [tasks, expandedIdsSet]);
 
   const virtualItems = useMemo(
-    () => flattenTasksForVirtualization(tasks, expandedIdsSet, selectedStates, showArchived, debouncedSearchQuery),
-    [tasks, expandedIdsSet, selectedStates, showArchived, debouncedSearchQuery],
+    () => flattenTasksForVirtualization(tasks, expandedIdsSet, selectedStates, showArchived, debouncedSearchQuery, knownStates),
+    [tasks, expandedIdsSet, selectedStates, showArchived, debouncedSearchQuery, knownStates],
   );
 
   // eslint-disable-next-line react-hooks/incompatible-library
@@ -839,24 +854,25 @@ const TaskSidebarComponent = (
 
         <Activity mode={!isCollapsed && isFilterVisible ? 'visible' : 'hidden'}>
           <div className="px-2 pb-2 flex flex-col gap-y-1">
-            {Object.values(DefaultTaskState).map((state) => (
+            {definitions.map(({ id: state, color }) => (
               <Checkbox
                 key={state}
                 size="xs"
                 checked={selectedStates.has(state)}
-                aria-label={getTaskStateLabel(t, state)}
+                aria-label={getTaskStateLabel(t, state, definitions)}
                 onChange={(checked) => {
-                  setSelectedStateIds((prev) => {
-                    const newSet = new Set(prev ?? Object.values(DefaultTaskState));
+                  setStatePreferences((prev) => {
+                    const preferences = mergeTaskStateFilterPreferences(prev ?? effectiveStatePreferences, knownStates);
+                    const newSet = new Set(preferences.selectedIds);
                     if (checked) {
                       newSet.add(state);
                     } else {
                       newSet.delete(state);
                     }
-                    return [...newSet];
+                    return { ...preferences, selectedIds: [...newSet] };
                   });
                 }}
-                label={<span className={getStateTextClass(state)}>{getTaskStateLabel(t, state)}</span>}
+                label={<span style={{ color }}>{getTaskStateLabel(t, state, definitions)}</span>}
               />
             ))}
             <div className="flex items-center gap-2 pt-1 border-t border-border-dark-light">

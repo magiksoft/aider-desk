@@ -82,6 +82,17 @@ export class ReadonlyApi extends BaseApi {
   }
 
   registerRoutes(router: Router): void {
+    router.get(
+      '/extensions/task-states',
+      this.handleRequest(async (req, res) => {
+        const parsed = this.validateRequest(ProjectQuerySchema, req.query, res);
+        if (!parsed || !this.resolveProject(parsed.projectDir, res)) {
+          return;
+        }
+        res.status(200).json(this.eventsHandler.getTaskStateDefinitions(parsed.projectDir));
+      }),
+    );
+
     router.use('/extensions', (_req, res, next) => {
       if (isReadonlyExtensionUiEnabled(this.store)) {
         next();

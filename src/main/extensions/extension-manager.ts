@@ -13,9 +13,11 @@ import {
   SettingsData,
   SkillDefinition,
   ToolApprovalState,
+  TaskStateDefinition,
 } from '@common/types';
 import { TOOL_GROUP_NAME_SEPARATOR } from '@common/tools';
 import { AIDER_DESK_EXTENSIONS_REPO_URL, EXTENSION_ORIGIN, ProviderDefinition, Tool, UIComponentDefinition } from '@common/extensions';
+import { BUILT_IN_TASK_STATE_DEFINITIONS, compareTaskStates, isValidTaskStateDefinition } from '@common/task-states';
 import { DEFAULT_AGENT_PROFILE } from '@common/agent';
 
 import { ExtensionLoader } from './extension-loader';
@@ -245,6 +247,7 @@ export class ExtensionManager {
       listener(extensions);
     }
     this.eventManager.sendExtensionsUpdated();
+    this.eventManager.sendExtensionUIRefresh({ reloadTaskStates: true });
   }, 100);
 
   private isExtensionDisabled(filePath: string): boolean {
@@ -323,6 +326,7 @@ export class ExtensionManager {
       const changedExtensions = [...newlyDisabled, ...newlyEnabled];
 
       this.eventManager.sendExtensionsUpdated();
+      this.eventManager.sendExtensionUIRefresh({ reloadTaskStates: true });
 
       if (changedExtensions.length > 0) {
         // Check if any changed extensions have UI components
@@ -766,6 +770,7 @@ export class ExtensionManager {
     this.registry.unregister(filePath);
     this.extensionMtimes.delete(filePath);
     this.modelManager.unregisterExtensionProviders(extension.id);
+    this.eventManager.sendExtensionUIRefresh({ projectDir: extension.projectDir, reloadTaskStates: true });
     logger.debug(`[Extensions] Unloaded extension: ${filePath}`);
   }
 
@@ -1563,6 +1568,45 @@ export class ExtensionManager {
     return collectedSkills;
   }
 
+  getTaskStateDefinitions(project?: Project): TaskStateDefinition[] {
+    const definitions = new Map(BUILT_IN_TASK_STATE_DEFINITIONS.map((state) => [state.id, { ...state }]));
+    const extensions = this.filterEnabledExtensions(this.registry.getExtensions(project?.baseDir))
+      .filter((extension) => extension.initialized && (!extension.projectDir || extension.projectDir === project?.baseDir))
+      .sort(
+        (a, b) =>
+          Number(Boolean(b.projectDir)) - Number(Boolean(a.projectDir)) ||
+          compareTaskStates({ priority: 0, id: a.id }, { priority: 0, id: b.id }) ||
+          compareTaskStates({ priority: 0, id: a.filePath }, { priority: 0, id: b.filePath }),
+      );
+
+    for (const loaded of extensions) {
+      if (!loaded.instance.getTaskStates) {
+        continue;
+      }
+      try {
+        const states = loaded.instance.getTaskStates(this.createContext(loaded.id, loaded.metadata.name, project));
+        if (!Array.isArray(states)) {
+          logger.error(`[Extensions] Invalid task-state contributions from '${loaded.id}': expected an array`);
+          continue;
+        }
+        for (const state of states) {
+          if (!isValidTaskStateDefinition(state)) {
+            logger.error(`[Extensions] Invalid task-state definition from '${loaded.id}'`);
+            continue;
+          }
+          if (definitions.has(state.id)) {
+            logger.warn(`[Extensions] Ignoring duplicate task-state ID '${state.id}' from '${loaded.id}'`);
+            continue;
+          }
+          definitions.set(state.id, { id: state.id, name: state.name, color: state.color, priority: state.priority });
+        }
+      } catch (error) {
+        logger.error(`[Extensions] Failed to get task states from '${loaded.id}':`, error);
+      }
+    }
+    return [...definitions.values()].sort(compareTaskStates);
+  }
+
   getUIComponents(project?: Project, task?: Task): RegisteredUIComponent[] {
     const collectedComponents: RegisteredUIComponent[] = [];
     const allExtensions = this.registry.getExtensions(project?.baseDir);
@@ -1820,7 +1864,9 @@ export class ExtensionManager {
 
       try {
         const context = this.createContext(loaded.id, loaded.metadata.name, project);
-        return await loaded.instance.saveConfigData(configData, context);
+        const result = await loaded.instance.saveConfigData(configData, context);
+        this.eventManager.sendExtensionUIRefresh({ projectDir: project?.baseDir, reloadTaskStates: true });
+        return result;
       } catch (error) {
         logger.error(`[Extensions] Failed to save config data for extension '${extensionId}':`, error);
         throw error;

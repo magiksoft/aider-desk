@@ -8,8 +8,10 @@ import { RiFlag2Line } from 'react-icons/ri';
 import { MdImage, MdPushPin, MdChevronRight, MdVerticalAlignTop } from 'react-icons/md';
 import { BiDuplicate, BiArchive, BiArchiveIn, BiCopy } from 'react-icons/bi';
 import { createPortal } from 'react-dom';
+import { isManuallySelectableTaskState } from '@common/task-states';
 import { clsx } from 'clsx';
 
+import { useTaskStates } from '@/contexts/ExtensionsContext';
 import { useClickOutside } from '@/hooks/useClickOutside';
 import { getTaskStateLabel } from '@/components/common/TaskStateChip';
 
@@ -46,6 +48,7 @@ export const TaskMenuButton = memo(
     isPinned,
   }: Props) => {
     const { t } = useTranslation();
+    const definitions = useTaskStates(task.baseDir);
     const isNewTask = !task.createdAt;
     const [isMenuOpen, setIsMenuOpen] = useState(false);
     const [isStateSubmenuOpen, setIsStateSubmenuOpen] = useState(false);
@@ -312,19 +315,14 @@ export const TaskMenuButton = memo(
               onClick={(e) => e.stopPropagation()}
             >
               <ul className="py-1">
-                {[
-                  DefaultTaskState.Todo,
-                  DefaultTaskState.ReadyForImplementation,
-                  DefaultTaskState.ReadyForReview,
-                  DefaultTaskState.MoreInfoNeeded,
-                  DefaultTaskState.Done,
-                ].map((state) => (
+                {definitions.filter(isManuallySelectableTaskState).map(({ id: state, color }) => (
                   <li
                     key={state}
+                    style={{ color }}
                     className="flex items-center gap-2 px-2 py-1 text-2xs text-text-primary hover:bg-bg-tertiary cursor-pointer transition-colors"
                     onClick={(e) => handleStateChange(e, state)}
                   >
-                    {getTaskStateLabel(t, state)}
+                    {getTaskStateLabel(t, state, definitions)}
                   </li>
                 ))}
               </ul>

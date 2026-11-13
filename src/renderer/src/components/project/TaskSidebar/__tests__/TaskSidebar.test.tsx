@@ -1,10 +1,12 @@
 import { ReactNode } from 'react';
-import { screen, fireEvent, waitFor } from '@testing-library/react';
+import { screen, fireEvent, waitFor, act } from '@testing-library/react';
+import { BUILT_IN_TASK_STATE_DEFINITIONS } from '@common/task-states';
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { DefaultTaskState, TaskData } from '@common/types';
 
 import { TaskSidebar } from '../TaskSidebar';
 
+import { useTaskStatesStore } from '@/stores/taskStatesStore';
 import { render } from '@/__tests__/render';
 import { useTask } from '@/contexts/TasksContext';
 import { useOptimizedTaskState, EMPTY_TASK_STATE } from '@/stores/taskStore';
@@ -41,7 +43,8 @@ vi.mock('@/contexts/TasksContext', () => ({
 }));
 
 // Mock useExtensions hook
-vi.mock('@/contexts/ExtensionsContext', () => ({
+vi.mock('@/contexts/ExtensionsContext', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('@/contexts/ExtensionsContext')>()),
   useExtensions: vi.fn(() => ({
     componentProps: {
       projectDir: '/test/project',
@@ -95,6 +98,7 @@ describe('TaskSidebar', () => {
   ] as TaskData[];
 
   beforeEach(() => {
+    useTaskStatesStore.setState({ definitions: new Map(), requests: new Map() });
     localStorage.clear();
     vi.mocked(useTask).mockReturnValue(createMockTaskContext());
     vi.mocked(useOptimizedTaskState).mockReturnValue(EMPTY_TASK_STATE);
@@ -140,7 +144,7 @@ describe('TaskSidebar', () => {
 
     expect(screen.queryByText('Todo task')).not.toBeInTheDocument();
     expect(screen.getByText('Done task')).toBeInTheDocument();
-    expect(JSON.parse(localStorage.getItem('task-sidebar-selected-states-/project-a')!)).not.toContain(DefaultTaskState.Todo);
+    expect(JSON.parse(localStorage.getItem('task-sidebar-state-filters-/project-a')!).selectedIds).not.toContain(DefaultTaskState.Todo);
     view.unmount();
 
     const restored = render(<TaskSidebar {...props} projectDir="/project-a" />);
@@ -151,6 +155,50 @@ describe('TaskSidebar', () => {
     render(<TaskSidebar {...props} projectDir="/project-b" />);
     expect(screen.getByText('Todo task')).toBeInTheDocument();
     expect(screen.getByText('Done task')).toBeInTheDocument();
+  });
+
+  it('defaults new states to visible, orders filters by priority, and remembers exclusions after removal and remount', () => {
+    localStorage.setItem('task-sidebar-selected-states-/test/project', '[]');
+    const custom = { id: 'custom', name: 'Waiting for QA', color: '#123456', priority: 25 };
+    const definitions = [...BUILT_IN_TASK_STATE_DEFINITIONS.slice(0, 2), custom, ...BUILT_IN_TASK_STATE_DEFINITIONS.slice(2)];
+    useTaskStatesStore.setState({ definitions: new Map([['/test/project', definitions]]) });
+    const props = {
+      projectDir: '/test/project',
+      showArchived: false,
+      onShowArchivedChange: vi.fn(),
+      loading: false,
+      tasks: [
+        { id: 'todo', name: 'Todo task', state: DefaultTaskState.Todo },
+        { id: 'custom', name: 'QA task', state: 'custom' },
+      ] as TaskData[],
+      activeTaskId: null,
+      onTaskSelect: vi.fn(),
+      isCollapsed: false,
+      onToggleCollapse: vi.fn(),
+    };
+    const view = render(<TaskSidebar {...props} />);
+    expect(screen.queryByText('Todo task')).not.toBeInTheDocument();
+    expect(screen.getByText('QA task')).toBeInTheDocument();
+    fireEvent.click(screen.getByRole('button', { name: 'taskSidebar.filterStates' }));
+    expect(
+      screen
+        .getAllByRole('checkbox')
+        .map((checkbox) => checkbox.getAttribute('aria-label'))
+        .slice(0, 4),
+    ).toEqual(['taskState.TODO', 'taskState.READY_FOR_IMPLEMENTATION', custom.name, 'taskState.IN_PROGRESS']);
+    fireEvent.click(screen.getByRole('checkbox', { name: custom.name }));
+    expect(screen.queryByText('QA task')).not.toBeInTheDocument();
+    act(() => {
+      useTaskStatesStore.setState({ definitions: new Map([['/test/project', BUILT_IN_TASK_STATE_DEFINITIONS]]) });
+    });
+    expect(screen.getByText('QA task')).toBeInTheDocument();
+    view.unmount();
+    act(() => {
+      useTaskStatesStore.setState({ definitions: new Map([['/test/project', definitions]]) });
+    });
+    render(<TaskSidebar {...props} />);
+    expect(screen.queryByText('QA task')).not.toBeInTheDocument();
+    expect(screen.queryByText('Todo task')).not.toBeInTheDocument();
   });
 
   it('preserves an explicitly empty state selection', () => {

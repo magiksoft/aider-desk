@@ -1,5 +1,6 @@
 import { type MockedObject, vi } from 'vitest';
 import { ApplicationAPI } from '@common/api';
+import { BUILT_IN_TASK_STATE_DEFINITIONS } from '@common/task-states';
 import {
   ProjectData,
   ProjectSettings,
@@ -327,6 +328,7 @@ export const createMockApi = (overrides: Partial<ApplicationAPI> = {}): MockedOb
     getExtensionConfigComponent: vi.fn((): Promise<ExtensionConfigComponent | null> => Promise.resolve(null)),
     getExtensionConfig: vi.fn((): Promise<unknown> => Promise.resolve({})),
     saveExtensionConfig: vi.fn((): Promise<unknown> => Promise.resolve({})),
+    getTaskStateDefinitions: vi.fn(() => Promise.resolve(BUILT_IN_TASK_STATE_DEFINITIONS)),
     onExtensionUIRefresh: vi.fn(() => vi.fn()),
 
     // Memory operations

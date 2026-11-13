@@ -88,7 +88,8 @@ vi.mock('@/stores/commandPaletteStore', () => ({
 }));
 
 // Mock useExtensions hook
-vi.mock('@/contexts/ExtensionsContext', () => ({
+vi.mock('@/contexts/ExtensionsContext', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('@/contexts/ExtensionsContext')>()),
   useExtensions: vi.fn(() => ({
     componentProps: {
       projectDir: '/test/project',

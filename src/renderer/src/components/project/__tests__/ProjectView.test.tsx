@@ -43,7 +43,8 @@ vi.mock('react-i18next', () => ({
 }));
 
 // Mock contexts
-vi.mock('@/contexts/ApiContext', () => ({
+vi.mock('@/contexts/ApiContext', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('@/contexts/ApiContext')>()),
   useApi: vi.fn(),
 }));
 

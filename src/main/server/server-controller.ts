@@ -145,7 +145,7 @@ export class ServerController {
     new MemoryApi(this.eventsHandler).registerRoutes(apiRouter);
     new VoiceApi(this.eventsHandler).registerRoutes(apiRouter);
     new TerminalApi(this.eventsHandler).registerRoutes(apiRouter);
-    new ExtensionsApi(this.eventsHandler).registerRoutes(apiRouter);
+    new ExtensionsApi(this.eventsHandler, this.projectManager).registerRoutes(apiRouter);
     new SkillsApi(this.eventsHandler).registerRoutes(apiRouter);
 
     // Mount the API router globally under /api

@@ -12,7 +12,10 @@ import { useReadonlyApi } from '@/contexts/ReadonlyApiContext';
 vi.mock('@/contexts/ReadonlyApiContext', () => ({ useReadonlyApi: vi.fn() }));
 vi.mock('react-i18next', () => ({ useTranslation: () => ({ t: (key: string) => key }) }));
 vi.mock('@/hooks/useResponsive', () => ({ useResponsive: () => ({ isMobile: false }) }));
-vi.mock('@/contexts/ExtensionsContext', () => ({ ExtensionsProvider: ({ children }: { children: ReactNode }) => children }));
+vi.mock('@/contexts/ExtensionsContext', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('@/contexts/ExtensionsContext')>()),
+  ExtensionsProvider: ({ children }: { children: ReactNode }) => children,
+}));
 vi.mock('@/components/readonly/ReadonlyTaskSidebar', () => ({
   ReadonlyTaskSidebar: ({
     tasks,

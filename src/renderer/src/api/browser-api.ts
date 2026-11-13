@@ -12,6 +12,7 @@ import {
   EditFormat,
   EnvironmentVariable,
   ExtensionUIRefreshData,
+  TaskStateDefinition,
   FileEdit,
   InputHistoryData,
   LogData,
@@ -1686,6 +1687,10 @@ export class BrowserApi implements ApplicationAPI {
       filePath,
       projectDir,
     });
+  }
+
+  getTaskStateDefinitions(projectDir?: string): Promise<TaskStateDefinition[]> {
+    return this.get('/extensions/task-states', { projectDir });
   }
 
   getExtensionUIComponents(placement?: string, projectDir?: string, taskId?: string): Promise<ExtensionUIComponent[]> {

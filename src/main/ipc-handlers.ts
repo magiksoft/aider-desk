@@ -407,6 +407,8 @@ export const setupIpcHandlers = (eventsHandler: EventsHandler, serverController:
     return await eventsHandler.reloadExtension(filePath, projectDir);
   });
 
+  ipcMain.handle('get-task-state-definitions', (_, projectDir?: string) => eventsHandler.getTaskStateDefinitions(projectDir));
+
   ipcMain.handle('get-extension-ui-components', (_, placement?: string, projectDir?: string, taskId?: string) => {
     return eventsHandler.getUIComponents(placement, projectDir, taskId);
   });
