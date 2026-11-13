@@ -130,7 +130,7 @@
       "capabilities": [
         "security"
       ],
-      "installCount": 59
+      "installCount": 60
     },
     {
       "id": "permission-gate",
@@ -152,7 +152,7 @@
       "capabilities": [
         "optimization"
       ],
-      "installCount": 57
+      "installCount": 58
     },
     {
       "id": "external-rules",
@@ -307,7 +307,7 @@
       "capabilities": [
         "context"
       ],
-      "installCount": 29
+      "installCount": 30
     },
     {
       "id": "lsp",
@@ -468,7 +468,7 @@
         "workflows",
         "ui"
       ],
-      "installCount": 68
+      "installCount": 69
     },
     {
       "id": "bmad",
@@ -570,7 +570,7 @@
         "tools",
         "search"
       ],
-      "installCount": 95
+      "installCount": 96
     },
     {
       "id": "kanban",
@@ -645,7 +645,7 @@
       "capabilities": [
         "ui"
       ],
-      "installCount": 63
+      "installCount": 64
     },
     {
       "id": "skill-gallery",
@@ -657,7 +657,7 @@
       "capabilities": [
         "ui"
       ],
-      "installCount": 183
+      "installCount": 184
     },
     {
       "id": "task-scheduler",
