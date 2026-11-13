@@ -767,23 +767,6 @@ export const PromptField = forwardRef<PromptFieldRef, Props>(
       setSavedText(text);
     }, [setSavedText, text]);
 
-    const handleSubmitSkill = useCallback(
-      async (skillCommand: { skillName: string; prompt: string }) => {
-        const activated = await api.activateSkill(baseDir, taskId, skillCommand.skillName);
-        if (!activated) {
-          showErrorNotification(t('promptField.skillNotFound', { skill: skillCommand.skillName }));
-          return;
-        }
-
-        if (skillCommand.prompt) {
-          runPrompt(skillCommand.prompt, pastedImages.length > 0 ? pastedImages : undefined);
-        }
-        prepareForNextPrompt();
-        setPlaceholderIndex(Math.floor(Math.random() * PLACEHOLDER_COUNT));
-      },
-      [api, baseDir, taskId, runPrompt, pastedImages, prepareForNextPrompt, t],
-    );
-
     const handleSubmit = useCallback(() => {
       scrollToBottom?.();
       void stopRecording();
@@ -804,7 +787,11 @@ export const PromptField = forwardRef<PromptFieldRef, Props>(
 
           const skillCommand = parseSkillCommand(text);
           if (skillCommand) {
-            void handleSubmitSkill(skillCommand);
+            const images = pastedImages.length > 0 ? pastedImages : undefined;
+            runPrompt(text, images);
+            prepareForNextPrompt();
+            setPastedImages([]);
+            setPlaceholderIndex(Math.floor(Math.random() * PLACEHOLDER_COUNT));
             return;
           }
 
@@ -856,7 +843,6 @@ export const PromptField = forwardRef<PromptFieldRef, Props>(
       prepareForNextPrompt,
       pendingCommand,
       handleConfirmCommand,
-      handleSubmitSkill,
       runPrompt,
       runCommand,
       subagentProfiles,

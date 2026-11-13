@@ -984,20 +984,21 @@ export class Task {
       return [];
     }
 
+    let skillsToActivate: string[] | undefined;
+    let inputHistoryOverride: string | undefined;
     const skillCommand = parseSkillCommand(prompt);
     if (skillCommand) {
       try {
-        await this.activateSkill(skillCommand.skillName);
+        await this.validateUserInvocableSkill(skillCommand.skillName);
       } catch (error) {
         logger.error('Failed to activate skill from prompt', { baseDir: this.project.baseDir, taskId: this.taskId, error });
         this.addLogMessage('error', error instanceof Error ? error.message : String(error));
         return [];
       }
 
-      prompt = skillCommand.prompt;
-      if (!prompt) {
-        return [];
-      }
+      skillsToActivate = [skillCommand.skillName];
+      inputHistoryOverride = prompt;
+      prompt = skillCommand.prompt || `Execute ${skillCommand.skillName} skill`;
     }
 
     let promptContext: PromptContext = {
@@ -1022,7 +1023,7 @@ export class Task {
     });
 
     if (addToInputHistory) {
-      await this.project.addToInputHistory(prompt);
+      await this.project.addToInputHistory(inputHistoryOverride ?? prompt);
     }
 
     this.addUserMessage(userMessageId, prompt, promptContext, images);
@@ -1043,9 +1044,21 @@ export class Task {
         await this.saveTask({ agentProfileId: profile.id });
       }
 
-      responses = await this.runPromptInAgent(profile, mode, prompt, promptContext, undefined, undefined, undefined, true, sendNotification, images);
+      responses = await this.runPromptInAgent(
+        profile,
+        mode,
+        prompt,
+        promptContext,
+        undefined,
+        undefined,
+        undefined,
+        true,
+        sendNotification,
+        images,
+        skillsToActivate,
+      );
     } else {
-      responses = await this.runPromptInAider(mode, prompt, promptContext, sendNotification);
+      responses = await this.runPromptInAider(mode, prompt, promptContext, sendNotification, skillsToActivate);
     }
 
     const promptFinishedExtensionResult = await this.extensionManager.dispatchEvent('onPromptFinished', { responses }, this.project, this);
@@ -1117,7 +1130,13 @@ export class Task {
     return [];
   }
 
-  public async runPromptInAider(mode: Mode, prompt: string, promptContext: PromptContext, sendNotification = true): Promise<ResponseCompletedData[]> {
+  public async runPromptInAider(
+    mode: Mode,
+    prompt: string,
+    promptContext: PromptContext,
+    sendNotification = true,
+    skillsToActivate?: string[],
+  ): Promise<ResponseCompletedData[]> {
     await this.waitForCurrentPromptToFinish();
 
     await this.saveTask({
@@ -1139,6 +1158,20 @@ export class Task {
       promptContext,
       timestamp: Date.now(),
     });
+
+    // Activate skills after the user message is persisted so the order is: user message -> skill activation.
+    if (skillsToActivate && skillsToActivate.length > 0) {
+      try {
+        const skillMessages = await this.createSkillMessages(...skillsToActivate);
+        if (skillMessages) {
+          for (const message of skillMessages) {
+            this.contextManager.addContextMessage(message);
+          }
+        }
+      } catch (error) {
+        logger.warn(`Failed to activate skills: ${error instanceof Error ? error.message : String(error)}`);
+      }
+    }
 
     let messages = this.contextManager.toConnectorMessages();
     let files = this.contextManager.getContextFiles();
@@ -2821,12 +2854,16 @@ export class Task {
     return allMessages.length > 0 ? allMessages : null;
   }
 
-  public async activateSkill(skillName: string): Promise<[ContextAssistantMessage, ContextToolMessage] | null> {
+  public async validateUserInvocableSkill(skillName: string): Promise<void> {
     const skills = await this.getSkills();
     const skill = skills.find((s) => s.name === skillName);
     if (!skill || skill.userInvocable === false) {
       throw new Error(`Skill '${skillName}' cannot be invoked manually (user-invocable: false)`);
     }
+  }
+
+  public async activateSkill(skillName: string): Promise<[ContextAssistantMessage, ContextToolMessage] | null> {
+    await this.validateUserInvocableSkill(skillName);
 
     const messages = await this.createSkillMessages(skillName);
     if (!messages) {

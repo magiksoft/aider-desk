@@ -15,6 +15,7 @@
 - added getTaskDataDir to the extension TaskContext API
 - fixed commit message generation excluding selected untracked files
 - improved app shutdown performance by disabling unintended OpenTelemetry log and metric exporters
+- fixed manual skill commands not running without a prompt and ensured the user message appears before skill activation
 
 ## [0.91.0]
 
