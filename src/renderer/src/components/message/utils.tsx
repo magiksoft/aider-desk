@@ -158,6 +158,11 @@ export const parseMessageContent = (
             rehypePlugins={REHYPE_PLUGINS}
             components={{
               ...MARKDOWN_COMPONENTS,
+              a: ({ href, children, title }) => (
+                <MarkdownLink href={href} title={title} baseDir={baseDir} taskId={taskId}>
+                  {children}
+                </MarkdownLink>
+              ),
               img: ({ src, alt, title }) => <MarkdownImage src={src} alt={alt} title={title} baseDir={baseDir} taskId={taskId} />,
             }}
           >

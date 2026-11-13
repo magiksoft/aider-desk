@@ -2,7 +2,7 @@ import { fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 import { parseMessageContent } from '../utils';
-import { getFileLinkPath } from '../markdown-url';
+import { getFileLinkPath, getRelativeFileLinkPath } from '../markdown-url';
 
 import type { ApplicationAPI } from '@common/api';
 
@@ -10,6 +10,7 @@ import { BrowserApi } from '@/api/browser-api';
 import { ApiContext, ReadonlyViewContext } from '@/contexts/ApiContext';
 import { createMockApi } from '@/__tests__/mocks/api';
 import { showErrorNotification } from '@/utils/notifications';
+import { setProjectTasks, useProjectStore } from '@/stores/projectStore';
 
 vi.mock('@/utils/notifications', () => ({ showErrorNotification: vi.fn(), showInfoNotification: vi.fn() }));
 vi.mock('@/components/common/CodeBlock', () => ({ CodeBlock: () => null }));
@@ -19,16 +20,17 @@ const path = '/home/user/.agent/my mockup.html';
 const downloadFile = vi.fn();
 const writeToClipboard = vi.fn();
 const browserApi = Object.assign(Object.create(BrowserApi.prototype) as BrowserApi, { downloadFile, writeToClipboard });
-const renderMessage = (api: ApplicationAPI, content = `[Mockup](${href})`, readonly = false) =>
+const renderMessage = (api: ApplicationAPI, content = `[Mockup](${href})`, readonly = false, baseDir = '/project', taskId = 'task-id') =>
   render(
     <ApiContext.Provider value={api}>
-      <ReadonlyViewContext.Provider value={readonly}>{parseMessageContent('', content, [], true)}</ReadonlyViewContext.Provider>
+      <ReadonlyViewContext.Provider value={readonly}>{parseMessageContent(baseDir, content, [], true, true, undefined, taskId)}</ReadonlyViewContext.Provider>
     </ApiContext.Provider>,
   );
 
 describe('file links in Markdown', () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    useProjectStore.setState({ projectTasksMap: new Map() });
     downloadFile.mockResolvedValue(undefined);
     writeToClipboard.mockResolvedValue(undefined);
   });
@@ -52,6 +54,55 @@ describe('file links in Markdown', () => {
     },
   );
 
+  it.each([
+    ['summary.json', '/project/summary.json'],
+    ['./summary.json', '/project/summary.json'],
+    ['results/my%20summary.json', '/project/results/my summary.json'],
+    ['../summary.json#details', '/summary.json'],
+  ])('opens relative file link %s without browser navigation', async (url, expected) => {
+    const api = createMockApi({ openPath: vi.fn().mockResolvedValue(true) });
+    renderMessage(api, `[Summary](${url})`);
+    expect(fireEvent.click(screen.getByRole('link'))).toBe(false);
+    await waitFor(() => expect(api.openPath).toHaveBeenCalledWith(expected));
+  });
+
+  it('uses the originating task worktree instead of another task or the project root', async () => {
+    setProjectTasks(
+      '/project',
+      ['other-task', 'task-id'].map((id) => ({
+        id,
+        baseDir: '/project',
+        name: id,
+        aiderTotalCost: 0,
+        agentTotalCost: 0,
+        mainModel: '',
+        worktree: { path: `/worktrees/${id}` },
+      })),
+    );
+    const api = createMockApi({ openPath: vi.fn().mockResolvedValue(true) });
+    renderMessage(api, '[Summary](summary.json)');
+    fireEvent.click(screen.getByRole('link'));
+    await waitFor(() => expect(api.openPath).toHaveBeenCalledWith('/worktrees/task-id/summary.json'));
+  });
+
+  it('asks before downloading a relative file link in the browser', async () => {
+    renderMessage(browserApi, '[Summary](results/summary.json)');
+    expect(fireEvent.click(screen.getByRole('link'))).toBe(false);
+    expect(screen.getByText('/project/results/summary.json')).toBeInTheDocument();
+    expect(downloadFile).not.toHaveBeenCalled();
+    fireEvent.click(screen.getByRole('button', { name: 'fileLink.download' }));
+    await waitFor(() => expect(downloadFile).toHaveBeenCalledWith('/project/results/summary.json'));
+  });
+
+  it('keeps relative downloads disabled in readonly views', () => {
+    const api = createMockApi();
+    renderMessage(api, '[Summary](summary.json)', true);
+    fireEvent.click(screen.getByRole('link'));
+    expect(screen.getByRole('button', { name: 'fileLink.download' })).toBeDisabled();
+    expect(api.openPath).not.toHaveBeenCalled();
+    expect(downloadFile).not.toHaveBeenCalled();
+  });
+
   it('asks before downloading an absolute path link in the browser', async () => {
     renderMessage(browserApi, '[JSON proof](/tmp/proof.json)');
     fireEvent.click(screen.getByRole('link'));
@@ -70,7 +121,7 @@ describe('file links in Markdown', () => {
     expect(downloadFile).not.toHaveBeenCalled();
   });
 
-  it.each(['#section', 'https://example.com/page', '//example.com/page'])('preserves non-file link %s', (url) => {
+  it.each(['#section', '?query=value', 'https://example.com/page', '//example.com/page', 'mailto:user@example.com'])('preserves non-file link %s', (url) => {
     const api = createMockApi();
     renderMessage(api, `[Link](${url})`);
     expect(screen.getByRole('link')).toHaveAttribute('href', url);
@@ -146,7 +197,7 @@ describe('file links in Markdown', () => {
   );
 
   it('does not render local images without a task identity', () => {
-    renderMessage(createMockApi(), `![Local image](${href})`);
+    renderMessage(createMockApi(), `![Local image](${href})`, false, '/project', '');
     expect(screen.queryByRole('img')).not.toBeInTheDocument();
     expect(screen.getByText('Local image')).toBeInTheDocument();
   });
@@ -177,5 +228,27 @@ describe('file URL paths', () => {
     ['file:///tmp/%5cremote', null],
   ])('converts %s to %s', (url, expected) => {
     expect(getFileLinkPath(url)).toBe(expected);
+  });
+});
+
+describe('relative file paths', () => {
+  it.each([
+    ['summary.json', '/project', '/project/summary.json'],
+    ['./results/../summary.json', '/project/', '/project/summary.json'],
+    ['my%20summary.json', '/my project/#run', '/my project/#run/my summary.json'],
+    ['summary.json?download=1#details', '/project', '/project/summary.json'],
+    ['summary.json', 'C:\\Users\\me', 'C:/Users/me/summary.json'],
+    ['../summary.json', 'C:/Users/me', 'C:/Users/summary.json'],
+    ['summary.json', '', null],
+    ['#section', '/project', null],
+    ['?query=value', '/project', null],
+    ['//example.com/file', '/project', null],
+    ['https://example.com/file', '/project', null],
+    ['mailto:user@example.com', '/project', null],
+    ['bad%00.json', '/project', null],
+    ['bad%5cfile.json', '/project', null],
+    ['bad%zz.json', '/project', null],
+  ])('resolves %s against %s to %s', (url, baseDir, expected) => {
+    expect(getRelativeFileLinkPath(url, baseDir)).toBe(expected);
   });
 });

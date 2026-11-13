@@ -19,6 +19,24 @@ export const getFileLinkPath = (href: string): string | null => {
   }
 };
 
+export const getRelativeFileLinkPath = (href: string, baseDir: string): string | null => {
+  if (!baseDir || !href || /^[a-z][a-z\d+.-]*:/i.test(href) || /^[/#?]/.test(href)) {
+    return null;
+  }
+  try {
+    const decoded = decodeURIComponent(href);
+    if (decoded.includes('\\') || Array.from(decoded).some((char) => char.charCodeAt(0) < 32)) {
+      return null;
+    }
+    const directory = baseDir.replace(/\\/g, '/').replace(/\/$/, '');
+    const encodedDirectory = directory.split('/').map(encodeURIComponent).join('/');
+    const base = /^[a-z]:\//i.test(directory) ? `file:///${encodedDirectory}/` : `file://${encodedDirectory}/`;
+    return getFileLinkPath(new URL(href, base).href);
+  } catch {
+    return null;
+  }
+};
+
 export const messageUrlTransform: UrlTransform = (url, key, node) => {
   if (((key === 'href' && node.tagName === 'a') || (key === 'src' && node.tagName === 'img')) && getFileLinkPath(url)) {
     return url;
