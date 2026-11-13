@@ -72,7 +72,7 @@ export const getSortedVisibleTasks = (tasks: TaskData[], selectedStates: Set<str
         return true;
       }
       const searchText = searchQuery.toLowerCase();
-      return task.name.toLowerCase().includes(searchText);
+      return task.name.toLowerCase().includes(searchText) || task.id.toLowerCase().includes(searchText);
     });
 
   const tasksById = new Map<string, TaskData>();

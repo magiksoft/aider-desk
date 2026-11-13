@@ -35,6 +35,29 @@ describe('task-utils', () => {
       { id: '5', name: 'Orphan Subtask', updatedAt: '2026-01-14T12:00:00Z', archived: false, pinned: false, parentId: 'non-existent' },
     ];
 
+    it.each(['aBc123Ef', 'ABC123EF', '123'])('should match task IDs using query %s', (query) => {
+      const tasks = [
+        { id: 'abc123ef', name: 'First task' },
+        { id: 'def456ab', name: 'Second task' },
+      ] as TaskData[];
+
+      const sorted = getSortedVisibleTasks(tasks, defaultStates, false, query);
+
+      expect(sorted.map((task) => task.id)).toEqual(['abc123ef']);
+    });
+
+    it('should match task names as well as task IDs', () => {
+      const tasks = [
+        { id: 'abc123ef', name: 'First task' },
+        { id: 'def456ab', name: 'Fix ABC123 issue' },
+        { id: 'ghi789cd', name: 'Unrelated task' },
+      ] as TaskData[];
+
+      const sorted = getSortedVisibleTasks(tasks, defaultStates, false, 'abc123');
+
+      expect(sorted.map((task) => task.id)).toEqual(['abc123ef', 'def456ab']);
+    });
+
     it('should group subtasks under their parent tasks', () => {
       const sorted = getSortedVisibleTasks(mockTasks as TaskData[], defaultStates);
 

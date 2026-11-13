@@ -18,6 +18,7 @@
 - fixed manual skill commands not running without a prompt and ensured the user message appears before skill activation
 - added local Markdown image rendering with clickable thumbnails and expanded previews in agent responses
 - fixed absolute file path links in messages to open locally on desktop and offer downloads in browsers
+- added task ID matching to the task sidebar search filter
 
 ## [0.91.0]
 
