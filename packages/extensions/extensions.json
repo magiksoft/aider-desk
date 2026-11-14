@@ -35,7 +35,7 @@
       "capabilities": [
         "tools"
       ],
-      "installCount": 21
+      "installCount": 22
     },
     {
       "id": "binary-files",
@@ -118,7 +118,7 @@
       "capabilities": [
         "modes"
       ],
-      "installCount": 130
+      "installCount": 131
     },
     {
       "id": "protected-paths",
@@ -396,7 +396,7 @@
       "capabilities": [
         "providers"
       ],
-      "installCount": 39
+      "installCount": 40
     },
     {
       "id": "fff",
@@ -657,7 +657,7 @@
       "capabilities": [
         "ui"
       ],
-      "installCount": 185
+      "installCount": 186
     },
     {
       "id": "task-scheduler",
@@ -683,7 +683,7 @@
       "capabilities": [
         "ui"
       ],
-      "installCount": 158
+      "installCount": 159
     },
     {
       "id": "dbx",
