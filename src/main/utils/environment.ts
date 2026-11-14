@@ -68,6 +68,7 @@ const readApiKeyFromConfFile = (filePath: string, envVarName: string): string | 
           MISTRAL_API_KEY: ['mistral'],
           NEURALWATT_API_KEY: ['neuralwatt'],
           LLMAPI_API_KEY: ['llmapi'],
+          ATLASCLOUD_API_KEY: ['atlascloud'],
           OPENLLM_API_KEY: ['openllm'],
         };
 

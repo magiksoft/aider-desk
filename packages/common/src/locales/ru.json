@@ -555,6 +555,10 @@
     "getApiKeyLink": "Получить API-ключ LLM API",
     "apiKey": "API-ключ"
   },
+  "atlasCloud": {
+    "getApiKeyLink": "Получить API-ключ Atlas Cloud",
+    "apiKey": "API-ключ"
+  },
   "openLlm": {
     "docsLink": "Руководство по настройке OpenLLM",
     "baseUrl": "Базовый URL",
@@ -615,6 +619,7 @@
     "lmstudio": "LM Studio",
     "litellm": "LiteLLM",
     "llmapi": "LLM API",
+    "atlascloud": "Atlas Cloud",
     "minimax": "MiniMax",
     "mistral": "Mistral",
     "ollama": "Ollama",

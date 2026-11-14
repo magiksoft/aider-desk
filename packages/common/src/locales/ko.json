@@ -559,6 +559,10 @@
     "getApiKeyLink": "LLM API 키 받기",
     "apiKey": "API 키"
   },
+  "atlasCloud": {
+    "getApiKeyLink": "Atlas Cloud API 키 받기",
+    "apiKey": "API 키"
+  },
   "openLlm": {
     "docsLink": "OpenLLM 설정 가이드",
     "baseUrl": "기본 URL",
@@ -615,6 +619,7 @@
     "lmstudio": "LM Studio",
     "litellm": "LiteLLM",
     "llmapi": "LLM API",
+    "atlascloud": "Atlas Cloud",
     "minimax": "MiniMax",
     "mistral": "Mistral",
     "neuralwatt": "Neuralwatt",
