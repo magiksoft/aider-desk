@@ -189,7 +189,7 @@
         "commands",
         "tools"
       ],
-      "installCount": 113
+      "installCount": 114
     },
     {
       "id": "legacy-system-prompt",
@@ -455,7 +455,7 @@
       "capabilities": [
         "metrics"
       ],
-      "installCount": 124
+      "installCount": 125
     },
     {
       "id": "verifier",
@@ -582,7 +582,7 @@
       "capabilities": [
         "ui"
       ],
-      "installCount": 58
+      "installCount": 59
     },
     {
       "id": "doom",
@@ -683,7 +683,7 @@
       "capabilities": [
         "ui"
       ],
-      "installCount": 157
+      "installCount": 158
     },
     {
       "id": "dbx",
