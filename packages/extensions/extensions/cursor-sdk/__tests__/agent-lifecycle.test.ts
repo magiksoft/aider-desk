@@ -2,7 +2,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 import CursorSdkExtension from '../index';
 
-import type { AgentStartedEvent, ExtensionContext, InterruptedEvent } from '@aiderdesk/extensions';
+import type { AgentStartedEvent, ContextAssistantMessage, ContextToolMessage, ExtensionContext, InterruptedEvent, TaskContext } from '@aiderdesk/extensions';
 
 const sdk = vi.hoisted(() => ({ create: vi.fn(), resume: vi.fn(), list: vi.fn() }));
 vi.mock('@cursor/sdk', () => ({ Agent: { create: sdk.create, resume: sdk.resume }, Cursor: { models: { list: sdk.list } } }));
@@ -35,6 +35,7 @@ const setup = (signal?: AbortSignal, resume = false) => {
     getTaskDir: () => '/task/workspace',
     updateTask: vi.fn(async () => {}),
     addContextMessage: vi.fn(async () => {}),
+    activateSkill: vi.fn<TaskContext['activateSkill']>().mockResolvedValue(null),
     addLogMessage: vi.fn(),
     addLoadingMessage: vi.fn(),
     addResponseMessage: vi.fn(),
@@ -57,6 +58,104 @@ beforeEach(() => {
   vi.stubEnv('CURSOR_API_KEY', 'test-private-key');
 });
 afterEach(() => vi.unstubAllEnvs());
+
+const skillMessages = (name: string): [ContextAssistantMessage, ContextToolMessage] => [
+  {
+    id: `${name}-assistant`,
+    role: 'assistant',
+    content: [
+      {
+        type: 'tool-call',
+        toolCallId: name,
+        toolName: 'skills---activate_skill',
+        input: { skill: name },
+      },
+    ],
+  },
+  {
+    id: `${name}-tool`,
+    role: 'tool',
+    content: [
+      {
+        type: 'tool-result',
+        toolCallId: name,
+        toolName: 'skills---activate_skill',
+        output: { type: 'text', value: `${name} instructions` },
+      },
+    ],
+  },
+];
+
+describe('Cursor extension skill activation', () => {
+  it.each(['Execute writing-tests skill', 'Add coverage for the parser'])('activates requested skills after the user message for "%s"', async (prompt) => {
+    const { extension, event, context, task, agent } = setup();
+    event.prompt = prompt;
+    event.skillsToActivate = ['writing-tests'];
+    event.contextMessages = [{ id: 'previous-user', role: 'user', content: 'Previous prompt' }];
+    task.activateSkill.mockImplementation(async () => {
+      expect(task.addContextMessage).toHaveBeenCalledWith(expect.objectContaining({ role: 'user', content: prompt }));
+      expect(agent.send).not.toHaveBeenCalled();
+      return skillMessages('writing-tests');
+    });
+
+    await expect(extension.onAgentStarted(event, context)).resolves.toEqual({ blocked: true });
+
+    expect(task.activateSkill).toHaveBeenCalledExactlyOnceWith('writing-tests');
+    expect(agent.send).toHaveBeenCalledWith(`<skill name="writing-tests">\nwriting-tests instructions\n</skill>\n\n${prompt}`, expect.anything());
+    expect(task.addContextMessage).toHaveBeenCalledTimes(1);
+  });
+
+  it('sends ordinary prompts without activating skills', async () => {
+    const { extension, event, context, task, agent } = setup();
+
+    await extension.onAgentStarted(event, context);
+
+    expect(task.activateSkill).not.toHaveBeenCalled();
+    expect(agent.send).toHaveBeenCalledWith('Hello', expect.anything());
+  });
+
+  it('preserves already activated skill content without duplicating it', async () => {
+    const { extension, event, context, task, agent } = setup();
+    event.skillsToActivate = ['writing-tests'];
+    event.contextMessages = skillMessages('writing-tests');
+
+    await extension.onAgentStarted(event, context);
+
+    expect(task.activateSkill).toHaveBeenCalledWith('writing-tests');
+    expect(agent.send).toHaveBeenCalledWith('<skill name="writing-tests">\nwriting-tests instructions\n</skill>\n\nHello', expect.anything());
+  });
+
+  it('injects multiple skills once and preserves images', async () => {
+    const { extension, event, context, task, agent } = setup();
+    event.skillsToActivate = ['writing-tests', 'review'];
+    event.contextMessages = skillMessages('writing-tests');
+    event.images = ['data:image/png;base64,aGVsbG8='];
+    task.activateSkill.mockImplementation(async (name) => skillMessages(name));
+
+    await extension.onAgentStarted(event, context);
+
+    expect(task.activateSkill.mock.calls).toEqual([['writing-tests'], ['review']]);
+    expect(agent.send).toHaveBeenCalledWith(
+      {
+        text: '<skill name="writing-tests">\nwriting-tests instructions\n</skill>\n\n<skill name="review">\nreview instructions\n</skill>\n\nHello',
+        images: [{ data: 'aGVsbG8=', mimeType: 'image/png' }],
+      },
+      expect.anything(),
+    );
+  });
+
+  it('does not send the prompt if core skill activation fails', async () => {
+    const { extension, event, context, task, agent } = setup();
+    event.skillsToActivate = ['missing'];
+    task.activateSkill.mockRejectedValue(new Error("Skill 'missing' not found"));
+
+    await extension.onAgentStarted(event, context);
+
+    expect(agent.send).not.toHaveBeenCalled();
+    expect(task.addLogMessage).toHaveBeenCalledWith('error', expect.stringContaining("Skill 'missing' not found"));
+    expect(agent[Symbol.asyncDispose]).toHaveBeenCalledOnce();
+  });
+});
 
 describe('Cursor extension lifecycle integration', () => {
   it('does not create an agent for an already-aborted prompt', async () => {

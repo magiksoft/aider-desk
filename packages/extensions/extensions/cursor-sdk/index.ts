@@ -649,7 +649,7 @@ const configComponentJsx = readFileSync(join(__dirname, './ConfigComponent.jsx')
 export default class CursorSdkExtension implements Extension {
   static metadata = {
     name: 'Cursor SDK',
-    version: '4.8.2',
+    version: '4.8.3',
     description: 'Integrates the Cursor SDK as a provider with cursor-sdk/ prefix, overriding the agent loop',
     author: 'wladimiiir',
     iconUrl: 'https://raw.githubusercontent.com/magiksoft/aider-desk/refs/heads/main/packages/extensions/extensions/cursor-sdk/icon.png',
@@ -786,19 +786,6 @@ export default class CursorSdkExtension implements Extension {
       const { data, mimeType } = parseDataUrl(dataUrl);
       return { data, mimeType };
     });
-    // Skills activated via /skill:<name> commands are already persisted in AiderDesk context
-    // (Task.runPrompt strips the prefix before onAgentStarted), but the Cursor agent manages its own
-    // context and never sees them. Attach the skill content to this message — the same way Cursor
-    // attaches the skill when a user invokes it via /name in Cursor chat.
-    const activatedSkills = collectActivatedSkills(event.contextMessages ?? []);
-    let agentPrompt = prompt;
-    if (activatedSkills.length > 0) {
-      context.log(`Injecting activated skill(s) into the prompt: ${activatedSkills.map((s) => s.name).join(', ')}`, 'info');
-      const skillBlock = activatedSkills.map(({ name, content }) => `<skill name="${name}">\n${content}\n</skill>`).join('\n\n');
-      agentPrompt = `${skillBlock}\n\n${agentPrompt}`;
-    }
-
-    const sendMessage: string | SDKUserMessage = sdkImages.length > 0 ? { text: agentPrompt, images: sdkImages } : agentPrompt;
     if (sdkImages.length > 0) {
       context.log(`Sending ${sdkImages.length} image(s) to Cursor agent`, 'info');
     }
@@ -893,6 +880,22 @@ export default class CursorSdkExtension implements Extension {
         };
         await taskContext.addContextMessage(userMessage);
       }
+
+      const skillMessages: ContextMessage[] = [];
+      for (const skillName of event.skillsToActivate ?? []) {
+        const messages = await taskContext.activateSkill(skillName);
+        if (messages) {
+          skillMessages.push(...messages);
+        }
+      }
+      const activatedSkills = new Map(collectActivatedSkills([...(event.contextMessages ?? []), ...skillMessages]).map((skill) => [skill.name, skill]));
+      let agentPrompt = prompt;
+      if (activatedSkills.size > 0) {
+        context.log(`Injecting activated skill(s) into the prompt: ${[...activatedSkills.keys()].join(', ')}`, 'info');
+        const skillBlock = [...activatedSkills.values()].map(({ name, content }) => `<skill name="${name}">\n${content}\n</skill>`).join('\n\n');
+        agentPrompt = `${skillBlock}\n\n${agentPrompt}`;
+      }
+      const sendMessage: string | SDKUserMessage = sdkImages.length > 0 ? { text: agentPrompt, images: sdkImages } : agentPrompt;
 
       const sendOptions = {
         ...(mcpServers && Object.keys(mcpServers).length > 0 ? { mcpServers } : {}),
