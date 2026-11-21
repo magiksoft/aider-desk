@@ -39,6 +39,7 @@ Absent `modalities` remains `undefined` in the effective model and skips attachm
 
 ## Table of Contents
 
+- [AIGROW](#aigrow)
 - [Alibaba Plan](#alibaba-plan)
 - [Anthropic](#anthropic)
 - [Anthropic Compatible](#anthropic-compatible)
@@ -69,6 +70,30 @@ Absent `modalities` remains `undefined` in the effective model and skips attachm
 - [Synthetic](#synthetic)
 - [Vertex AI](#vertex-ai)
 - [ZAI Plan](#zai-plan)
+
+---
+
+## AIGROW
+
+AIGROW provides Claude, GPT, Gemini, Grok, Qwen and Kimi models through one OpenAI-compatible API, paid with prepaid credit.
+
+### Configuration Parameters
+
+- **API Key**: Your AIGROW API key for authentication
+  - Environment variable: `AIGROW_API_KEY`
+  - Get your API key from [AIGROW](https://aigrow.gg/dashboard/api)
+- **Models**: Loaded from `https://aigrow.gg/v1/models`, with context length and per-token prices
+
+### Setup
+
+1. Create an API key at [aigrow.gg/dashboard/api](https://aigrow.gg/dashboard/api)
+2. Enter the API key in the Model Library AIGROW configuration
+3. Or set the `AIGROW_API_KEY` environment variable
+
+### Important Notes
+
+- **Model IDs**: Bare ids such as `claude-haiku-5.5`, `claude-sonnet-5.5` or `gpt-6.2-sol`
+- **Aider Prefix**: Uses `openai/` prefix for Aider mode
 
 ---
 

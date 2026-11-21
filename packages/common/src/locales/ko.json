@@ -568,6 +568,10 @@
     "getApiKeyLink": "Atlas Cloud API 키 받기",
     "apiKey": "API 키"
   },
+  "aigrow": {
+    "getApiKeyLink": "AIGROW API 키 받기",
+    "apiKey": "API 키"
+  },
   "openLlm": {
     "docsLink": "OpenLLM 설정 가이드",
     "baseUrl": "기본 URL",
@@ -625,6 +629,7 @@
     "litellm": "LiteLLM",
     "llmapi": "LLM API",
     "atlascloud": "Atlas Cloud",
+    "aigrow": "AIGROW",
     "minimax": "MiniMax",
     "mistral": "Mistral",
     "neuralwatt": "Neuralwatt",

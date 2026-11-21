@@ -560,6 +560,10 @@
     "getApiKeyLink": "Ottieni chiave API LLM",
     "apiKey": "Chiave API"
   },
+  "aigrow": {
+    "getApiKeyLink": "Ottieni chiave API AIGROW",
+    "apiKey": "Chiave API"
+  },
   "openLlm": {
     "docsLink": "Guida alla configurazione di OpenLLM",
     "baseUrl": "URL di base",
@@ -616,6 +620,7 @@
     "lmstudio": "LM Studio",
     "litellm": "LiteLLM",
     "llmapi": "API LLM",
+    "aigrow": "AIGROW",
     "minimax": "MiniMax",
     "mistral": "Mistral",
     "neuralwatt": "Neuralwatt",

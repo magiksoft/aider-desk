@@ -518,6 +518,10 @@
     "getApiKeyLink": "获取 Atlas Cloud API 密钥",
     "apiKey": "API 密钥"
   },
+  "aigrow": {
+    "getApiKeyLink": "获取 AIGROW API 密钥",
+    "apiKey": "API 密钥"
+  },
   "openLlm": {
     "docsLink": "OpenLLM 设置指南",
     "baseUrl": "基础 URL",
@@ -622,6 +626,7 @@
     "litellm": "LiteLLM",
     "llmapi": "LLM API",
     "atlascloud": "Atlas Cloud",
+    "aigrow": "AIGROW",
     "minimax": "Minimax",
     "mistral": "Mistral",
     "neuralwatt": "Neuralwatt",

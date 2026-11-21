@@ -21,6 +21,7 @@ import {
 import { extractProviderModel } from '@common/utils';
 import { resolveStreamingConfig } from '@common/streaming';
 
+import { aigrowProviderStrategy } from './providers/aigrow';
 import { anthropicProviderStrategy } from './providers/anthropic';
 import { anthropicCompatibleProviderStrategy } from './providers/anthropic-compatible';
 import { atlasCloudProviderStrategy } from './providers/atlascloud';
@@ -109,6 +110,7 @@ export class ModelManager {
 
   // Provider registry for strategy pattern
   private providerRegistry: LlmProviderRegistry = {
+    aigrow: aigrowProviderStrategy,
     anthropic: anthropicProviderStrategy,
     'anthropic-compatible': anthropicCompatibleProviderStrategy,
     atlascloud: atlasCloudProviderStrategy,
