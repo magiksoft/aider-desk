@@ -34,6 +34,7 @@ import {
 } from '@common/tools';
 
 export type LlmProviderName =
+  | 'aigrow'
   | 'anthropic'
   | 'anthropic-compatible'
   | 'atlascloud'
@@ -87,6 +88,7 @@ export interface OllamaProvider extends LlmProviderBase {
 }
 
 export const AVAILABLE_PROVIDERS: LlmProviderName[] = [
+  'aigrow',
   'alibaba-plan',
   'anthropic',
   'anthropic-compatible',
@@ -358,6 +360,12 @@ export interface AtlasCloudProvider extends LlmProviderBase {
 }
 export const isAtlasCloudProvider = (provider: LlmProviderBase): provider is AtlasCloudProvider => provider.name === 'atlascloud';
 
+export interface AigrowProvider extends LlmProviderBase {
+  name: 'aigrow';
+  apiKey: string;
+}
+export const isAigrowProvider = (provider: LlmProviderBase): provider is AigrowProvider => provider.name === 'aigrow';
+
 export interface LlmApiProvider extends LlmProviderBase {
   name: 'llmapi';
   apiKey: string;
@@ -405,6 +413,7 @@ export type LlmProvider =
   | NeuralwattProvider
   | LlmApiProvider
   | AtlasCloudProvider
+  | AigrowProvider
   | OpenLlmProvider
   | ExtensionLlmProvider;
 
@@ -814,6 +823,12 @@ export const getDefaultProviderParams = <T extends LlmProvider>(providerName: Ll
         name: 'atlascloud',
         apiKey: '',
       } satisfies AtlasCloudProvider;
+      break;
+    case 'aigrow':
+      provider = {
+        name: 'aigrow',
+        apiKey: '',
+      } satisfies AigrowProvider;
       break;
     case 'ollama':
       provider = {

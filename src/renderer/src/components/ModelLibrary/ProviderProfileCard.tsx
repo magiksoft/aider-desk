@@ -9,6 +9,7 @@ import { FaExclamationCircle } from 'react-icons/fa';
 import { IconButton } from '@/components/common/IconButton';
 import { ConfirmDialog } from '@/components/common/ConfirmDialog';
 import {
+  AigrowIcon,
   AnthropicIcon,
   AnthropicCompatibleIcon,
   AtlasCloudIcon,
@@ -44,6 +45,7 @@ import { AlibabaPlanIcon } from '@/icons/AlibabaPlanIcon';
 import { KimiPlanIcon } from '@/icons/KimiPlanIcon';
 
 const PROVIDER_ICON_MAP: Record<LlmProviderName, ComponentType<{ width?: number; height?: number; className?: string }>> = {
+  aigrow: AigrowIcon,
   anthropic: AnthropicIcon,
   'anthropic-compatible': AnthropicCompatibleIcon,
   atlascloud: AtlasCloudIcon,

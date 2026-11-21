@@ -10,6 +10,7 @@ import { StreamingSettings } from './StreamingSettings';
 import { DisableToolCallStreaming } from './DisableToolCallStreaming';
 
 import {
+  AigrowParameters,
   AnthropicParameters,
   AnthropicCompatibleParameters,
   AtlasCloudParameters,
@@ -52,6 +53,7 @@ type ProviderParametersProps<T extends LlmProvider> = {
 
 // @ts-expect-error using LlmProvider as type
 const PROVIDER_PARAMETERS_MAP: Record<LlmProviderName, ComponentType<ProviderParametersProps>> = {
+  aigrow: AigrowParameters,
   anthropic: AnthropicParameters,
   'anthropic-compatible': AnthropicCompatibleParameters,
   atlascloud: AtlasCloudParameters,

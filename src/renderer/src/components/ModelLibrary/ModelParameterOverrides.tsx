@@ -41,6 +41,7 @@ const PROVIDER_OVERRIDES_MAP: Partial<Record<LlmProviderName, ComponentType<Prov
   azure: AzureModelOverrides,
   'openai-compatible': OpenAiCompatibleModelOverrides,
   // Providers without specific overrides use DefaultModelOverrides
+  aigrow: DefaultModelOverrides,
   anthropic: DefaultModelOverrides,
   atlascloud: DefaultModelOverrides,
   bedrock: DefaultModelOverrides,

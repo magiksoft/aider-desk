@@ -7,6 +7,7 @@ import { ProviderCard } from './ProviderCard';
 
 import { IconButton } from '@/components/common/IconButton';
 import {
+  AigrowIcon,
   AlibabaPlanIcon,
   AnthropicCompatibleIcon,
   AnthropicIcon,
@@ -40,6 +41,7 @@ import {
 } from '@/icons';
 
 const PROVIDER_ICON_MAP: Record<LlmProviderName, ComponentType<{ width?: number; height?: number; className?: string }>> = {
+  aigrow: AigrowIcon,
   'alibaba-plan': AlibabaPlanIcon,
   anthropic: AnthropicIcon,
   'anthropic-compatible': AnthropicCompatibleIcon,

@@ -69,6 +69,7 @@ const readApiKeyFromConfFile = (filePath: string, envVarName: string): string | 
           NEURALWATT_API_KEY: ['neuralwatt'],
           LLMAPI_API_KEY: ['llmapi'],
           ATLASCLOUD_API_KEY: ['atlascloud'],
+          AIGROW_API_KEY: ['aigrow'],
           OPENLLM_API_KEY: ['openllm'],
         };
 

@@ -1,3 +1,4 @@
+export { AigrowIcon } from './AigrowIcon';
 export { AnthropicIcon } from './AnthropicIcon';
 export { AnthropicCompatibleIcon } from './AnthropicCompatibleIcon';
 export { AtlasCloudIcon } from './AtlasCloudIcon';
