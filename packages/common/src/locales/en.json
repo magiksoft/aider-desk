@@ -564,6 +564,10 @@
     "getApiKeyLink": "Get Atlas Cloud API key",
     "apiKey": "API Key"
   },
+  "aigrow": {
+    "getApiKeyLink": "Get AIGROW API key",
+    "apiKey": "API Key"
+  },
   "openLlm": {
     "docsLink": "OpenLLM setup guide",
     "baseUrl": "Base URL",
@@ -621,6 +625,7 @@
     "litellm": "LiteLLM",
     "llmapi": "LLM API",
     "atlascloud": "Atlas Cloud",
+    "aigrow": "AIGROW",
     "minimax": "MiniMax",
     "mistral": "Mistral",
     "neuralwatt": "Neuralwatt",

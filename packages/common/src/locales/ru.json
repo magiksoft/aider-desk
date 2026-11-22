@@ -564,6 +564,10 @@
     "getApiKeyLink": "Получить API-ключ Atlas Cloud",
     "apiKey": "API-ключ"
   },
+  "aigrow": {
+    "getApiKeyLink": "Получить API-ключ AIGROW",
+    "apiKey": "API-ключ"
+  },
   "openLlm": {
     "docsLink": "Руководство по настройке OpenLLM",
     "baseUrl": "Базовый URL",
@@ -625,6 +629,7 @@
     "litellm": "LiteLLM",
     "llmapi": "LLM API",
     "atlascloud": "Atlas Cloud",
+    "aigrow": "AIGROW",
     "minimax": "MiniMax",
     "mistral": "Mistral",
     "ollama": "Ollama",
