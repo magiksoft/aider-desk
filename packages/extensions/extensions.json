@@ -738,6 +738,20 @@
         "commands"
       ],
       "installCount": 32
+    },
+    {
+      "id": "model-fallback",
+      "name": "Model Fallback",
+      "description": "Continue the current agent run with a secondary model after quota or rate-limit errors",
+      "folder": "model-fallback",
+      "type": "folder",
+      "hasDependencies": false,
+      "capabilities": [
+        "models",
+        "ui"
+      ],
+      "iconUrl": "https://raw.githubusercontent.com/magiksoft/aider-desk/refs/heads/main/packages/extensions/extensions/model-fallback/icon.png",
+      "installCount": 0
     }
   ]
 }
