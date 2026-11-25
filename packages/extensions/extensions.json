@@ -242,7 +242,7 @@
       "capabilities": [
         "notifications"
       ],
-      "installCount": 47
+      "installCount": 48
     },
     {
       "id": "sandbox",
@@ -275,7 +275,7 @@
         "linux",
         "macos"
       ],
-      "installCount": 42
+      "installCount": 43
     },
     {
       "id": "redact-secrets",
@@ -349,7 +349,7 @@
         "tools",
         "code-intelligence"
       ],
-      "installCount": 104
+      "installCount": 105
     },
     {
       "id": "plannotator",
@@ -484,7 +484,7 @@
       "capabilities": [
         "metrics"
       ],
-      "installCount": 135
+      "installCount": 136
     },
     {
       "id": "verifier",
@@ -586,7 +586,7 @@
         "events",
         "ui"
       ],
-      "installCount": 50
+      "installCount": 51
     },
     {
       "id": "codegraph",
@@ -599,7 +599,7 @@
         "tools",
         "search"
       ],
-      "installCount": 101
+      "installCount": 102
     },
     {
       "id": "kanban",
@@ -662,7 +662,7 @@
         "security",
         "commands"
       ],
-      "installCount": 58
+      "installCount": 59
     },
     {
       "id": "git-log",
@@ -674,7 +674,7 @@
       "capabilities": [
         "ui"
       ],
-      "installCount": 67
+      "installCount": 68
     },
     {
       "id": "skill-gallery",
@@ -737,7 +737,7 @@
         "ui",
         "commands"
       ],
-      "installCount": 30
+      "installCount": 31
     }
   ]
 }
