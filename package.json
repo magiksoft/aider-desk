@@ -273,7 +273,8 @@
     "packages/common",
     "packages/extensions",
     "packages/mcp-server",
-    "packages/tree-sitter-utils"
+    "packages/tree-sitter-utils",
+    "packages/ai-mock-provider"
   ],
   "lint-staged": {
     "*.{ts,tsx}": "npm run lint"
