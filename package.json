@@ -1,6 +1,7 @@
 {
   "name": "aider-desk",
   "version": "0.94.0-dev",
+  "private": true,
   "description": "Aider desktop application wrapper",
   "main": "./out/main/index.js",
   "author": "Magiksoft s.r.o.",
