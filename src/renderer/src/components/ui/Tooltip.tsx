@@ -265,6 +265,10 @@ export const TooltipProvider = ({ children, ...props }: TooltipPrimitive.Tooltip
 );
 
 export const Tooltip = ({ content, children, side, align, delayDuration, maxWidth = '300px' }: TooltipProps) => {
+  // Compiler false positive: handlers only touch anchorRef at event time, but the compiler's ref
+  // validation flags the cloneElement props merge (and propagates it through helper calls).
+  // Opted out until upstream fix; eslint-disable is still needed for the react-hooks/refs rule.
+  'use no memo';
   const anchorRef = useRef<HTMLElement | null>(null);
   const delayTimeoutRef = useRef<number | undefined>(undefined);
 
