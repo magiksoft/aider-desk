@@ -125,7 +125,7 @@
         "tools",
         "ui"
       ],
-      "installCount": 61
+      "installCount": 62
     },
     {
       "id": "theme",
@@ -147,7 +147,7 @@
       "capabilities": [
         "modes"
       ],
-      "installCount": 144
+      "installCount": 145
     },
     {
       "id": "protected-paths",
@@ -170,7 +170,7 @@
       "capabilities": [
         "security"
       ],
-      "installCount": 41
+      "installCount": 42
     },
     {
       "id": "ultrathink",
@@ -193,7 +193,7 @@
       "capabilities": [
         "context"
       ],
-      "installCount": 34
+      "installCount": 35
     },
     {
       "id": "external-skills",
@@ -205,7 +205,7 @@
       "capabilities": [
         "context"
       ],
-      "installCount": 91
+      "installCount": 92
     },
     {
       "id": "learn",
@@ -218,7 +218,7 @@
         "commands",
         "tools"
       ],
-      "installCount": 119
+      "installCount": 120
     },
     {
       "id": "legacy-system-prompt",
@@ -230,7 +230,7 @@
       "capabilities": [
         "context"
       ],
-      "installCount": 18
+      "installCount": 19
     },
     {
       "id": "sound-notification",
@@ -242,7 +242,7 @@
       "capabilities": [
         "notifications"
       ],
-      "installCount": 45
+      "installCount": 47
     },
     {
       "id": "sandbox",
@@ -275,7 +275,7 @@
         "linux",
         "macos"
       ],
-      "installCount": 41
+      "installCount": 42
     },
     {
       "id": "redact-secrets",
@@ -336,7 +336,7 @@
       "capabilities": [
         "context"
       ],
-      "installCount": 33
+      "installCount": 34
     },
     {
       "id": "lsp",
@@ -401,7 +401,7 @@
         "ui",
         "workflows"
       ],
-      "installCount": 21
+      "installCount": 22
     },
     {
       "id": "providers-quota-extension",
@@ -442,7 +442,7 @@
         "linux",
         "macos"
       ],
-      "installCount": 53
+      "installCount": 54
     },
     {
       "id": "searxng-search",
@@ -472,7 +472,7 @@
         "linux",
         "macos"
       ],
-      "installCount": 21
+      "installCount": 22
     },
     {
       "id": "tps-counter",
@@ -484,7 +484,7 @@
       "capabilities": [
         "metrics"
       ],
-      "installCount": 134
+      "installCount": 135
     },
     {
       "id": "verifier",
@@ -586,7 +586,7 @@
         "events",
         "ui"
       ],
-      "installCount": 49
+      "installCount": 50
     },
     {
       "id": "codegraph",
@@ -599,7 +599,7 @@
         "tools",
         "search"
       ],
-      "installCount": 100
+      "installCount": 101
     },
     {
       "id": "kanban",
@@ -611,7 +611,7 @@
       "capabilities": [
         "ui"
       ],
-      "installCount": 64
+      "installCount": 65
     },
     {
       "id": "doom",
@@ -636,7 +636,7 @@
         "agents",
         "example"
       ],
-      "installCount": 80
+      "installCount": 81
     },
     {
       "id": "wigolo",
@@ -649,7 +649,7 @@
         "tools",
         "search"
       ],
-      "installCount": 78
+      "installCount": 79
     },
     {
       "id": "destructive-command-guard",
@@ -662,7 +662,7 @@
         "security",
         "commands"
       ],
-      "installCount": 57
+      "installCount": 58
     },
     {
       "id": "git-log",
@@ -674,7 +674,7 @@
       "capabilities": [
         "ui"
       ],
-      "installCount": 66
+      "installCount": 67
     },
     {
       "id": "skill-gallery",
@@ -700,7 +700,7 @@
         "commands",
         "events"
       ],
-      "installCount": 37
+      "installCount": 38
     },
     {
       "id": "reasoning-selector",
@@ -712,7 +712,7 @@
       "capabilities": [
         "ui"
       ],
-      "installCount": 177
+      "installCount": 178
     },
     {
       "id": "dbx",
@@ -737,7 +737,7 @@
         "ui",
         "commands"
       ],
-      "installCount": 29
+      "installCount": 30
     }
   ]
 }
