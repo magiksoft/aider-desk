@@ -14,6 +14,17 @@ import { MermaidDiagram } from '@/components/common/MermaidDiagram';
 
 export const REMARK_PLUGINS = [remarkGfm, remarkMath];
 export const REHYPE_PLUGINS = [rehypeKatex];
+export const BASE_REMARK_PLUGINS: typeof REMARK_PLUGINS = [remarkGfm];
+export const EMPTY_REHYPE_PLUGINS: typeof REHYPE_PLUGINS = [];
+
+export const getMarkdownPlugins = (content: string): { remarkPlugins: typeof REMARK_PLUGINS; rehypePlugins: typeof REHYPE_PLUGINS } => {
+  const hasMath = content.includes('$');
+  return {
+    remarkPlugins: hasMath ? REMARK_PLUGINS : BASE_REMARK_PLUGINS,
+    rehypePlugins: hasMath ? REHYPE_PLUGINS : EMPTY_REHYPE_PLUGINS,
+  };
+};
+
 export const MARKDOWN_COMPONENTS: Components = {
   h1: (props) => <h1 className="text-2xl font-bold my-4 first:mt-0 last:mb-0" {...props} />,
   h2: (props) => <h2 className="text-xl font-bold my-3 first:mt-0 last:mb-0" {...props} />,
@@ -97,11 +108,12 @@ type Props = {
 };
 
 const MarkdownBlockInner = ({ content, baseDir, taskId }: Props) => {
+  const { remarkPlugins, rehypePlugins } = getMarkdownPlugins(content);
   return (
     <ReactMarkdown
       urlTransform={messageUrlTransform}
-      remarkPlugins={REMARK_PLUGINS}
-      rehypePlugins={REHYPE_PLUGINS}
+      remarkPlugins={remarkPlugins}
+      rehypePlugins={rehypePlugins}
       components={getMarkdownComponents(baseDir, taskId)}
     >
       {content}

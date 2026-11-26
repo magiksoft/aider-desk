@@ -1,7 +1,16 @@
 import { render } from '@testing-library/react';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
-import { getMarkdownComponents, MARKDOWN_COMPONENTS, MarkdownBlock } from '../MarkdownBlock';
+import {
+  BASE_REMARK_PLUGINS,
+  EMPTY_REHYPE_PLUGINS,
+  getMarkdownComponents,
+  getMarkdownPlugins,
+  MARKDOWN_COMPONENTS,
+  MarkdownBlock,
+  REHYPE_PLUGINS,
+  REMARK_PLUGINS,
+} from '../MarkdownBlock';
 import { parseMessageContent } from '../utils';
 
 import type { ComponentProps, ReactNode } from 'react';
@@ -133,5 +142,69 @@ describe('streaming updates inside an active MarkdownBlock', () => {
 
     expect(mocks.lifecycleLog).toEqual(['image-mount']);
     expect(container.querySelector('img')).toBe(image);
+  });
+});
+
+describe('getMarkdownPlugins', () => {
+  it('returns base plugins without katex for blocks without $', () => {
+    const plugins = getMarkdownPlugins('Plain prose with **formatting**');
+
+    expect(plugins.remarkPlugins).toBe(BASE_REMARK_PLUGINS);
+    expect(plugins.rehypePlugins).toBe(EMPTY_REHYPE_PLUGINS);
+    expect(plugins.remarkPlugins).toHaveLength(1);
+    expect(plugins.rehypePlugins).toHaveLength(0);
+  });
+
+  it('returns full math plugins for any block containing $', () => {
+    const plugins = getMarkdownPlugins('Inline $x^2$ and a price of $5');
+
+    expect(plugins.remarkPlugins).toBe(REMARK_PLUGINS);
+    expect(plugins.rehypePlugins).toBe(REHYPE_PLUGINS);
+    expect(plugins.remarkPlugins).toHaveLength(2);
+    expect(plugins.rehypePlugins).toHaveLength(1);
+  });
+
+  it('always returns the same static array references', () => {
+    expect(getMarkdownPlugins('first').remarkPlugins).toBe(getMarkdownPlugins('second').remarkPlugins);
+    expect(getMarkdownPlugins('first').rehypePlugins).toBe(getMarkdownPlugins('second').rehypePlugins);
+    expect(getMarkdownPlugins('$a').remarkPlugins).toBe(getMarkdownPlugins('$b').remarkPlugins);
+    expect(getMarkdownPlugins('$a').rehypePlugins).toBe(getMarkdownPlugins('$b').rehypePlugins);
+  });
+});
+
+describe('plugin selection rendering', () => {
+  it('renders GFM features in blocks without math and no katex', () => {
+    const content = [
+      '| Name | Count |',
+      '| ---- | ----- |',
+      '| a    | 1     |',
+      '',
+      '~~struck~~ text',
+      '',
+      '- [ ] open task',
+      '',
+      'Visit https://example.com now',
+    ].join('\n');
+    const { container } = render(<MarkdownBlock content={content} baseDir="/project" />);
+
+    expect(container.querySelector('table')).toBeInTheDocument();
+    expect(container.querySelector('del')).toBeInTheDocument();
+    expect(container.querySelector('input[type="checkbox"]')).toBeInTheDocument();
+    expect(container.querySelector('a[href="https://example.com"]')).toBeInTheDocument();
+    expect(container.querySelector('.katex')).not.toBeInTheDocument();
+  });
+
+  it('renders KaTeX for inline math blocks', () => {
+    const { container } = render(<MarkdownBlock content="Inline $x^2$ formula" baseDir="/project" />);
+
+    expect(container.querySelector('.katex')).toBeInTheDocument();
+    expect(container.querySelector('.katex-display')).not.toBeInTheDocument();
+  });
+
+  it('renders KaTeX for display math blocks', () => {
+    const { container } = render(<MarkdownBlock content={'$$\n\\sum_{i=1}^n i\n$$'} baseDir="/project" />);
+
+    expect(container.querySelector('.katex-display')).toBeInTheDocument();
+    expect(container.querySelector('annotation')?.textContent).toBe('\\sum_{i=1}^n i');
   });
 });
