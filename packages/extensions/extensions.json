@@ -76,7 +76,7 @@
         "tools",
         "ui"
       ],
-      "installCount": 53
+      "installCount": 55
     },
     {
       "id": "wakatime",
@@ -147,7 +147,7 @@
       "capabilities": [
         "modes"
       ],
-      "installCount": 147
+      "installCount": 150
     },
     {
       "id": "protected-paths",
@@ -159,7 +159,7 @@
       "capabilities": [
         "security"
       ],
-      "installCount": 63
+      "installCount": 64
     },
     {
       "id": "permission-gate",
@@ -181,7 +181,7 @@
       "capabilities": [
         "optimization"
       ],
-      "installCount": 62
+      "installCount": 63
     },
     {
       "id": "external-rules",
@@ -218,7 +218,7 @@
         "commands",
         "tools"
       ],
-      "installCount": 121
+      "installCount": 124
     },
     {
       "id": "legacy-system-prompt",
@@ -242,7 +242,7 @@
       "capabilities": [
         "notifications"
       ],
-      "installCount": 48
+      "installCount": 49
     },
     {
       "id": "sandbox",
@@ -275,7 +275,7 @@
         "linux",
         "macos"
       ],
-      "installCount": 44
+      "installCount": 45
     },
     {
       "id": "redact-secrets",
@@ -287,7 +287,7 @@
       "capabilities": [
         "security"
       ],
-      "installCount": 37
+      "installCount": 38
     },
     {
       "id": "chunkhound-search",
@@ -324,7 +324,7 @@
         "context",
         "commands"
       ],
-      "installCount": 96
+      "installCount": 97
     },
     {
       "id": "context-autocompletion-words",
@@ -349,7 +349,7 @@
         "tools",
         "code-intelligence"
       ],
-      "installCount": 106
+      "installCount": 108
     },
     {
       "id": "plannotator",
@@ -388,7 +388,7 @@
         "ui",
         "example"
       ],
-      "installCount": 24
+      "installCount": 25
     },
     {
       "id": "multi-model-run",
@@ -425,7 +425,7 @@
       "capabilities": [
         "providers"
       ],
-      "installCount": 46
+      "installCount": 48
     },
     {
       "id": "fff",
@@ -523,7 +523,7 @@
         "providers",
         "agent-loop"
       ],
-      "installCount": 33
+      "installCount": 34
     },
     {
       "id": "auggie-sdk",
@@ -573,7 +573,7 @@
         "providers",
         "agent-loop"
       ],
-      "installCount": 14
+      "installCount": 15
     },
     {
       "id": "checkpoints",
@@ -599,7 +599,7 @@
         "tools",
         "search"
       ],
-      "installCount": 104
+      "installCount": 105
     },
     {
       "id": "kanban",
@@ -649,7 +649,7 @@
         "tools",
         "search"
       ],
-      "installCount": 79
+      "installCount": 80
     },
     {
       "id": "destructive-command-guard",
@@ -662,7 +662,7 @@
         "security",
         "commands"
       ],
-      "installCount": 60
+      "installCount": 61
     },
     {
       "id": "git-log",
@@ -674,7 +674,7 @@
       "capabilities": [
         "ui"
       ],
-      "installCount": 70
+      "installCount": 71
     },
     {
       "id": "skill-gallery",
@@ -686,7 +686,7 @@
       "capabilities": [
         "ui"
       ],
-      "installCount": 198
+      "installCount": 202
     },
     {
       "id": "task-scheduler",
@@ -712,7 +712,7 @@
       "capabilities": [
         "ui"
       ],
-      "installCount": 180
+      "installCount": 183
     },
     {
       "id": "dbx",
@@ -737,7 +737,7 @@
         "ui",
         "commands"
       ],
-      "installCount": 32
+      "installCount": 33
     },
     {
       "id": "model-fallback",
