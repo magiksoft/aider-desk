@@ -1,10 +1,10 @@
-const LIST_ITEM_REGEX = /^\s{0,3}(?:[-*+]|\d{1,9}[.)]?)(?:\s|$)/;
+export const LIST_ITEM_REGEX = /^\s{0,3}(?:[-*+]|\d{1,9}[.)]?)(?:\s|$)/;
 const ORDERED_LIST_ITEM_REGEX = /^\s*\d+\.\s/;
-const BLOCKQUOTE_REGEX = /^\s{0,3}>/;
+export const BLOCKQUOTE_REGEX = /^\s{0,3}>/;
 const FENCE_OPEN_REGEX = /^\s{0,3}(`{3,}|~{3,})/;
 const INDENTED_LINE_REGEX = /^\s+\S/;
-const LINK_REFERENCE_DEFINITION_REGEX = /^\s*\[[^\]]+\]:\s+/m;
-const FOOTNOTE_REGEX = /\[\^[^\]]+\]/;
+export const LINK_REFERENCE_DEFINITION_REGEX = /^\s*\[[^\]]+\]:\s+/m;
+export const FOOTNOTE_REGEX = /\[\^[^\]]+\]/;
 const MATH_DELIMITER_REGEX = /\$\$/g;
 
 enum LineType {

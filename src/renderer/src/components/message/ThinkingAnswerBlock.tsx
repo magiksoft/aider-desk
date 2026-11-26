@@ -13,7 +13,7 @@ type Props = {
   answer?: string | null;
   baseDir?: string;
   taskId?: string;
-  allFiles?: string[];
+  allFiles?: string[] | ReadonlySet<string>;
   renderMarkdown: boolean;
 };
 

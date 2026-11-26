@@ -17,7 +17,7 @@ import { CompactionSnippetBlock } from './CompactionSnippetBlock';
 import { CustomCommandBashBlock } from './CustomCommandBashBlock';
 import { ThinkingAnswerBlock } from './ThinkingAnswerBlock';
 import { MarkdownBlock } from './MarkdownBlock';
-import { splitMarkdownBlocks } from './markdown-blocks';
+import { BLOCKQUOTE_REGEX, FOOTNOTE_REGEX, LINK_REFERENCE_DEFINITION_REGEX, LIST_ITEM_REGEX, splitMarkdownBlocks } from './markdown-blocks';
 
 import { CodeBlock } from '@/components/common/CodeBlock';
 import { CodeInline } from '@/components/common/CodeInline';
@@ -42,34 +42,67 @@ const ALL_FENCES = [
   ['<sourcecode>', '</sourcecode>'],
 ] as const;
 
-export const parseMessageContent = (
-  baseDir: string,
-  content: string,
-  allFiles: string[],
-  renderMarkdown = false,
-  renderThinking = true,
-  reasoning?: string | null,
-  taskId?: string,
-) => {
-  // Use the reasoning property directly if available
-  if (reasoning) {
-    if (renderThinking) {
-      return (
-        <ThinkingAnswerBlock thinking={reasoning} answer={content} baseDir={baseDir} allFiles={allFiles} renderMarkdown={renderMarkdown} taskId={taskId} />
-      );
-    } else {
-      return parseMessageContent(baseDir, content || reasoning, allFiles, renderMarkdown, renderThinking, undefined, taskId);
+export type AllFilesInput = string[] | ReadonlySet<string>;
+
+const convertToFilesSet = (allFiles: AllFilesInput): ReadonlySet<string> => (allFiles instanceof Set ? allFiles : new Set(allFiles));
+
+const filesMatch = (a: AllFilesInput, b: AllFilesInput): boolean => {
+  if (a === b) {
+    return true;
+  }
+  if (a instanceof Set && b instanceof Set) {
+    if (a.size !== b.size) {
+      return false;
     }
+    for (const file of a) {
+      if (!b.has(file)) {
+        return false;
+      }
+    }
+    return true;
+  }
+  return false;
+};
+
+const hasCrossBlockReferences = (content: string): boolean => LINK_REFERENCE_DEFINITION_REGEX.test(content) || FOOTNOTE_REGEX.test(content);
+
+const BLOCK_CLOSED_PROBE = 'aider-settled-block-probe';
+
+const isClosedMarkdownBlock = (block: string): boolean => splitMarkdownBlocks(`${block}\n\n${BLOCK_CLOSED_PROBE}`).length === 2;
+
+enum BoundaryKind {
+  Fresh = 'fresh',
+  Text = 'text',
+}
+
+type SettledBoundary =
+  | { kind: BoundaryKind.Fresh; offset: number; partCount: number }
+  | { kind: BoundaryKind.Text; offset: number; partCount: number; pendingBlocks: string[] };
+
+type ScanOptions = {
+  baseDir: string;
+  text: string;
+  allFilesSet: ReadonlySet<string>;
+  renderMarkdown: boolean;
+  taskId: string | undefined;
+  initialParts: ReactNode[];
+};
+
+type ScanResult = {
+  parts: ReactNode[];
+  lastBoundary: SettledBoundary | null;
+};
+
+const scanMessageContent = ({ baseDir, text, allFilesSet, renderMarkdown, taskId, initialParts }: ScanOptions): ScanResult => {
+  const parts: ReactNode[] = [...initialParts];
+  const lines = text.split('\n');
+  const lineOffsets: number[] = [];
+  let lineOffset = 0;
+  for (const line of lines) {
+    lineOffsets.push(lineOffset);
+    lineOffset += line.length + 1;
   }
 
-  // Fallback: check if the content matches the thinking/answer format (for legacy messages)
-  const thinkingAnswerContent = parseThinkingAnswerFormat(content, baseDir, allFiles, renderMarkdown, renderThinking, taskId);
-  if (thinkingAnswerContent) {
-    return thinkingAnswerContent;
-  }
-
-  const parts: ReactNode[] = [];
-  const lines = content.split('\n');
   let currentText = '';
   let isInCodeBlock = false;
   let currentFence: (typeof ALL_FENCES)[number] | null = null;
@@ -77,6 +110,52 @@ export const parseMessageContent = (
   let codeContent: string[] = [];
   let currentFile: string | undefined;
   let foundClosingFence = false;
+  let lastNonBlankTextLine = '';
+  let tagOpenUnresolved = false;
+  let currentTextGeneration = 0;
+  let lastBoundary: SettledBoundary | null = null;
+  let pendingTextBoundary: { offset: number; textLength: number; partCount: number; generation: number } | null = null;
+
+  const recordFreshBoundary = (offset: number) => {
+    if (tagOpenUnresolved || currentText) {
+      return;
+    }
+    lastBoundary = { kind: BoundaryKind.Fresh, offset, partCount: parts.length };
+  };
+
+  const afterLineOffset = (lineIndex: number): number => Math.min(lineOffsets[lineIndex] + lines[lineIndex].length + 1, text.length);
+
+  // A blank line only terminates a settleable block when the pending text's
+  // last line cannot merge across the blank (loose list / blockquote
+  // continuations merge across blanks) and no construct is still open. The
+  // expensive validation runs once at the end of the scan; here we only track
+  // the latest cheap candidate so both cold and streaming parses stay O(N).
+  const recordTextBoundary = (lineIndex: number) => {
+    if (tagOpenUnresolved || !renderMarkdown || isInCodeBlock || !currentText) {
+      return;
+    }
+    if (!lastNonBlankTextLine || LIST_ITEM_REGEX.test(lastNonBlankTextLine) || BLOCKQUOTE_REGEX.test(lastNonBlankTextLine)) {
+      return;
+    }
+    pendingTextBoundary = { offset: lineOffsets[lineIndex], textLength: currentText.length, partCount: parts.length, generation: currentTextGeneration };
+  };
+
+  const resolveTextBoundary = () => {
+    const candidate = pendingTextBoundary;
+    if (!candidate || candidate.generation !== currentTextGeneration) {
+      return;
+    }
+    if (lastBoundary && candidate.offset <= lastBoundary.offset) {
+      return;
+    }
+    const pendingText = currentText.slice(0, candidate.textLength);
+    const pendingBlocks = splitMarkdownBlocks(pendingText);
+    const lastPendingBlock = pendingBlocks[pendingBlocks.length - 1];
+    if (!lastPendingBlock || !isClosedMarkdownBlock(lastPendingBlock)) {
+      return;
+    }
+    lastBoundary = { kind: BoundaryKind.Text, offset: candidate.offset, partCount: candidate.partCount, pendingBlocks };
+  };
 
   const processTextBlock = () => {
     if (currentText.trimEnd()) {
@@ -85,13 +164,15 @@ export const parseMessageContent = (
         const markdownBlocks = splitMarkdownBlocks(text);
         const firstBlockKey = parts.length;
         markdownBlocks.forEach((block, blockIndex) => {
-          parts.push(<MarkdownBlock key={`md-${firstBlockKey}-${blockIndex}`} content={block} baseDir={baseDir} taskId={taskId} />);
+          parts.push(<MarkdownBlock key={`md-${firstBlockKey + blockIndex}`} content={block} baseDir={baseDir} taskId={taskId} />);
         });
       } else {
         parts.push(currentText.trimEnd());
       }
       currentText = '';
     }
+    currentTextGeneration++;
+    lastNonBlankTextLine = '';
   };
 
   const processCodeBlock = () => {
@@ -119,13 +200,13 @@ export const parseMessageContent = (
     }
 
     // Check if the line is just a filepath
-    if (allFiles.includes(prevLine)) {
+    if (allFilesSet.has(prevLine)) {
       return { file: prevLine, removeLine: true };
     }
 
     // Check if line ends with a filepath
     const lastWord = prevLine.split(/\s+/).pop();
-    if (lastWord && allFiles.includes(lastWord)) {
+    if (lastWord && allFilesSet.has(lastWord)) {
       return { file: lastWord, removeLine: true };
     }
 
@@ -143,13 +224,13 @@ export const parseMessageContent = (
     }
 
     // Check if the next line is just a filepath
-    if (allFiles.includes(nextLine)) {
+    if (allFilesSet.has(nextLine)) {
       return { file: nextLine, skipLine: true };
     }
 
     // Check if the next line starts with a filepath
     const firstWord = nextLine.split(/\s+/)[0];
-    if (firstWord && allFiles.includes(firstWord)) {
+    if (firstWord && allFilesSet.has(firstWord)) {
       return { file: firstWord, skipLine: true };
     }
 
@@ -185,8 +266,10 @@ export const parseMessageContent = (
 
           // Skip to after the closing tag
           i = endIndex;
+          recordFreshBoundary(afterLineOffset(i));
           continue;
         }
+        tagOpenUnresolved = true;
       }
 
       // Check for <compacted-edits> compaction note blocks
@@ -208,6 +291,9 @@ export const parseMessageContent = (
         parts.push(<CompactionEditsNoteBlock key={parts.length} filePaths={filePaths} />);
         if (endIndex !== -1) {
           i = endIndex;
+          recordFreshBoundary(afterLineOffset(i));
+        } else {
+          tagOpenUnresolved = true;
         }
         continue;
       }
@@ -217,6 +303,7 @@ export const parseMessageContent = (
       if (fileEditedMatch) {
         processTextBlock();
         parts.push(<CompactionSnippetBlock key={parts.length} filePath={fileEditedMatch[1]} />);
+        recordFreshBoundary(afterLineOffset(i));
         continue;
       }
 
@@ -261,6 +348,13 @@ export const parseMessageContent = (
       }
 
       if (renderMarkdown) {
+        if (line.trim()) {
+          lastNonBlankTextLine = line;
+        } else if (currentText) {
+          recordTextBoundary(i);
+        } else {
+          recordFreshBoundary(afterLineOffset(i));
+        }
         currentText += line + '\n';
       } else {
         // Handle inline code ticks
@@ -305,11 +399,16 @@ export const parseMessageContent = (
         processCodeBlock();
         isInCodeBlock = false;
         currentFence = null;
+        recordFreshBoundary(afterLineOffset(i));
       } else {
         codeContent.push(line);
       }
     }
   }
+
+  // Resolve the deferred text-boundary candidate before the trailing flush
+  // invalidates the pending-text generation it was recorded under.
+  resolveTextBoundary();
 
   // Handle any remaining content
   if (isInCodeBlock) {
@@ -318,13 +417,129 @@ export const parseMessageContent = (
     processTextBlock();
   }
 
-  return parts;
+  return { parts, lastBoundary };
+};
+
+const SETTLED_PREFIX_CACHE_LIMIT = 16;
+
+type SettledPrefixEntry = {
+  baseDir: string;
+  taskId: string | undefined;
+  renderMarkdown: boolean;
+  renderThinking: boolean;
+  allFiles: AllFilesInput;
+  allFilesSet: ReadonlySet<string>;
+  settledPrefix: string;
+  settledParts: ReactNode[];
+};
+
+let settledPrefixCache: SettledPrefixEntry[] = [];
+
+const findSettledEntry = (
+  baseDir: string,
+  content: string,
+  allFiles: AllFilesInput,
+  renderMarkdown: boolean,
+  renderThinking: boolean,
+  taskId: string | undefined,
+): SettledPrefixEntry | null =>
+  settledPrefixCache.find(
+    (entry) =>
+      entry.baseDir === baseDir &&
+      entry.taskId === taskId &&
+      entry.renderMarkdown === renderMarkdown &&
+      entry.renderThinking === renderThinking &&
+      filesMatch(entry.allFiles, allFiles) &&
+      content.length > entry.settledPrefix.length &&
+      content.startsWith(entry.settledPrefix),
+  ) ?? null;
+
+const buildSettledParts = (scanParts: ReactNode[], boundary: SettledBoundary, baseDir: string, taskId: string | undefined): ReactNode[] => {
+  const settledParts = scanParts.slice(0, boundary.partCount);
+  if (boundary.kind === BoundaryKind.Text) {
+    boundary.pendingBlocks.forEach((block, blockIndex) => {
+      settledParts.push(<MarkdownBlock key={`md-${boundary.partCount + blockIndex}`} content={block} baseDir={baseDir} taskId={taskId} />);
+    });
+  }
+  return settledParts;
+};
+
+export const parseMessageContent = (
+  baseDir: string,
+  content: string,
+  allFiles: AllFilesInput,
+  renderMarkdown = false,
+  renderThinking = true,
+  reasoning?: string | null,
+  taskId?: string,
+) => {
+  // Use the reasoning property directly if available
+  if (reasoning) {
+    if (renderThinking) {
+      return (
+        <ThinkingAnswerBlock thinking={reasoning} answer={content} baseDir={baseDir} allFiles={allFiles} renderMarkdown={renderMarkdown} taskId={taskId} />
+      );
+    } else {
+      return parseMessageContent(baseDir, content || reasoning, allFiles, renderMarkdown, renderThinking, undefined, taskId);
+    }
+  }
+
+  // Fallback: check if the content matches the thinking/answer format (for legacy messages)
+  const thinkingAnswerContent = parseThinkingAnswerFormat(content, baseDir, allFiles, renderMarkdown, renderThinking, taskId);
+  if (thinkingAnswerContent) {
+    return thinkingAnswerContent;
+  }
+
+  if (!hasCrossBlockReferences(content)) {
+    const entry = findSettledEntry(baseDir, content, allFiles, renderMarkdown, renderThinking, taskId);
+    if (entry) {
+      // Append-only growth: reuse the settled parts and scan only the suffix.
+      const suffix = content.slice(entry.settledPrefix.length);
+      const scan = scanMessageContent({
+        baseDir,
+        text: suffix,
+        allFilesSet: entry.allFilesSet,
+        renderMarkdown,
+        taskId,
+        initialParts: entry.settledParts,
+      });
+      const boundary = scan.lastBoundary;
+      if (boundary) {
+        entry.settledPrefix += suffix.slice(0, boundary.offset);
+        entry.settledParts = buildSettledParts(scan.parts, boundary, baseDir, taskId);
+      }
+      settledPrefixCache = [entry, ...settledPrefixCache.filter((cached) => cached !== entry)];
+      return scan.parts;
+    }
+  }
+
+  const allFilesSet = convertToFilesSet(allFiles);
+  const scan = scanMessageContent({ baseDir, text: content, allFilesSet, renderMarkdown, taskId, initialParts: [] });
+  if (!hasCrossBlockReferences(content)) {
+    const boundary = scan.lastBoundary;
+    if (boundary) {
+      settledPrefixCache = [
+        {
+          baseDir,
+          taskId,
+          renderMarkdown,
+          renderThinking,
+          allFiles,
+          allFilesSet,
+          settledPrefix: content.slice(0, boundary.offset),
+          settledParts: buildSettledParts(scan.parts, boundary, baseDir, taskId),
+        },
+        ...settledPrefixCache,
+      ].slice(0, SETTLED_PREFIX_CACHE_LIMIT);
+    }
+  }
+  return scan.parts;
 };
 
 export const parseThinkingAnswerFormat = (
   content: string,
   baseDir: string = '',
-  allFiles: string[] = [],
+  allFiles: AllFilesInput = [],
   renderMarkdown = false,
   renderThinking = true,
   taskId?: string,
