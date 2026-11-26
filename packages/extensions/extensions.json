@@ -12,7 +12,7 @@
         "ui",
         "commands"
       ],
-      "installCount": 1
+      "installCount": 2
     },
     {
       "id": "custom-task-statuses",
@@ -51,7 +51,7 @@
       "capabilities": [
         "providers"
       ],
-      "installCount": 13
+      "installCount": 14
     },
     {
       "id": "jev",
@@ -125,7 +125,7 @@
         "tools",
         "ui"
       ],
-      "installCount": 62
+      "installCount": 63
     },
     {
       "id": "theme",
@@ -147,7 +147,7 @@
       "capabilities": [
         "modes"
       ],
-      "installCount": 145
+      "installCount": 146
     },
     {
       "id": "protected-paths",
@@ -205,7 +205,7 @@
       "capabilities": [
         "context"
       ],
-      "installCount": 92
+      "installCount": 93
     },
     {
       "id": "learn",
@@ -484,7 +484,7 @@
       "capabilities": [
         "metrics"
       ],
-      "installCount": 136
+      "installCount": 137
     },
     {
       "id": "verifier",
@@ -599,7 +599,7 @@
         "tools",
         "search"
       ],
-      "installCount": 102
+      "installCount": 103
     },
     {
       "id": "kanban",
@@ -674,7 +674,7 @@
       "capabilities": [
         "ui"
       ],
-      "installCount": 68
+      "installCount": 69
     },
     {
       "id": "skill-gallery",
@@ -686,7 +686,7 @@
       "capabilities": [
         "ui"
       ],
-      "installCount": 196
+      "installCount": 197
     },
     {
       "id": "task-scheduler",
@@ -712,7 +712,7 @@
       "capabilities": [
         "ui"
       ],
-      "installCount": 178
+      "installCount": 179
     },
     {
       "id": "dbx",
@@ -724,7 +724,7 @@
       "capabilities": [
         "ui"
       ],
-      "installCount": 5
+      "installCount": 6
     },
     {
       "id": "compaction-studio",
