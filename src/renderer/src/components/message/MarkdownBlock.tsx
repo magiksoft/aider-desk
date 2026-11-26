@@ -61,6 +61,35 @@ export const MARKDOWN_COMPONENTS: Components = {
   td: (props) => <td className="px-4 py-2 text-xs text-text-primary whitespace-nowrap" {...props} />,
 };
 
+const COMPONENTS_CACHE_LIMIT = 100;
+const markdownComponentsCache = new Map<string, Components>();
+
+export const getMarkdownComponents = (baseDir: string, taskId?: string): Components => {
+  const key = JSON.stringify([baseDir, taskId]);
+  const cached = markdownComponentsCache.get(key);
+  if (cached) {
+    return cached;
+  }
+
+  const components: Components = {
+    ...MARKDOWN_COMPONENTS,
+    a: ({ href, children, title }) => (
+      <MarkdownLink href={href} title={title} baseDir={baseDir} taskId={taskId}>
+        {children}
+      </MarkdownLink>
+    ),
+    img: ({ src, alt, title }) => <MarkdownImage src={src} alt={alt} title={title} baseDir={baseDir} taskId={taskId} />,
+  };
+  markdownComponentsCache.set(key, components);
+  if (markdownComponentsCache.size > COMPONENTS_CACHE_LIMIT) {
+    const oldestKey = markdownComponentsCache.keys().next().value;
+    if (oldestKey !== undefined) {
+      markdownComponentsCache.delete(oldestKey);
+    }
+  }
+  return components;
+};
+
 type Props = {
   content: string;
   baseDir: string;
@@ -73,15 +102,7 @@ const MarkdownBlockInner = ({ content, baseDir, taskId }: Props) => {
       urlTransform={messageUrlTransform}
       remarkPlugins={REMARK_PLUGINS}
       rehypePlugins={REHYPE_PLUGINS}
-      components={{
-        ...MARKDOWN_COMPONENTS,
-        a: ({ href, children, title }) => (
-          <MarkdownLink href={href} title={title} baseDir={baseDir} taskId={taskId}>
-            {children}
-          </MarkdownLink>
-        ),
-        img: ({ src, alt, title }) => <MarkdownImage src={src} alt={alt} title={title} baseDir={baseDir} taskId={taskId} />,
-      }}
+      components={getMarkdownComponents(baseDir, taskId)}
     >
       {content}
     </ReactMarkdown>
