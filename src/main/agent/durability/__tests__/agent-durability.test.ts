@@ -312,8 +312,10 @@ describe('Agent execution recovery', () => {
     };
     const compacted: ContextMessage[] = [user, { id: 'summary', role: 'assistant', content: 'COMPACTED_CHILD_SUMMARY' }];
     await fixture.durability.finishStep('execution', [user, old]);
-    const method = compactionType === ContextCompactionType.Smart ? 'smartCompactMessages' : 'generateCompactedSummary';
-    const summary = vi.spyOn(compaction, method).mockResolvedValue(compacted);
+    const summary =
+      compactionType === ContextCompactionType.Smart
+        ? vi.spyOn(compaction, 'smartCompactToTokenTarget').mockResolvedValue({ messages: compacted, level: compaction.CompactionLevel.One, tokensAfter: 1 })
+        : vi.spyOn(compaction, 'generateCompactedSummary').mockResolvedValue(compacted);
     try {
       await agent['compactMessagesIfNeeded'](
         fixture.task,

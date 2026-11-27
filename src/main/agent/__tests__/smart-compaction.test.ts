@@ -15,6 +15,7 @@ import {
   removeVerboseToolCalls,
   removeReasoningFromAssistant,
 } from '../smart-compaction';
+import { estimateContextMessageTokens, formatSmartCompactionResult, smartCompactToTokenTarget } from '../compaction';
 
 import type { ContextMessage, ContextAssistantMessage, ContextToolMessage, ToolResultPart } from '@common/types/context';
 
@@ -1297,6 +1298,72 @@ describe('full pipeline invariants', () => {
       bashOutputs.push(parsed.stdout);
     }
     expect(new Set(bashOutputs).size).toBe(bashOutputs.length);
+  });
+});
+
+describe('smartCompactToTokenTarget', () => {
+  const protectedHistory = () => {
+    const recentRead = fileReadTool('recent.ts', 'Recent content '.repeat(200));
+    return [recentRead.assistant, recentRead.result, ...Array.from({ length: 8 }, () => userMsg('continue'))];
+  };
+
+  it('stops at the first level that meets the target, including unchanged prompt overhead', async () => {
+    const read = fileReadTool('old.ts', Array.from({ length: 100 }, (_, i) => `line ${i}`).join('\n'));
+    const messages = [read.assistant, read.result, ...protectedHistory()];
+    const overhead = 1000;
+    const tokensBefore = estimateContextMessageTokens(messages) + overhead;
+    const result = await smartCompactToTokenTarget(messages, CompactionLevel.One, { tokensBefore, threshold: tokensBefore - 50 });
+
+    expect(result.level).toBe(CompactionLevel.One);
+    expect(result.tokensAfter).toBe(estimateContextMessageTokens(result.messages) + overhead);
+    expect(result.tokensAfter).toBeLessThanOrEqual(tokensBefore - 50);
+  });
+
+  it('tries stronger levels even when earlier levels save nothing, without changing recent messages', async () => {
+    const read = fileReadTool('old.ts', 'Old content '.repeat(100));
+    const recent = protectedHistory();
+    const messages = [read.assistant, read.result, ...recent];
+    const original = structuredClone(messages);
+    const tokensBefore = estimateContextMessageTokens(messages) + 1000;
+    const threshold = tokensBefore - 50;
+    const result = await smartCompactToTokenTarget(messages, CompactionLevel.One, { tokensBefore, threshold });
+
+    expect(result.level).toBe(CompactionLevel.Three);
+    expect(result.tokensAfter).toBeLessThanOrEqual(threshold);
+    expect(result.messages.slice(-recent.length)).toEqual(recent);
+    expect(messages).toEqual(original);
+  });
+
+  it('does not re-enable a disabled pass to meet the target', async () => {
+    const read = fileReadTool('old.ts', 'Old content '.repeat(100));
+    const messages = [read.assistant, read.result, ...protectedHistory()];
+    const tokensBefore = estimateContextMessageTokens(messages) + 1000;
+    const result = await smartCompactToTokenTarget(
+      messages,
+      CompactionLevel.One,
+      { tokensBefore, threshold: tokensBefore - 50 },
+      { passes: { fileReads: false } },
+    );
+
+    expect(result.messages).toEqual(messages);
+    expect(result.tokensAfter).toBe(tokensBefore);
+  });
+
+  it('uses the strongest useful level and reports when it cannot fit the threshold', async () => {
+    const read = fileReadTool('old.ts', 'Old content '.repeat(100));
+    const messages = [
+      assistantReasoningMsg('Old reasoning '.repeat(200), 'Old answer'),
+      read.assistant,
+      read.result,
+      ...Array.from({ length: 50 }, () => userMsg('continue')),
+    ];
+    const target = { tokensBefore: estimateContextMessageTokens(messages) + 1000, threshold: 900 };
+    const result = await smartCompactToTokenTarget(messages, CompactionLevel.One, target);
+
+    expect(result.level).toBe(CompactionLevel.Max);
+    expect(result.tokensAfter).toBe(estimateContextMessageTokens(result.messages) + 1000);
+    expect(getTextOutput(getToolResultPart(result.messages, 'power---file_read'))).toContain('result redacted');
+    expect(formatSmartCompactionResult('en', target, result)).toContain('Still above the 900-token threshold after trying the maximum level.');
   });
 });
 

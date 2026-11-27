@@ -953,6 +953,7 @@ describe('Agent - compactMessagesIfNeeded', () => {
     task.getContextMessages = vi.fn().mockResolvedValue([]);
     task.addLogMessage = vi.fn();
     task.reloadGroupMessages = vi.fn();
+    task.sendTaskMessageRemoved = vi.fn();
 
     agent['prepareMessages'] = vi.fn().mockResolvedValue([]);
 
@@ -1124,6 +1125,48 @@ describe('Agent - compactMessagesIfNeeded', () => {
     const taskNearThreshold = await runCompact([...makeResultMessages(50000), toolMessage], 51500);
 
     expect(taskNearThreshold.compactConversation).toHaveBeenCalledTimes(1);
+  });
+
+  it('passes the measured token total and effective threshold to task smart compaction', async () => {
+    agent = buildAgent(() => ({ maxInputTokens: 200000 }));
+    mockProfile.autoCompactionType = ContextCompactionType.Smart;
+
+    const task = await runCompact(makeResultMessages(120000), 80000);
+
+    expect(task.smartCompactConversation).toHaveBeenCalledExactlyOnceWith(
+      expect.any(Array),
+      undefined,
+      { tokenTarget: { tokensBefore: 121000, threshold: 80000 } },
+      undefined,
+    );
+  });
+
+  it('reloads a subagent conversation once and logs its estimated token savings', async () => {
+    agent = buildAgent(() => ({ maxInputTokens: 200000 }));
+    mockProfile.isSubagent = true;
+    mockProfile.autoCompactionType = ContextCompactionType.Smart;
+    const text = 'File content '.repeat(1000);
+    const task = await runCompact([
+      { id: 'read-call', role: 'assistant', content: [{ type: 'tool-call', toolCallId: 'read', toolName: 'power---file_read', input: {} }] },
+      {
+        id: 'read-result',
+        role: 'tool',
+        content: [{ type: 'tool-result', toolCallId: 'read', toolName: 'power---file_read', output: { type: 'text', value: text } }],
+      },
+      ...Array.from({ length: 9 }, (_, i) => ({ id: `user-${i}`, role: 'user', content: 'continue' })),
+      ...makeResultMessages(100000),
+    ]);
+
+    expect(task.smartCompactConversation).not.toHaveBeenCalled();
+    expect(task.reloadGroupMessages).toHaveBeenCalledTimes(1);
+    expect(task.addLogMessage).toHaveBeenCalledExactlyOnceWith(
+      'info',
+      expect.stringMatching(/Smart-compacted at level 3: .* tokens \(saved ~/),
+      false,
+      undefined,
+      undefined,
+      true,
+    );
   });
 
   it('should not compact when the trailing tool result keeps the total below the threshold', async () => {

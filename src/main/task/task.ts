@@ -90,7 +90,7 @@ import type { ToolContent, JSONValue } from '@common/types';
 import type { RegisteredCommand } from '@/extensions/extension-manager';
 import type { WatchHandle } from '@/file-watcher-manager';
 import type { SmartCompactionPassSelection } from '@/agent/smart-compaction';
-import type { ContextGenerationOptions, ContextGenerationResult, SmartCompactionOptions } from '@common/extensions';
+import type { ContextGenerationOptions, ContextGenerationResult } from '@common/extensions';
 
 import { shutdown } from '@/shutdown';
 import { translate } from '@/utils/i18n';
@@ -130,7 +130,14 @@ import { getElectronApp } from '@/app';
 import { PromptsManager } from '@/prompts';
 import { PythonDependenciesInstaller } from '@/python-dependencies-installer';
 import { getNetworkEnvVars } from '@/network-manager';
-import { CompactionLevel, extractSummary, smartCompactMessages } from '@/agent/compaction';
+import {
+  CompactionLevel,
+  extractSummary,
+  formatSmartCompactionResult,
+  smartCompactMessages,
+  smartCompactToTokenTarget,
+  type TaskSmartCompactionOptions,
+} from '@/agent/compaction';
 
 export const INTERNAL_TASK_ID = 'internal';
 export const RESPONSE_CHUNK_FLUSH_INTERVAL_MS = 10;
@@ -3763,9 +3770,10 @@ export class Task {
   public async smartCompactConversation(
     contextMessages?: ContextMessage[],
     infoMessage = 'Conversation smart-compacted.',
-    options?: SmartCompactionOptions,
+    options?: TaskSmartCompactionOptions,
     executionId?: string,
   ): Promise<ContextMessage[]> {
+    const tokenTarget = options?.tokenTarget;
     if (!contextMessages) {
       contextMessages = await this.contextManager.getContextMessages();
     }
@@ -3775,16 +3783,18 @@ export class Task {
       return [];
     }
 
-    const contextIds = new Set(contextMessages.map((message) => message.id));
-    const retainedLogs = (await this.contextManager.getContextMessages()).filter((message) => message.role === 'log' && !contextIds.has(message.id));
-    contextMessages = [...contextMessages, ...retainedLogs];
+    if (!tokenTarget) {
+      const contextIds = new Set(contextMessages.map((message) => message.id));
+      const retainedLogs = (await this.contextManager.getContextMessages()).filter((message) => message.role === 'log' && !contextIds.has(message.id));
+      contextMessages = [...contextMessages, ...retainedLogs];
+    }
 
     // backing up the current context before compacting so the pre-compaction history stays available
     const checkpointId = await this.contextManager.backupContext();
 
     if (options?.compactionLevel !== undefined) {
       this.smartCompactionLevel = Math.min(Math.max(Math.round(options.compactionLevel), 1), CompactionLevel.Max) as CompactionLevel;
-    } else if (!options) {
+    } else if (!options || tokenTarget) {
       // Determine compaction level based on messages since last compaction
       const messagesSinceLastCompaction = contextMessages.length - this.lastSmartCompactionMessageCount;
       if (messagesSinceLastCompaction <= 3) {
@@ -3807,12 +3817,18 @@ export class Task {
     });
     const protectedMessageCount = options?.protectedMessageCount ?? 10;
     const passes: SmartCompactionPassSelection | undefined = options?.passes;
-    const compactedMessages = await smartCompactMessages(contextMessages, protectedMessageCount, this.smartCompactionLevel, passes);
+    const adaptiveResult = tokenTarget ? await smartCompactToTokenTarget(contextMessages, this.smartCompactionLevel, tokenTarget, options) : undefined;
+    const compactedMessages =
+      adaptiveResult?.messages ?? (await smartCompactMessages(contextMessages, protectedMessageCount, this.smartCompactionLevel, passes));
     const compactedIds = new Set(compactedMessages.map((message) => message.id));
     const currentLogs = (await this.contextManager.getContextMessages()).filter((message) => message.role === 'log' && !compactedIds.has(message.id));
     compactedMessages.push(...currentLogs);
 
     this.lastSmartCompactionMessageCount = compactedMessages.length;
+    if (adaptiveResult && tokenTarget) {
+      this.smartCompactionLevel = adaptiveResult.level;
+      infoMessage = formatSmartCompactionResult(this.store.getSettings().language, tokenTarget, adaptiveResult);
+    }
 
     await this.contextManager.loadMessages(compactedMessages, false, executionId, true);
     await this.updateContextInfo();

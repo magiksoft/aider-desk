@@ -653,7 +653,7 @@ export const removeStaleFileReads = (messages: ContextMessage[], protectedMessag
 
 export const compactFileReads = (messages: ContextMessage[], protectedMessageCount = 10, compactionLevel = CompactionLevel.One): ContextMessage[] => {
   const protectedStart = getProtectedStartIndex(messages, protectedMessageCount);
-  const maxLines = compactionLevel === CompactionLevel.Three ? 0 : compactionLevel === CompactionLevel.Two ? 20 : 50;
+  const maxLines = compactionLevel === CompactionLevel.Two ? 20 : 50;
 
   for (let i = 0; i < protectedStart; i++) {
     if (i >= messages.length) {
@@ -678,7 +678,7 @@ export const compactFileReads = (messages: ContextMessage[], protectedMessageCou
         continue;
       }
 
-      if (compactionLevel === CompactionLevel.Three) {
+      if (compactionLevel >= CompactionLevel.Three) {
         part.output = {
           type: 'text',
           value: '<result redacted due to compaction, read the file again if content is needed>',

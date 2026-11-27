@@ -1648,6 +1648,8 @@
     "cacheReadTokens": "Токены чтения из кэша"
   },
   "compaction": {
+    "smartResult": "Умное сжатие на уровне {{level}}: ~{{before}} → ~{{after}} токенов (сэкономлено ~{{saved}}).",
+    "smartTargetMissed": "Даже после попытки с максимальным уровнем порог в {{threshold}} токенов всё ещё превышен.",
     "fileEdited": "Файл изменён (контекст компактизирован)"
   },
   "thinkingAnswer": {

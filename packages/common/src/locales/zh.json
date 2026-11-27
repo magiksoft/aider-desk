@@ -1606,6 +1606,8 @@
     "cacheReadTokens": "缓存读取令牌"
   },
   "compaction": {
+    "smartResult": "已进行第 {{level}} 级智能压缩：约 {{before}} → {{after}} 个令牌（节省约 {{saved}} 个）。",
+    "smartTargetMissed": "尝试最高级别后，仍超过 {{threshold}} 个令牌的阈值。",
     "fileEdited": "文件已编辑（上下文已压缩）"
   },
   "thinkingAnswer": {

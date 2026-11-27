@@ -70,6 +70,43 @@ afterEach(async () => {
 });
 
 describe('durable compaction restore points', () => {
+  it.each([
+    { compactionLevel: undefined, expectedLevel: 3 },
+    { compactionLevel: 4, expectedLevel: 4 },
+  ])('writes one checkpoint and result log after adaptive smart compaction starting at $compactionLevel', async ({ compactionLevel, expectedLevel }) => {
+    const { task, context } = createTask();
+    const history: ContextMessage[] = [
+      { id: 'read-call', role: 'assistant', content: [{ type: 'tool-call', toolCallId: 'read', toolName: 'power---file_read', input: {} }] },
+      {
+        id: 'read-result',
+        role: 'tool',
+        content: [{ type: 'tool-result', toolCallId: 'read', toolName: 'power---file_read', output: { type: 'text', value: 'File content '.repeat(200) } }],
+      },
+      ...Array.from({ length: 2 }, (_, i): ContextMessage => ({ id: `user-${i}`, role: 'user', content: 'continue' })),
+    ];
+    await context.getContextMessages();
+    context.disableAutosave();
+    history.forEach((message) => context.addContextMessage(message));
+    const backup = vi.spyOn(context, 'backupContext');
+    const load = vi.spyOn(context, 'loadMessages');
+
+    await task.smartCompactConversation(history, undefined, {
+      compactionLevel,
+      protectedMessageCount: 2,
+      tokenTarget: { tokensBefore: 2000, threshold: 1900 },
+    });
+
+    expect(backup).toHaveBeenCalledTimes(1);
+    expect(load).toHaveBeenCalledTimes(1);
+    const logs = (await context.getContextMessages()).filter((message) => message.role === 'log');
+    expect(logs).toEqual([
+      expect.objectContaining({
+        content: expect.stringContaining(`Smart-compacted at level ${expectedLevel}: `),
+        actions: [expect.objectContaining({ id: 'undoContextChange' })],
+      }),
+    ]);
+  });
+
   it.each(['agent', 'ask', 'smart'] as const)('restores B then A after restart for %s compaction', async (mode) => {
     const { task, context, fixture } = createTask();
     await context.getContextMessages();

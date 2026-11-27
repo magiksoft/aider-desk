@@ -68,7 +68,6 @@ import { createSkillsToolset } from './tools/skills';
 import { McpManager } from './mcp-manager';
 import { AssistantMessageState, StepResultQueue } from './assistant-message-state';
 import { ApprovalManager } from './tools/approval-manager';
-import { convertImageToolResults } from './message-preparation/provider-compatibility';
 import {
   estimateMessageTokens,
   extractPromptContextFromToolResult,
@@ -78,7 +77,15 @@ import {
   safeStringifyToolOutput,
 } from './utils';
 import { extractReasoningMiddleware } from './middlewares/extract-reasoning-middleware';
-import { CompactionLevel, generateCompactedSummary, getReloadableMessages, getSubagentOldResultIds, smartCompactMessages } from './compaction';
+import {
+  CompactionLevel,
+  estimateContextMessageTokens,
+  formatSmartCompactionResult,
+  generateCompactedSummary,
+  getReloadableMessages,
+  getSubagentOldResultIds,
+  smartCompactToTokenTarget,
+} from './compaction';
 
 import type { ContextGenerationOptions, ContextGenerationResult, ExtensionToolOrigin, ToolsetToolEntry } from '@common/extensions';
 import type { TextPart } from '@ai-sdk/provider-utils';
@@ -2759,7 +2766,7 @@ export class Agent {
     promptContext?: PromptContext,
     abortSignal?: AbortSignal,
   ) {
-    const taskSettings = this.store.getSettings().taskSettings;
+    const { taskSettings, language } = this.store.getSettings();
     const thresholdConfig = {
       percentage: profile.autoCompactThresholdPercentage ?? taskSettings.contextCompactingThreshold.percentage,
       tokens: profile.autoCompactThresholdTokens ?? taskSettings.contextCompactingThreshold.tokens,
@@ -2808,8 +2815,7 @@ export class Agent {
     // messages so the threshold reflects the real next-prompt size.
     const lastReportIndex = resultMessages.indexOf(lastUsageReportMessage);
     if (lastReportIndex >= 0 && lastReportIndex < resultMessages.length - 1) {
-      const trailingMessages = convertImageToolResults(resultMessages.slice(lastReportIndex + 1) as ModelMessage[]);
-      const trailingTokens = estimateMessageTokens(trailingMessages);
+      const trailingTokens = estimateContextMessageTokens(resultMessages.slice(lastReportIndex + 1));
       totalTokens += trailingTokens;
       logger.debug('Added trailing (post-usage-report) tokens to context total', { trailingTokens, totalTokens });
     }
@@ -2859,13 +2865,15 @@ export class Agent {
         `Token usage ${totalTokens} exceeds effective threshold of ${effectiveThreshold} (${thresholdDescription}). Compacting conversation with type: ${contextCompactionType}.`,
       );
 
+      const tokenTarget = { tokensBefore: totalTokens, threshold: effectiveThreshold };
       if (profile.isSubagent) {
         const allMessages = [...contextMessages, ...resultMessages];
 
         if (contextCompactionType === ContextCompactionType.Smart) {
           const oldResultIds = getSubagentOldResultIds(resultMessages, userRequestMessage.id);
 
-          const compactedMessages = await smartCompactMessages(allMessages, 10, CompactionLevel.One);
+          const result = await smartCompactToTokenTarget(allMessages, CompactionLevel.One, tokenTarget);
+          const compactedMessages = result.messages;
 
           contextMessages.length = 0;
           messages.length = 0;
@@ -2876,7 +2884,7 @@ export class Agent {
 
           task.sendTaskMessageRemoved(oldResultIds);
           task.reloadGroupMessages(getReloadableMessages(compactedMessages));
-          task.addLogMessage('info', 'Subagent conversation smart-compacted.', false, promptContext, undefined, true);
+          task.addLogMessage('info', formatSmartCompactionResult(language, tokenTarget, result), false, promptContext, undefined, true);
         } else {
           const oldResultIds = getSubagentOldResultIds(resultMessages, userRequestMessage.id);
 
@@ -2935,12 +2943,7 @@ export class Agent {
         });
         messages.push(...(resultMessages as ModelMessage[]));
       } else if (contextCompactionType === ContextCompactionType.Smart) {
-        const compactedMessages = await task.smartCompactConversation(
-          [...contextMessages, ...resultMessages],
-          'Previous conversation has been compacted.',
-          undefined,
-          promptContext?.id,
-        );
+        const compactedMessages = await task.smartCompactConversation([...contextMessages, ...resultMessages], undefined, { tokenTarget }, promptContext?.id);
 
         contextMessages.length = 0;
         messages.length = 0;

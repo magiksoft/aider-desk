@@ -1628,6 +1628,8 @@
     "cacheReadTokens": "Cache-Lese-Token"
   },
   "compaction": {
+    "smartResult": "Intelligent komprimiert (Stufe {{level}}): ~{{before}} → ~{{after}} Tokens (~{{saved}} eingespart).",
+    "smartTargetMissed": "Auch nach einem Versuch mit der höchsten Stufe liegt der Wert über dem Grenzwert von {{threshold}} Tokens.",
     "fileEdited": "Datei bearbeitet (Kontext komprimiert)"
   },
   "thinkingAnswer": {

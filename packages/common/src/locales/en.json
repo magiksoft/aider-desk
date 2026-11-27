@@ -1652,6 +1652,8 @@
     "cacheReadTokens": "Cache Read Tokens"
   },
   "compaction": {
+    "smartResult": "Smart-compacted at level {{level}}: ~{{before}} → ~{{after}} tokens (saved ~{{saved}}).",
+    "smartTargetMissed": "Still above the {{threshold}}-token threshold after trying the maximum level.",
     "fileEdited": "File edited (context compacted)"
   },
   "thinkingAnswer": {
