@@ -30,6 +30,9 @@ export interface ToolPermissions {
 export interface PromptTemplateData {
   projectDir: string;
   taskDir: string;
+  taskId: string;
+  taskParentId?: string;
+  taskDataDir: string;
   additionalInstructions?: string;
   osName: string;
   currentDate: string;

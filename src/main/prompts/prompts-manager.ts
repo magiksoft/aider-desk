@@ -380,6 +380,9 @@ export class PromptsManager {
     const data: PromptTemplateData = {
       projectDir: task.getProjectDir(),
       taskDir: task.getTaskDir(),
+      taskId: task.taskId,
+      taskParentId: task.task.parentId || undefined,
+      taskDataDir: task.getTaskDataDir(),
       preCompactionHistoryFiles,
       additionalInstructions,
       osName,

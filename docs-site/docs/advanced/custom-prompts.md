@@ -180,6 +180,9 @@ Each prompt template has access to different variables depending on its purpose.
 |----------|------|-------------|
 | `projectDir` | string | Absolute path to the project directory |
 | `taskDir` | string | Absolute path to the current task directory |
+| `taskId` | string | ID of the current task |
+| `taskParentId` | string? | ID of the parent task (present only for subtasks) |
+| `taskDataDir` | string | Absolute path to the task data directory (`.aider-desk/tasks/<taskId>`) |
 | `osName` | string | Operating system name |
 | `currentDate` | string | Current date as a string |
 | `customInstructions` | string | Custom instructions from agent profile or additional instructions |
@@ -194,6 +197,9 @@ The `system-prompt.hbs` template has access to:
 {
   projectDir: string;
   taskDir: string;
+  taskId: string;
+  taskParentId?: string;
+  taskDataDir: string;
   additionalInstructions?: string;
   osName: string;
   currentDate: string;

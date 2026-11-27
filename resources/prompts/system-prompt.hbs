@@ -131,6 +131,9 @@
     <OperatingSystem>{{osName}}</OperatingSystem>
     <ProjectWorkingDirectory>{{taskDir}}</ProjectWorkingDirectory>
     {{#if projectGitRootDirectory}}<ProjectGitRootDirectory>{{projectGitRootDirectory}}</ProjectGitRootDirectory>{{/if}}
+    <TaskId>{{taskId}}</TaskId>
+    {{#if taskParentId}}<ParentTaskId>{{taskParentId}}</ParentTaskId>{{/if}}
+    <TaskDataDir>{{taskDataDir}}</TaskDataDir>
   </SystemInformation>
 
   {{#if preCompactionHistoryFiles}}
