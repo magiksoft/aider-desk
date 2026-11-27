@@ -13,6 +13,7 @@
 - fixed global rule files missing from the system prompt on Windows by expanding home-relative rule paths built with the platform separator
 - fixed imported extension helper modules (.mjs, .cjs, plain .js) staying cached after an extension was edited and reloaded
 - fixed dropped files being silently ignored in browser mode by showing a warning that local file drops are not supported there
+- fixed projects failing to load with a context-save-internal lock timeout by scoping context save locks per project and retrying task loading after a failure
 
 ## [0.93.0]
 

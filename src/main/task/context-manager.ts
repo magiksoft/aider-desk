@@ -744,9 +744,15 @@ export class ContextManager {
     }) as { role: MessageRole; content: string }[];
   }
 
+  private get lockScope(): string {
+    // Lock names are global to the app; scope them by project so identical task ids
+    // (e.g. 'internal') in different projects never contend on the same lock
+    return `${this.task.getProjectDir()}-${this.taskId}`;
+  }
+
   async save(): Promise<void> {
     // Serialize writes so concurrent saves cannot interleave and corrupt the file
-    await withLock(`context-save-${this.taskId}`, async () => {
+    await withLock(`context-save-${this.lockScope}`, async () => {
       try {
         const contextData: TaskContext = {
           version: CURRENT_CONTEXT_VERSION,
@@ -785,7 +791,7 @@ export class ContextManager {
   }
 
   async backupContext(): Promise<string> {
-    return withLock(`context-backup-${this.taskId}`, async () => {
+    return withLock(`context-backup-${this.lockScope}`, async () => {
       const dir = path.dirname(this.storagePath);
       const existingBackups = await getPreCompactionBackupFiles(dir);
       const maxNumber = existingBackups.reduce((max, file) => Math.max(max, getBackupSequence(file)), 0);

@@ -3204,8 +3204,8 @@ export class Task {
       taskId: this.taskId,
     });
     this.durabilityManager.clear();
-    this.contextManager.clearContextFiles();
-    this.contextManager.clearMessages();
+    this.contextManager.clearContextFiles(false);
+    this.contextManager.clearMessages(false);
     await this.contextManager.save();
   }
 

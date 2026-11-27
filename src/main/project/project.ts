@@ -40,7 +40,7 @@ import { FileWatcherManager } from '@/file-watcher-manager';
 export class Project {
   private readonly fileWatcherManager: FileWatcherManager;
   private readonly customCommandManager: CustomCommandManager;
-  private readonly tasksLoadingPromise: Promise<void> | null = null;
+  private tasksLoadingPromise: Promise<void> | null = null;
   private readonly tasks = new Map<string, Task>();
   private readonly deferredTasks = new Map<string, Partial<TaskData>>();
   private tasksReloadingPromise: Promise<TaskData[]> | null = null;
@@ -67,11 +67,29 @@ export class Project {
   ) {
     this.fileWatcherManager = new FileWatcherManager(this.store);
     this.customCommandManager = new CustomCommandManager(this, this.eventManager, this.extensionManager, this.store);
-    this.tasksLoadingPromise = this.loadTasks();
+    void this.ensureTasksLoaded().catch((error) => {
+      // The stored promise surfaces the failure to awaiting callers; this handler only covers
+      // the window before anyone awaits it
+      logger.debug('Task loading failed before any caller awaited it', { baseDir: this.baseDir, error });
+    });
   }
 
   public isStarted(): boolean {
     return this.startPromise !== null;
+  }
+
+  private ensureTasksLoaded(): Promise<void> {
+    if (!this.tasksLoadingPromise) {
+      const loading = this.loadTasks().catch((error) => {
+        // Do not cache the failure so a later call can retry loading
+        if (this.tasksLoadingPromise === loading) {
+          this.tasksLoadingPromise = null;
+        }
+        throw error;
+      });
+      this.tasksLoadingPromise = loading;
+    }
+    return this.tasksLoadingPromise;
   }
 
   public start(): Promise<void> {
@@ -86,7 +104,7 @@ export class Project {
 
         await this.extensionManager.dispatchEvent('onProjectStarted', { baseDir: this.baseDir }, this);
         this.eventManager.sendProjectStarted(this.baseDir);
-        await this.tasksLoadingPromise;
+        await this.ensureTasksLoaded();
         if (DISABLE_RECOVERY) {
           logger.info('Skipping task recovery because AIDER_DESK_DISABLE_RECOVERY is enabled', { baseDir: this.baseDir });
           return;
@@ -107,7 +125,15 @@ export class Project {
 
   private async prepareInternalTask() {
     const task = await this.prepareTask(INTERNAL_TASK_ID);
-    await task.resetContext();
+    try {
+      await task.resetContext();
+    } catch (error) {
+      // A failed internal context reset must not prevent the project from loading
+      logger.error('Failed to reset internal task context, continuing project load', {
+        baseDir: this.baseDir,
+        error,
+      });
+    }
   }
 
   public async createNewTask(params?: CreateTaskParams) {
@@ -573,7 +599,7 @@ export class Project {
   public async deleteTask(taskId: string): Promise<void> {
     try {
       // First, find and delete all subtasks recursively
-      await this.tasksLoadingPromise;
+      await this.ensureTasksLoaded();
       const allTasks = [...Array.from(this.tasks.values(), (task) => task.task), ...Array.from(this.deferredTasks, ([id, data]) => ({ ...data, id }))];
 
       const collectDescendantIds = (parentId: string, visited: Set<string>): string[] =>
@@ -696,7 +722,7 @@ export class Project {
   }
 
   async getTasks(includeArchived = true): Promise<TaskData[]> {
-    await this.tasksLoadingPromise;
+    await this.ensureTasksLoaded();
 
     for (const taskId of this.deferredTasks.keys()) {
       if (includeArchived || !this.isTaskArchived(taskId)) {
@@ -710,7 +736,7 @@ export class Project {
   }
 
   async reloadTasks(includeArchived = true): Promise<TaskData[]> {
-    await this.tasksLoadingPromise;
+    await this.ensureTasksLoaded();
 
     if (!this.tasksReloadingPromise) {
       this.tasksReloadingPromise = this.reloadTasksInternal().finally(() => {
