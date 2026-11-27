@@ -651,7 +651,6 @@
     "navigation": "导航",
     "tabs": {
       "general": "通用",
-      "providers": "模型提供者",
       "aider": "Aider",
       "agents": "代理",
       "mcpServers": "MCP 服务器",
