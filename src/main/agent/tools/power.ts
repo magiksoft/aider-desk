@@ -475,7 +475,7 @@ Do not use escape characters \\ in the string like \\n or \\" and others. Do not
       }
 
       try {
-        const rgArgs: string[] = ['--no-heading', '--line-number', '--color', 'never', '--max-columns', '2000', '--max-columns-preview'];
+        const rgArgs: string[] = ['--no-heading', '--line-number', '--null', '--color', 'never', '--max-columns', '2000', '--max-columns-preview'];
 
         if (ignoreGitignore) {
           rgArgs.push('--no-ignore');
@@ -506,13 +506,14 @@ Do not use escape characters \\ in the string like \\n or \\" and others. Do not
           context?: string[];
         }> = [];
 
-        // rg --no-heading -n output format:
-        //   "path:linenum:content" for match lines
-        //   "path-linenum-content" for context lines (before/after)
+        // rg --no-heading -n --null output format:
+        //   "path\0linenum:content" for match lines
+        //   "path\0linenum-content" for context lines (before/after)
         //   "--" on its own line as a context break separator
+        // The NUL after the path keeps file names such as "migration-001-init.sql" unambiguous.
         // Context lines before a match are "before-context", after a match are "after-context".
         // When matches are far apart in the same file, rg inserts "--" between non-overlapping groups.
-        const outputLineRegex = /^(.+?)([:-])(\d+)\2(.*)$/;
+        const outputLineRegex = /^(\d+)([:-])(.*)$/;
 
         let pendingBeforeContext: string[] = [];
         let afterContextBreak = false;
@@ -530,18 +531,25 @@ Do not use escape characters \\ in the string like \\n or \\" and others. Do not
             return false;
           }
 
-          const match = outputLineRegex.exec(rawLine);
+          const pathEnd = rawLine.indexOf('\0');
+          if (pathEnd === -1) {
+            return false;
+          }
+
+          const match = outputLineRegex.exec(rawLine.slice(pathEnd + 1));
           if (!match) {
             return false;
           }
 
-          const [, rawFilePath, separator, lineNumStr, content] = match;
+          const [, lineNumStr, separator, content] = match;
           const lineNum = parseInt(lineNumStr, 10);
           if (isNaN(lineNum)) {
             return false;
           }
 
-          const filePath = rawFilePath.startsWith('./') ? rawFilePath.slice(2) : rawFilePath;
+          // rg prefixes paths with "./" (".\" on Windows) because it searches "."
+          const rawFilePath = rawLine.slice(0, pathEnd);
+          const filePath = rawFilePath.startsWith('./') || rawFilePath.startsWith('.\\') ? rawFilePath.slice(2) : rawFilePath;
           const isMatch = separator === ':';
 
           if (isMatch) {

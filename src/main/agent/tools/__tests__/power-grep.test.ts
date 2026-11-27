@@ -172,7 +172,7 @@ describe('Power Tools - grep functionality', () => {
 
   describe('output parsing and formatting', () => {
     it('should parse and format matches from a single file', async () => {
-      setSpawnOutput(["component.tsx:1:import React from 'react';"]);
+      setSpawnOutput(["component.tsx\u00001:import React from 'react';"]);
 
       const result = await execGrep('*.tsx', 'React');
 
@@ -182,7 +182,7 @@ describe('Power Tools - grep functionality', () => {
     });
 
     it('should parse and format matches across multiple files', async () => {
-      setSpawnOutput(['file1.ts:1:const value = 42;', 'file2.ts:1:const value = 99;']);
+      setSpawnOutput(['file1.ts\u00001:const value = 42;', 'file2.ts\u00001:const value = 99;']);
 
       const result = await execGrep('*.ts', 'value');
 
@@ -194,11 +194,52 @@ describe('Power Tools - grep functionality', () => {
     });
 
     it('should count matches correctly in the result header', async () => {
-      setSpawnOutput(['test.ts:1:const hello = 1;', 'test.ts:2:const hello2 = 2;']);
+      setSpawnOutput(['test.ts\u00001:const hello = 1;', 'test.ts\u00002:const hello2 = 2;']);
 
       const result = await execGrep('*.ts', 'hello');
 
       expect(result).toContain('2 matches');
+    });
+  });
+
+  describe('file paths', () => {
+    it('should pass --null so file paths are unambiguously delimited', async () => {
+      setSpawnOutput([]);
+      await execGrep('*.ts', 'searchTerm');
+
+      expect(getLastSpawnArgs()).toContain('--null');
+    });
+
+    it('should not lose matches in files whose names contain -<digits>-', async () => {
+      setSpawnOutput(['./db/migration-001-init.sql\u00002:CREATE TABLE users;', './_posts/2024-01-15-hello.md\u00003:hello world']);
+
+      const result = await execGrep('*', 'users|hello');
+
+      expect(result).toContain('2 matches');
+      expect(result).toContain('### db/migration-001-init.sql (1 match)');
+      expect(result).toContain('- **L2:** `CREATE TABLE users;`');
+      expect(result).toContain('### _posts/2024-01-15-hello.md (1 match)');
+      expect(result).toContain('- **L3:** `hello world`');
+    });
+
+    it('should strip the Windows .\\ prefix from file paths', async () => {
+      setSpawnOutput(['.\\src\\component.tsx\u00001:const value = 1;']);
+
+      const result = await execGrep('*.tsx', 'value');
+
+      expect(result).toContain('### src\\component.tsx (1 match)');
+      expect(result).not.toContain('.\\src');
+    });
+
+    it('should attach context lines of files whose names contain -<digits>-', async () => {
+      setSpawnOutput(['./migration-001-init.sql\u00001-before', './migration-001-init.sql\u00002:TARGET_LINE', './migration-001-init.sql\u00003-after']);
+
+      const result = await execGrep('*.sql', 'TARGET_LINE', { contextLines: 1 });
+
+      expect(result).toContain('### migration-001-init.sql (1 match)');
+      expect(result).toContain('- **L2:** `TARGET_LINE`');
+      expect(result).toContain('  before');
+      expect(result).toContain('  after');
     });
   });
 
@@ -223,7 +264,7 @@ describe('Power Tools - grep functionality', () => {
 
   describe('context lines', () => {
     it('should include context lines around matches', async () => {
-      setSpawnOutput(['test.ts-2-line2', 'test.ts:3:TARGET_LINE', 'test.ts-4-line4']);
+      setSpawnOutput(['test.ts\u00002-line2', 'test.ts\u00003:TARGET_LINE', 'test.ts\u00004-line4']);
 
       const result = await execGrep('*.ts', 'TARGET_LINE', { contextLines: 1 });
 
@@ -233,7 +274,7 @@ describe('Power Tools - grep functionality', () => {
     });
 
     it('should not include context lines when contextLines is 0', async () => {
-      setSpawnOutput(['test.ts:3:TARGET_LINE']);
+      setSpawnOutput(['test.ts\u00003:TARGET_LINE']);
 
       const result = await execGrep('*.ts', 'TARGET_LINE', { contextLines: 0 });
 
@@ -245,7 +286,7 @@ describe('Power Tools - grep functionality', () => {
     it('should limit results to maxResults', async () => {
       const lines: string[] = [];
       for (let i = 0; i < 100; i++) {
-        lines.push(`file_${i}.ts:1:const match${i} = ${i};`);
+        lines.push(`file_${i}.ts\u00001:const match${i} = ${i};`);
       }
       setSpawnOutput(lines);
 
@@ -256,7 +297,7 @@ describe('Power Tools - grep functionality', () => {
     });
 
     it('should not show limit notice when under maxResults', async () => {
-      setSpawnOutput(['test.ts:1:const hello = 1;']);
+      setSpawnOutput(['test.ts\u00001:const hello = 1;']);
 
       const result = await execGrep('*.ts', 'hello', { maxResults: 50 });
 
@@ -272,7 +313,7 @@ describe('Power Tools - grep functionality', () => {
       const lines: string[] = [];
       for (let f = 0; f < numFiles; f++) {
         for (let i = 0; i < linesPerFile; i++) {
-          lines.push(`file_${f}.ts:${i + 1}:const searchTerm_${f}_${i} = ${i};`);
+          lines.push(`file_${f}.ts\u0000${i + 1}:const searchTerm_${f}_${i} = ${i};`);
         }
       }
       setSpawnOutput(lines);
@@ -291,7 +332,7 @@ describe('Power Tools - grep functionality', () => {
       const lines: string[] = [];
       for (let f = 0; f < numFiles; f++) {
         for (let i = 0; i < linesPerFile; i++) {
-          lines.push(`file_${f}.ts:${i + 1}:const searchTerm_${f}_${i} = ${i};`);
+          lines.push(`file_${f}.ts\u0000${i + 1}:const searchTerm_${f}_${i} = ${i};`);
         }
       }
       setSpawnOutput(lines);
