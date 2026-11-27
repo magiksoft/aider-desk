@@ -57,6 +57,36 @@ export const getPreCompactionBackupFiles = async (dir: string): Promise<string[]
   }
 };
 
+export const getMaxReferencedCheckpointId = (messages: ContextMessage[]): string | undefined => {
+  let maxId: string | undefined;
+  let maxSequence = 0;
+  for (const message of messages) {
+    if (message.role !== 'log' || !message.actions) {
+      continue;
+    }
+    const actions = message.actions.flatMap((action) => [action, ...(action.alternativeActions ?? [])]);
+    for (const action of actions) {
+      if (action.id !== 'undoContextChange' && action.id !== 'forkTaskFromCheckpoint') {
+        continue;
+      }
+      const data = action.data;
+      if (!data || typeof data !== 'object' || Array.isArray(data) || !('checkpointId' in data)) {
+        continue;
+      }
+      const checkpointId = data.checkpointId;
+      if (typeof checkpointId !== 'string') {
+        continue;
+      }
+      const sequence = getBackupSequence(checkpointId);
+      if (sequence > maxSequence) {
+        maxSequence = sequence;
+        maxId = checkpointId;
+      }
+    }
+  }
+  return maxId;
+};
+
 export class ContextManager {
   private messages: ContextMessage[];
   private files: ContextFile[];
@@ -810,11 +840,12 @@ export class ContextManager {
     }
   }
 
-  async copyCompactionCheckpointsFrom(source: ContextManager, checkpointId: string): Promise<void> {
+  async copyCompactionCheckpointsFrom(source: ContextManager, checkpointId?: string): Promise<void> {
     const files = await getPreCompactionBackupFiles(source.getSnapshotDir());
     await fs.mkdir(this.getSnapshotDir(), { recursive: true });
+    const maxSequence = checkpointId ? getBackupSequence(checkpointId) : Number.MAX_SAFE_INTEGER;
     for (const file of files) {
-      if (getBackupSequence(file) <= getBackupSequence(checkpointId)) {
+      if (getBackupSequence(file) <= maxSequence) {
         await fs.copyFile(path.join(source.getSnapshotDir(), file), path.join(this.getSnapshotDir(), file));
       }
     }

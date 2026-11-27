@@ -250,3 +250,91 @@ it('forks the exact pre-compaction history and preserves earlier restore points 
   expect(await restarted.task.undoContextChange(checkpointA)).toBe(true);
   expect(await restarted.context.getContextMessages()).toEqual(original);
 });
+
+it('copies checkpoints referenced by forked messages when forking at a message', async () => {
+  const source = createTask();
+  await source.context.getContextMessages();
+  source.context.disableAutosave();
+  original.forEach((message) => source.context.addContextMessage(message));
+  const checkpointA = await source.context.backupContext();
+  source.context.setContextMessages([{ id: 'summary-a', role: 'assistant', content: 'Summary A' }], false);
+  source.context.addPersistentLogMessage('info', 'Compacted A', undefined, [
+    {
+      id: 'undoContextChange',
+      data: { checkpointId: checkpointA },
+      alternativeActions: [{ id: 'forkTaskFromCheckpoint', data: { checkpointId: checkpointA } }],
+    },
+  ]);
+  source.context.addContextMessage({ id: 'later', role: 'user', content: 'After compaction' });
+  const checkpointB = await source.context.backupContext();
+
+  const fork = createTask('fork');
+  await fork.context.getContextMessages();
+  fork.context.disableAutosave();
+  await fork.task.forkFrom(source.task, 'later');
+  expect(await fork.context.readCompactionCheckpoint(checkpointA)).toEqual(original);
+  expect(await fork.context.readCompactionCheckpoint(checkpointB)).toBeNull();
+
+  const restarted = createTask('fork');
+  await restarted.context.getContextMessages();
+  restarted.context.disableAutosave();
+  expect(await restarted.task.undoContextChange(checkpointA)).toBe(true);
+  expect(await restarted.context.getContextMessages()).toEqual(original);
+});
+
+it('does not copy checkpoints when forking before any compaction is referenced', async () => {
+  const source = createTask();
+  await source.context.getContextMessages();
+  source.context.disableAutosave();
+  original.forEach((message) => source.context.addContextMessage(message));
+  const checkpointA = await source.context.backupContext();
+
+  const fork = createTask('fork');
+  await fork.context.getContextMessages();
+  fork.context.disableAutosave();
+  await fork.task.forkFrom(source.task, 'assistant');
+  expect(await fork.context.readCompactionCheckpoint(checkpointA)).toBeNull();
+});
+
+it('copies all compaction checkpoints when duplicating a task', async () => {
+  const source = createTask();
+  await source.context.getContextMessages();
+  source.context.disableAutosave();
+  original.forEach((message) => source.context.addContextMessage(message));
+  const checkpointA = await source.context.backupContext();
+  source.context.setContextMessages([{ id: 'summary-a', role: 'assistant', content: 'Summary A' }], false);
+  source.context.addPersistentLogMessage('info', 'Compacted A', undefined, [
+    {
+      id: 'undoContextChange',
+      data: { checkpointId: checkpointA },
+      alternativeActions: [{ id: 'forkTaskFromCheckpoint', data: { checkpointId: checkpointA } }],
+    },
+  ]);
+  source.context.addContextMessage({ id: 'before-b', role: 'user', content: 'Before B' });
+  const beforeB = structuredClone(await source.context.getContextMessages());
+  const checkpointB = await source.context.backupContext();
+  source.context.setContextMessages([{ id: 'summary-b', role: 'assistant', content: 'Summary B' }], false);
+  source.context.addPersistentLogMessage('info', 'Compacted B', undefined, [
+    {
+      id: 'undoContextChange',
+      data: { checkpointId: checkpointB },
+      alternativeActions: [{ id: 'forkTaskFromCheckpoint', data: { checkpointId: checkpointB } }],
+    },
+  ]);
+
+  const duplicate = createTask('duplicate');
+  await duplicate.context.getContextMessages();
+  duplicate.context.disableAutosave();
+  await duplicate.task.duplicateFrom(source.task);
+  expect(await duplicate.context.getContextMessages()).toEqual(await source.context.getContextMessages());
+  expect(await duplicate.context.readCompactionCheckpoint(checkpointA)).toEqual(original);
+  expect(await duplicate.context.readCompactionCheckpoint(checkpointB)).toEqual(beforeB);
+
+  const restarted = createTask('duplicate');
+  await restarted.context.getContextMessages();
+  restarted.context.disableAutosave();
+  expect(await restarted.task.undoContextChange(checkpointB)).toBe(true);
+  expect(await restarted.context.getContextMessages()).toEqual(beforeB);
+  expect(await restarted.task.undoContextChange(checkpointA)).toBe(true);
+  expect(await restarted.context.getContextMessages()).toEqual(original);
+});

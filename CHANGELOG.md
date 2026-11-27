@@ -7,6 +7,7 @@
 - improved multi-instance task durability by preventing a second app instance from restarting tasks that are still running elsewhere, using journal heartbeats and a staleness re-check on startup
 - improved streaming markdown rendering performance by parsing only unsettled suffixes, rendering top-level blocks as memoized components, and skipping math plugins on non-math blocks
 - improved automatic smart compaction to try stronger levels in one run, report estimated token savings, and show when the context still exceeds the threshold
+- fixed Undo of compaction points not working in forked and duplicated tasks by copying their compaction checkpoint files to the new task
 
 ## [0.93.0]
 

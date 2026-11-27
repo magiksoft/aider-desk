@@ -120,7 +120,7 @@ import { CustomCommandManager, ShellCommandError } from '@/custom-commands';
 import { TelemetryManager } from '@/telemetry';
 import { EventManager } from '@/events';
 import { execWithShellPath, getEnvironmentVariablesForAider, isDirectory } from '@/utils';
-import { ContextManager } from '@/task/context-manager';
+import { ContextManager, getMaxReferencedCheckpointId } from '@/task/context-manager';
 import { Project } from '@/project';
 import { AiderManager } from '@/task/aider-manager';
 import { SkillManager } from '@/skills/skill-manager';
@@ -6036,6 +6036,9 @@ ${error.stderr}`,
     const messages = await sourceTask.getContextMessages();
     this.contextManager.setContextMessages(messages);
 
+    // Copy compaction checkpoints so undo actions in copied messages keep working
+    await this.contextManager.copyCompactionCheckpointsFrom(sourceTask.contextManager);
+
     await this.updateContextInfo();
 
     // Copy todos
@@ -6064,8 +6067,9 @@ ${error.stderr}`,
     await this.addFiles(...contextFiles);
 
     const forkedMessages = typeof forkPoint === 'string' ? sourceTask.contextManager.getMessagesUpTo(forkPoint) : forkPoint;
-    if (checkpointId) {
-      await this.contextManager.copyCompactionCheckpointsFrom(sourceTask.contextManager, checkpointId);
+    const checkpointToCopy = checkpointId ?? getMaxReferencedCheckpointId(forkedMessages);
+    if (checkpointToCopy) {
+      await this.contextManager.copyCompactionCheckpointsFrom(sourceTask.contextManager, checkpointToCopy);
     }
 
     // Save forked messages into new task
