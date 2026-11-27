@@ -218,7 +218,7 @@
         "commands",
         "tools"
       ],
-      "installCount": 124
+      "installCount": 125
     },
     {
       "id": "legacy-system-prompt",
@@ -455,7 +455,7 @@
         "tools",
         "search"
       ],
-      "installCount": 41
+      "installCount": 42
     },
     {
       "id": "seek",
@@ -484,7 +484,7 @@
       "capabilities": [
         "metrics"
       ],
-      "installCount": 139
+      "installCount": 140
     },
     {
       "id": "verifier",
@@ -523,7 +523,7 @@
         "providers",
         "agent-loop"
       ],
-      "installCount": 34
+      "installCount": 35
     },
     {
       "id": "auggie-sdk",
