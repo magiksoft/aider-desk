@@ -689,29 +689,23 @@ const ATTACHMENT_TOKEN_ESTIMATE = 1000;
 
 type CountableMessage = { role: string; content: unknown };
 
-// Tool outputs can embed base64 media payloads; tokenizing them as text would
-// wildly overestimate. Replace large opaque-looking strings with short markers.
 const MEDIA_KEY_PATTERN = /^(data|image)$/i;
-const summarizeLargePayloads = (value: unknown, seen = 0): unknown => {
-  if (seen > 6) {
+const BASE64_PATTERN = /^[a-z\d+/_-]+={0,2}$/i;
+const BASE64_DATA_URL_PATTERN = /^data:[^,]*;base64,/i;
+
+const summarizeMediaPayloads = (value: unknown, depth = 0, key = ''): unknown => {
+  if (depth > 6) {
     return value;
   }
   if (typeof value === 'string') {
-    return value.length > 512 ? `[${value.length}-byte payload]` : value;
+    const isMediaPayload = value.length > 512 && (BASE64_DATA_URL_PATTERN.test(value) || (MEDIA_KEY_PATTERN.test(key) && BASE64_PATTERN.test(value)));
+    return isMediaPayload ? `[${value.length}-byte payload]` : value;
   }
   if (Array.isArray(value)) {
-    return value.map((entry) => summarizeLargePayloads(entry, seen + 1));
+    return value.map((entry) => summarizeMediaPayloads(entry, depth + 1, key));
   }
   if (value && typeof value === 'object') {
-    const result: Record<string, unknown> = {};
-    for (const [key, entry] of Object.entries(value as Record<string, unknown>)) {
-      if (MEDIA_KEY_PATTERN.test(key) && typeof entry === 'string' && entry.length > 512) {
-        result[key] = `[${entry.length}-byte payload]`;
-      } else {
-        result[key] = summarizeLargePayloads(entry, seen + 1);
-      }
-    }
-    return result;
+    return Object.fromEntries(Object.entries(value).map(([entryKey, entry]) => [entryKey, summarizeMediaPayloads(entry, depth + 1, entryKey)]));
   }
   return value;
 };
@@ -725,14 +719,14 @@ const extractToolResultText = (output: unknown): string => {
     return String(o.value ?? '');
   }
   if (o.type === 'json' || o.type === 'error-json') {
-    return JSON.stringify(summarizeLargePayloads(o.value));
+    return JSON.stringify(summarizeMediaPayloads(o.value));
   }
   if (o.type === 'content' && Array.isArray(o.value)) {
     return o.value
       .map((v: { type: string; text?: string; data?: string }) => (v.type === 'text' ? (v.text ?? '') : v.type === 'media' || v.data ? '[media]' : ''))
       .join('\n');
   }
-  return JSON.stringify(summarizeLargePayloads(output));
+  return JSON.stringify(summarizeMediaPayloads(output));
 };
 
 export const estimateMessageTokens = (messages: CountableMessage[]): number => {

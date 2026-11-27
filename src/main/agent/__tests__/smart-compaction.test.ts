@@ -1319,6 +1319,31 @@ describe('smartCompactToTokenTarget', () => {
     expect(result.tokensAfter).toBeLessThanOrEqual(tokensBefore - 50);
   });
 
+  it('counts large JSON bash output savings and leaves the original history intact', async () => {
+    const bash = bashTool('list files', 'A line of command output.\n'.repeat(1000));
+    const messages = [bash.assistant, bash.result, ...protectedHistory()];
+    const original = structuredClone(messages);
+    const target = { tokensBefore: 10000, threshold: 9000, targetTokens: 8000 };
+    const result = await smartCompactToTokenTarget(messages, CompactionLevel.One, target);
+
+    expect(result.level).toBe(CompactionLevel.One);
+    expect(result.tokensAfter).toBeLessThanOrEqual(target.targetTokens);
+    expect(getTextOutput(getToolResultPart(result.messages, 'power---bash'))).toContain('redacted due to compaction');
+    expect(messages).toEqual(original);
+  });
+
+  it('tries level two when level one fits the trigger threshold but misses the lower target', async () => {
+    const read = fileReadTool('old.ts', Array.from({ length: 100 }, (_, i) => `line ${i}`).join('\n'));
+    const messages = [read.assistant, read.result, ...protectedHistory()];
+    const tokensBefore = estimateContextMessageTokens(messages) + 1000;
+    const threshold = estimateContextMessageTokens(await smartCompactMessages(messages)) + 1000;
+    const targetTokens = threshold - 50;
+    const result = await smartCompactToTokenTarget(messages, CompactionLevel.One, { tokensBefore, threshold, targetTokens });
+
+    expect(result.level).toBe(CompactionLevel.Two);
+    expect(result.tokensAfter).toBeLessThanOrEqual(targetTokens);
+  });
+
   it('tries stronger levels even when earlier levels save nothing, without changing recent messages', async () => {
     const read = fileReadTool('old.ts', 'Old content '.repeat(100));
     const recent = protectedHistory();

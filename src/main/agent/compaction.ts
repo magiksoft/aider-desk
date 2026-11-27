@@ -17,6 +17,7 @@ export type { SmartCompactionPass, SmartCompactionPassSelection } from './smart-
 type SmartCompactionTokenTarget = {
   tokensBefore: number;
   threshold: number;
+  targetTokens?: number;
 };
 
 export type TaskSmartCompactionOptions = SmartCompactionOptions & {
@@ -45,8 +46,9 @@ export const smartCompactToTokenTarget = async (
     return { messages: compactedMessages, level, tokensAfter: target.tokensBefore - savings };
   };
 
+  const targetTokens = target.targetTokens ?? target.threshold;
   let best = await compactAt(startingLevel);
-  for (let level = startingLevel + 1; best.tokensAfter > target.threshold && level <= CompactionLevel.Max; level++) {
+  for (let level = startingLevel + 1; best.tokensAfter > targetTokens && level <= CompactionLevel.Max; level++) {
     const candidate = await compactAt(level);
     if (candidate.tokensAfter < best.tokensAfter) {
       best = candidate;
@@ -68,7 +70,13 @@ export const formatSmartCompactionResult = (
     threshold: String(Math.floor(target.threshold)),
   };
   const summary = translate(language, 'compaction.smartResult', params);
-  return result.tokensAfter > target.threshold ? `${summary} ${translate(language, 'compaction.smartTargetMissed', params)}` : summary;
+  if (result.tokensAfter > target.threshold) {
+    return `${summary} ${translate(language, 'compaction.smartTargetMissed', params)}`;
+  }
+  if (target.targetTokens !== undefined && result.tokensAfter > target.targetTokens) {
+    return `${summary} ${translate(language, 'compaction.smartHeadroomMissed', { ...params, target: String(target.targetTokens) })}`;
+  }
+  return summary;
 };
 
 export const extractSummary = (content: string): string => {

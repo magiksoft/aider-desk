@@ -934,19 +934,22 @@ export const compactBashOutputs = (messages: ContextMessage[], protectedMessageC
 
       if (part.output.type === 'json' || part.output.type === 'error-json') {
         const value = part.output.value;
-        if (typeof value === 'object' && value !== null) {
-          const obj = value as Record<string, unknown>;
-          const stdout = typeof obj.stdout === 'string' ? obj.stdout : '';
-          const stderr = typeof obj.stderr === 'string' ? obj.stderr : '';
+        if (typeof value === 'object' && value !== null && !Array.isArray(value)) {
+          const stdout = typeof value.stdout === 'string' ? value.stdout : '';
+          const stderr = typeof value.stderr === 'string' ? value.stderr : '';
 
           const redactionMessage = '<output redacted due to compaction, run again if output is needed>';
           const redactionThreshold = compactionLevel >= CompactionLevel.Two ? 0 : 30;
 
-          if (stdout.length > redactionThreshold) {
-            obj.stdout = redactionMessage;
-          }
-          if (stderr.length > redactionThreshold) {
-            obj.stderr = redactionMessage;
+          if (stdout.length > redactionThreshold || stderr.length > redactionThreshold) {
+            part.output = {
+              ...part.output,
+              value: {
+                ...value,
+                ...(stdout.length > redactionThreshold ? { stdout: redactionMessage } : {}),
+                ...(stderr.length > redactionThreshold ? { stderr: redactionMessage } : {}),
+              },
+            };
           }
         }
         continue;

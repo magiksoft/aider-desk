@@ -1630,6 +1630,7 @@
   "compaction": {
     "smartResult": "Intelligent komprimiert (Stufe {{level}}): ~{{before}} → ~{{after}} Tokens (~{{saved}} eingespart).",
     "smartTargetMissed": "Auch nach einem Versuch mit der höchsten Stufe liegt der Wert über dem Grenzwert von {{threshold}} Tokens.",
+    "smartHeadroomMissed": "Innerhalb des Komprimierungsgrenzwerts, aber auch nach der höchsten Stufe noch über dem Ziel von {{target}} Tokens.",
     "fileEdited": "Datei bearbeitet (Kontext komprimiert)"
   },
   "thinkingAnswer": {

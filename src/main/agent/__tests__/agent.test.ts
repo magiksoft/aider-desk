@@ -1127,7 +1127,7 @@ describe('Agent - compactMessagesIfNeeded', () => {
     expect(taskNearThreshold.compactConversation).toHaveBeenCalledTimes(1);
   });
 
-  it('passes the measured token total and effective threshold to task smart compaction', async () => {
+  it('passes a target 10% below the effective threshold to task smart compaction', async () => {
     agent = buildAgent(() => ({ maxInputTokens: 200000 }));
     mockProfile.autoCompactionType = ContextCompactionType.Smart;
 
@@ -1136,12 +1136,21 @@ describe('Agent - compactMessagesIfNeeded', () => {
     expect(task.smartCompactConversation).toHaveBeenCalledExactlyOnceWith(
       expect.any(Array),
       undefined,
-      { tokenTarget: { tokensBefore: 121000, threshold: 80000 } },
+      { tokenTarget: { tokensBefore: 121000, threshold: 80000, targetTokens: 72000 } },
       undefined,
     );
   });
 
-  it('reloads a subagent conversation once and logs its estimated token savings', async () => {
+  it('does not trigger smart compaction when usage is between the target and threshold', async () => {
+    agent = buildAgent(() => ({ maxInputTokens: 200000 }));
+    mockProfile.autoCompactionType = ContextCompactionType.Smart;
+
+    const task = await runCompact(makeResultMessages(75000), 80000);
+
+    expect(task.smartCompactConversation).not.toHaveBeenCalled();
+  });
+
+  it('reloads a subagent conversation once and reports when it fits without the requested headroom', async () => {
     agent = buildAgent(() => ({ maxInputTokens: 200000 }));
     mockProfile.isSubagent = true;
     mockProfile.autoCompactionType = ContextCompactionType.Smart;
@@ -1161,7 +1170,7 @@ describe('Agent - compactMessagesIfNeeded', () => {
     expect(task.reloadGroupMessages).toHaveBeenCalledTimes(1);
     expect(task.addLogMessage).toHaveBeenCalledExactlyOnceWith(
       'info',
-      expect.stringMatching(/Smart-compacted at level 3: .* tokens \(saved ~/),
+      expect.stringMatching(/Smart-compacted at level 3: .* tokens \(saved ~.* Within the compaction threshold, but still above the 90000-token target/),
       false,
       undefined,
       undefined,

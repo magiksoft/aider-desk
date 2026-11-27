@@ -108,6 +108,7 @@ import { McpConfigManager } from '@/agent/mcp-config-manager';
 import { ExtensionManager } from '@/extensions/extension-manager';
 
 const MAX_RETRIES = 3;
+const SMART_COMPACTION_TARGET_RATIO = 0.9;
 
 // Matches the initial user request in prepared messages, tolerating appended
 // compaction notes merged into the same user message.
@@ -2865,7 +2866,11 @@ export class Agent {
         `Token usage ${totalTokens} exceeds effective threshold of ${effectiveThreshold} (${thresholdDescription}). Compacting conversation with type: ${contextCompactionType}.`,
       );
 
-      const tokenTarget = { tokensBefore: totalTokens, threshold: effectiveThreshold };
+      const tokenTarget = {
+        tokensBefore: totalTokens,
+        threshold: effectiveThreshold,
+        targetTokens: Math.floor(effectiveThreshold * SMART_COMPACTION_TARGET_RATIO),
+      };
       if (profile.isSubagent) {
         const allMessages = [...contextMessages, ...resultMessages];
 

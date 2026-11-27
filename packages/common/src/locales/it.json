@@ -1646,6 +1646,7 @@
   "compaction": {
     "smartResult": "Compattazione intelligente al livello {{level}}: ~{{before}} → ~{{after}} token (risparmiati ~{{saved}}).",
     "smartTargetMissed": "La soglia di {{threshold}} token è ancora superata dopo aver provato il livello massimo.",
+    "smartHeadroomMissed": "Entro la soglia di compattazione, ma ancora sopra l’obiettivo di {{target}} token dopo aver provato il livello massimo.",
     "fileEdited": "File modificato (contesto compattato)"
   },
   "thinkingAnswer": {

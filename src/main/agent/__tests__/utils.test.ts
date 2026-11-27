@@ -620,6 +620,18 @@ describe('attachment token estimation', () => {
     expect(estimateMessageTokens(messages as never)).toBe(0);
   });
 
+  it.each(['json', 'error-json'])('counts long text in %s tool results, including text under data keys', (type) => {
+    const value = {
+      stdout: 'A long line of command output.\n'.repeat(300),
+      stderr: 'A long line of diagnostic output.\n'.repeat(100),
+      details: { data: 'Plain text under a data key. '.repeat(100) },
+    };
+
+    expect(estimateMessageTokens([{ role: 'tool', content: [{ type: 'tool-result', output: { type, value } }] }])).toBe(
+      encode(JSON.stringify(value), { disallowedSpecial: new Set() }).length,
+    );
+  });
+
   it('summarizes base64 media payloads in tool result JSON instead of tokenizing them', () => {
     const base64 = 'A'.repeat(4096);
     const messages = [

@@ -1650,6 +1650,7 @@
   "compaction": {
     "smartResult": "{{level}}단계 스마트 압축: 약 {{before}} → {{after}} 토큰 (약 {{saved}} 토큰 절약).",
     "smartTargetMissed": "최대 단계를 시도한 후에도 {{threshold}} 토큰 임계값을 초과합니다.",
+    "smartHeadroomMissed": "압축 임계값 이내지만, 최대 단계를 시도한 후에도 목표인 {{target}} 토큰을 초과합니다.",
     "fileEdited": "파일이 편집됨 (컨텍스트 압축됨)"
   },
   "thinkingAnswer": {

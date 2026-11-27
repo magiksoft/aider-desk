@@ -1654,6 +1654,7 @@
   "compaction": {
     "smartResult": "Smart-compacted at level {{level}}: ~{{before}} → ~{{after}} tokens (saved ~{{saved}}).",
     "smartTargetMissed": "Still above the {{threshold}}-token threshold after trying the maximum level.",
+    "smartHeadroomMissed": "Within the compaction threshold, but still above the {{target}}-token target after trying the maximum level.",
     "fileEdited": "File edited (context compacted)"
   },
   "thinkingAnswer": {
