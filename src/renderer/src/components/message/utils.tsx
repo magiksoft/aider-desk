@@ -17,7 +17,14 @@ import { CompactionSnippetBlock } from './CompactionSnippetBlock';
 import { CustomCommandBashBlock } from './CustomCommandBashBlock';
 import { ThinkingAnswerBlock } from './ThinkingAnswerBlock';
 import { MarkdownBlock } from './MarkdownBlock';
-import { BLOCKQUOTE_REGEX, FOOTNOTE_REGEX, LINK_REFERENCE_DEFINITION_REGEX, LIST_ITEM_REGEX, splitMarkdownBlocks } from './markdown-blocks';
+import {
+  BLOCKQUOTE_REGEX,
+  FOOTNOTE_REGEX,
+  INDENTED_LINE_REGEX,
+  LINK_REFERENCE_DEFINITION_REGEX,
+  LIST_ITEM_REGEX,
+  splitMarkdownBlocks,
+} from './markdown-blocks';
 
 import { CodeBlock } from '@/components/common/CodeBlock';
 import { CodeInline } from '@/components/common/CodeInline';
@@ -134,7 +141,12 @@ const scanMessageContent = ({ baseDir, text, allFilesSet, renderMarkdown, taskId
     if (tagOpenUnresolved || !renderMarkdown || isInCodeBlock || !currentText) {
       return;
     }
-    if (!lastNonBlankTextLine || LIST_ITEM_REGEX.test(lastNonBlankTextLine) || BLOCKQUOTE_REGEX.test(lastNonBlankTextLine)) {
+    if (
+      !lastNonBlankTextLine ||
+      LIST_ITEM_REGEX.test(lastNonBlankTextLine) ||
+      BLOCKQUOTE_REGEX.test(lastNonBlankTextLine) ||
+      INDENTED_LINE_REGEX.test(lastNonBlankTextLine)
+    ) {
       return;
     }
     pendingTextBoundary = { offset: lineOffsets[lineIndex], textLength: currentText.length, partCount: parts.length, generation: currentTextGeneration };
@@ -350,10 +362,12 @@ const scanMessageContent = ({ baseDir, text, allFilesSet, renderMarkdown, taskId
       if (renderMarkdown) {
         if (line.trim()) {
           lastNonBlankTextLine = line;
-        } else if (currentText) {
-          recordTextBoundary(i);
-        } else {
-          recordFreshBoundary(afterLineOffset(i));
+        } else if (i < lines.length - 1) {
+          if (currentText) {
+            recordTextBoundary(i);
+          } else {
+            recordFreshBoundary(afterLineOffset(i));
+          }
         }
         currentText += line + '\n';
       } else {

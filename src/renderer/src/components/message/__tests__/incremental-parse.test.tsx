@@ -315,4 +315,42 @@ describe('incremental parseMessageContent', () => {
       }
     }
   });
+
+  it('renders GFM tables correctly when streaming line-by-line (chunks ending with newline)', () => {
+    const lines = [
+      'Here is a summary table:\n',
+      '\n',
+      '| Metric | Before | After |\n',
+      '| --- | --- | --- |\n',
+      '| Script | 518ms | 120ms |\n',
+      '| Layout | 42ms | 40ms |\n',
+      '\n',
+      'Trailing paragraph after table.',
+    ];
+
+    const streamed = render(parse(lines[0], 'table-line-by-line'));
+    let accumulated = lines[0];
+
+    for (let i = 1; i < lines.length; i++) {
+      accumulated += lines[i];
+      streamed.rerender(parse(accumulated, 'table-line-by-line'));
+
+      const baseline = render(parse(accumulated, `table-line-by-line-full-${i}`));
+      expect(normalizeHtml(streamed.container.innerHTML)).toBe(normalizeHtml(baseline.container.innerHTML));
+      baseline.unmount();
+    }
+
+    expect(streamed.container.querySelector('table')).toBeInTheDocument();
+    expect(streamed.container.querySelectorAll('thead th')).toHaveLength(3);
+    expect(streamed.container.querySelectorAll('tbody tr')).toHaveLength(2);
+  });
+
+  it('renders GFM tables correctly when streaming character-by-character', () => {
+    const content = ['Intro paragraph.', '', '| Col A | Col B |', '| --- | --- |', '| 1 | 2 |', '| 3 | 4 |', '', 'Done.'].join('\n');
+    const streamed = streamAndCompare(content, { chunkSize: 1 }, 'table-char-by-char');
+
+    expect(streamed.container.querySelector('table')).toBeInTheDocument();
+    expect(streamed.container.querySelectorAll('thead th')).toHaveLength(2);
+    expect(streamed.container.querySelectorAll('tbody tr')).toHaveLength(2);
+  });
 });
