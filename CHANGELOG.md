@@ -12,6 +12,7 @@
 - fixed grep results dropping matches in files with -<digits>- in their names by parsing ripgrep output with --null instead of a path-guessing regex
 - fixed global rule files missing from the system prompt on Windows by expanding home-relative rule paths built with the platform separator
 - fixed imported extension helper modules (.mjs, .cjs, plain .js) staying cached after an extension was edited and reloaded
+- fixed dropped files being silently ignored in browser mode by showing a warning that local file drops are not supported there
 
 ## [0.93.0]
 

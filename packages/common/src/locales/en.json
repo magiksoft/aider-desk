@@ -1374,7 +1374,8 @@
   "addFileDialog": {
     "title": "Add context files",
     "browse": "Browse files",
-    "readOnly": "Read-Only"
+    "readOnly": "Read-Only",
+    "dropFilesNotSupportedInBrowser": "Dropping local files is not supported in browser mode. Add files by entering their path instead."
   },
   "fileFinder": {
     "addPathTooltip": "Add path",
@@ -1421,6 +1422,7 @@
     "title": "Editor"
   },
   "contextFiles": {
+    "dropFilesNotSupportedInBrowser": "Dropping local files is not supported in browser mode. Add files by entering their path instead.",
     "renamedFrom": "Renamed from {{path}}",
     "workspaceTitle": "Workspace",
     "title": "Context Files",

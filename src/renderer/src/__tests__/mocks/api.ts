@@ -82,6 +82,7 @@ export const createMockApi = (overrides: Partial<ApplicationAPI> = {}): MockedOb
 
     // Dialog operations
     isOpenDialogSupported: vi.fn((): boolean => true),
+    isGetPathForFileSupported: vi.fn((): boolean => true),
     showOpenDialog: vi.fn((): Promise<OpenDialogResult> => Promise.resolve({ canceled: false, filePaths: [] })),
     getPathForFile: vi.fn((): string => '/mock/path'),
 

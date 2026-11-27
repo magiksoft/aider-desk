@@ -1306,7 +1306,8 @@
   "addFileDialog": {
     "title": "添加上下文文件",
     "browse": "浏览文件",
-    "readOnly": "只读"
+    "readOnly": "只读",
+    "dropFilesNotSupportedInBrowser": "浏览器模式下不支持拖放本地文件。请改为输入路径来添加文件。"
   },
   "fileFinder": {
     "addPathTooltip": "添加路径",
@@ -1353,6 +1354,7 @@
     "title": "编辑器"
   },
   "contextFiles": {
+    "dropFilesNotSupportedInBrowser": "浏览器模式下不支持拖放本地文件。请改为输入路径来添加文件。",
     "renamedFrom": "重命名自 {{path}}",
     "workspaceTitle": "工作区",
     "title": "上下文文件",

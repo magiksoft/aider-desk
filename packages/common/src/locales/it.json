@@ -1366,7 +1366,8 @@
   "addFileDialog": {
     "title": "Aggiungi file di contesto",
     "browse": "Sfoglia i file",
-    "readOnly": "Sola lettura"
+    "readOnly": "Sola lettura",
+    "dropFilesNotSupportedInBrowser": "Il trascinamento di file locali non è supportato in modalità browser. Aggiungi i file inserendo il loro percorso."
   },
   "fileFinder": {
     "addPathTooltip": "Aggiungi percorso",
@@ -1413,6 +1414,7 @@
     "title": "Editor"
   },
   "contextFiles": {
+    "dropFilesNotSupportedInBrowser": "Il trascinamento di file locali non è supportato in modalità browser. Aggiungi i file inserendo il loro percorso.",
     "renamedFrom": "Rinominato da {{path}}",
     "workspaceTitle": "Area di lavoro",
     "title": "File di contesto",

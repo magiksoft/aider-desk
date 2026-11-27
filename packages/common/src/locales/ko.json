@@ -1373,7 +1373,8 @@
   "addFileDialog": {
     "title": "컨텍스트 파일 추가",
     "browse": "파일 찾아보기",
-    "readOnly": "읽기 전용"
+    "readOnly": "읽기 전용",
+    "dropFilesNotSupportedInBrowser": "브라우저 모드에서는 로컬 파일 드롭이 지원되지 않습니다. 대신 경로를 입력하여 파일을 추가하세요."
   },
   "fileFinder": {
     "addPathTooltip": "경로 추가",
@@ -1420,6 +1421,7 @@
     "title": "에디터"
   },
   "contextFiles": {
+    "dropFilesNotSupportedInBrowser": "브라우저 모드에서는 로컬 파일 드롭이 지원되지 않습니다. 대신 경로를 입력하여 파일을 추가하세요.",
     "renamedFrom": "{{path}}에서 이름 변경됨",
     "workspaceTitle": "워크스페이스",
     "title": "컨텍스트 파일",

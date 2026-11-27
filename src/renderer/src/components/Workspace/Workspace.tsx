@@ -23,6 +23,7 @@ import type { SectionType, TreeItem, WorkspaceSectionId } from './types';
 import { useExtensionComponentsWrapper } from '@/components/extensions/useExtensionComponentsWrapper';
 import { Tooltip } from '@/components/ui/Tooltip';
 import { useOS } from '@/hooks/useOS';
+import { showWarningNotification } from '@/utils/notifications';
 import { useApi } from '@/contexts/ApiContext';
 import { useProjectSettings } from '@/contexts/ProjectSettingsContext';
 
@@ -207,6 +208,10 @@ export const Workspace = ({
       setIsDragging(false);
 
       if (event.dataTransfer?.files) {
+        if (!api.isGetPathForFileSupported()) {
+          showWarningNotification(t('contextFiles.dropFilesNotSupportedInBrowser'));
+          return;
+        }
         const files = Array.from(event.dataTransfer.files);
         const droppedFilePaths = files.map((file) => api.getPathForFile(file));
         for (let filePath of droppedFilePaths) {
@@ -223,7 +228,7 @@ export const Workspace = ({
         }
       }
     },
-    [api, baseDir, taskId],
+    [api, baseDir, taskId, t],
   );
 
   const handleDragOver = useCallback((event: DragEvent<HTMLDivElement>) => {

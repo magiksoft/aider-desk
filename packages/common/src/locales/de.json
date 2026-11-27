@@ -1362,7 +1362,8 @@
   "addFileDialog": {
     "title": "Kontextdateien hinzufügen",
     "browse": "Dateien durchsuchen",
-    "readOnly": "Nur-Lesen"
+    "readOnly": "Nur-Lesen",
+    "dropFilesNotSupportedInBrowser": "Das Ablegen lokaler Dateien wird im Browser-Modus nicht unterstützt. Füge Dateien hinzu, indem du ihren Pfad eingibst."
   },
   "fileFinder": {
     "addPathTooltip": "Pfad hinzufügen",
@@ -1409,6 +1410,7 @@
     "title": "Editor"
   },
   "contextFiles": {
+    "dropFilesNotSupportedInBrowser": "Das Ablegen lokaler Dateien wird im Browser-Modus nicht unterstützt. Füge Dateien hinzu, indem du ihren Pfad eingibst.",
     "renamedFrom": "Umbenannt von {{path}}",
     "workspaceTitle": "Arbeitsbereich",
     "title": "Kontextdateien",

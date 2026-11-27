@@ -83,6 +83,7 @@ const api: ApplicationAPI = {
   loadInputHistory: (baseDir) => ipcRenderer.invoke('load-input-history', baseDir),
   isOpenDialogSupported: () => true,
   showOpenDialog: (options: OpenDialogOptions) => ipcRenderer.invoke('show-open-dialog', options),
+  isGetPathForFileSupported: () => true,
   getPathForFile: (file) => webUtils.getPathForFile(file),
   getOpenProjects: () => ipcRenderer.invoke('get-open-projects'),
   checkProject: (baseDir) => ipcRenderer.invoke('check-project', baseDir),

@@ -5,6 +5,7 @@ import { FileFinder } from '@/components/project/FileFinder';
 import { FileChip } from '@/components/common/FileChip';
 import { ConfirmDialog } from '@/components/common/ConfirmDialog';
 import { Checkbox } from '@/components/common/Checkbox';
+import { showWarningNotification } from '@/utils/notifications';
 import { useApi } from '@/contexts/ApiContext';
 
 type Props = {
@@ -68,6 +69,10 @@ export const AddFileDialog = ({ onClose, onAddFiles, baseDir, taskId, initialRea
       event.preventDefault();
 
       if (event.dataTransfer?.files) {
+        if (!api.isGetPathForFileSupported()) {
+          showWarningNotification(t('addFileDialog.dropFilesNotSupportedInBrowser'));
+          return;
+        }
         const files = Array.from(event.dataTransfer.files);
         const droppedFilePaths = files.map((file) => api.getPathForFile(file));
 
@@ -87,7 +92,7 @@ export const AddFileDialog = ({ onClose, onAddFiles, baseDir, taskId, initialRea
       };
     }
     return () => {};
-  }, [baseDir, handleAddExternalFiles, selectedPaths, setIsReadOnly, api]);
+  }, [baseDir, handleAddExternalFiles, selectedPaths, setIsReadOnly, api, t]);
 
   const handleOnPaste = async (pastedText: string): Promise<boolean> => {
     if (pastedText) {

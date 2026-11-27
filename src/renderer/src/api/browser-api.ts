@@ -510,6 +510,9 @@ export class BrowserApi implements ApplicationAPI {
     void options;
     throw new UnsupportedError('showOpenDialog not supported yet.');
   }
+  isGetPathForFileSupported(): boolean {
+    return false;
+  }
   getPathForFile(file: File): string {
     void file;
     throw new UnsupportedError('getPathForFile not supported yet.');

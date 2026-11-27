@@ -128,6 +128,7 @@ export interface ApplicationAPI {
   loadInputHistory: (baseDir: string) => Promise<string[]>;
   isOpenDialogSupported: () => boolean;
   showOpenDialog: (options: OpenDialogOptions) => Promise<OpenDialogResult>;
+  isGetPathForFileSupported: () => boolean;
   getPathForFile: (file: File) => string;
   getOpenProjects: () => Promise<ProjectData[]>;
   checkProject: (baseDir: string) => Promise<ProjectCheckResult>;
