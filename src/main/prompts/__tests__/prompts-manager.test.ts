@@ -4,6 +4,13 @@ vi.mock('os-name', () => ({
   default: () => 'Test OS',
 }));
 
+const mockedOs = vi.hoisted(() => ({ homedir: undefined as string | undefined }));
+vi.mock('os', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('os')>();
+  const homedir = () => mockedOs.homedir ?? actual.homedir();
+  return { ...actual, default: { ...actual, homedir }, homedir };
+});
+
 // We need to partially unmock path and fs to allow template loading
 vi.unmock('path');
 vi.unmock('fs');
@@ -187,6 +194,25 @@ describe('Prompts with Handlebars', () => {
         expect(prompt).not.toContain('context.attachment.json');
       } finally {
         await fs.rm(snapshotDir, { recursive: true, force: true });
+      }
+    });
+
+    // Task.getRuleFilesAsContextFiles builds home-relative rule paths with path.join('~', ...), which is '~\...' on Windows
+    it.each(['~/global-rule.md', path.join('~', 'global-rule.md')])('should include home-relative rule file %s in the system prompt', async (ruleFilePath) => {
+      const homeDir = await fs.mkdtemp(path.join(os.tmpdir(), 'aider-desk-home-'));
+      mockedOs.homedir = homeDir;
+      try {
+        await fs.writeFile(path.join(homeDir, 'global-rule.md'), 'GLOBAL_RULE_CONTENT', 'utf8');
+        mockTask.getRuleFilesAsContextFiles = vi.fn(async () => [{ path: ruleFilePath, readOnly: true, source: 'global-rule' as const }]);
+        mockProfile.systemPrompt = 'Custom system prompt';
+
+        const prompt = await promptsManager.getSystemPrompt(mockSettings, mockTask, mockProfile);
+
+        expect(prompt).toContain('<File name="global-rule.md">');
+        expect(prompt).toContain('GLOBAL_RULE_CONTENT');
+      } finally {
+        mockedOs.homedir = undefined;
+        await fs.rm(homeDir, { recursive: true, force: true });
       }
     });
 

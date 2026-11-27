@@ -461,7 +461,8 @@ export class PromptsManager {
       ruleFiles.map(async (file) => {
         try {
           let absolutePath: string;
-          if (file.path.startsWith('~/')) {
+          // home-relative rule paths are built with path.join('~', ...), so they start with '~\' on Windows
+          if (file.path.startsWith('~/') || file.path.startsWith(`~${path.sep}`)) {
             const homeDir = (await import('os')).homedir();
             absolutePath = path.join(homeDir, file.path.slice(2));
           } else if (path.isAbsolute(file.path)) {
