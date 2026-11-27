@@ -10,6 +10,7 @@
 - fixed Undo of compaction points not working in forked and duplicated tasks by copying their compaction checkpoint files to the new task
 - added task identity to the agent system prompt: TaskId, ParentTaskId for subtasks, and TaskDataDir in the SystemInformation section
 - fixed grep results dropping matches in files with -<digits>- in their names by parsing ripgrep output with --null instead of a path-guessing regex
+- fixed global rule files missing from the system prompt on Windows by expanding home-relative rule paths built with the platform separator
 
 ## [0.93.0]
 
