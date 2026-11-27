@@ -42,6 +42,12 @@ vi.mock('path', () => ({
   default: {
     join: vi.fn((...parts: string[]) => parts.join('/')),
     basename: vi.fn((file) => file.split('/').pop() || file),
+    dirname: vi.fn((file: string) => file.split('/').slice(0, -1).join('/')),
+    extname: vi.fn((file: string) => {
+      const base = file.split('/').pop() || file;
+      const dot = base.lastIndexOf('.');
+      return dot > 0 ? base.slice(dot) : '';
+    }),
     resolve: vi.fn((path) => path),
     relative: vi.fn((from: string, to: string) => {
       if (to.startsWith(from + '/')) {
@@ -86,6 +92,8 @@ describe('ExtensionManager', () => {
 
     mockLoader = {
       loadExtension: vi.fn(),
+      invalidateExtensionModules: vi.fn(),
+      getFileMtimes: vi.fn().mockResolvedValue(new Map()),
     };
     mockRegistry = {
       clear: vi.fn(),
@@ -594,6 +602,67 @@ describe('ExtensionManager', () => {
       expect(manager.isInitialized()).toBe(true);
 
       vi.useRealTimers();
+    });
+  });
+
+  describe('reloadChangedExtensions', () => {
+    const dir = '/exts';
+    const entryPath = '/exts/ext1/index.ts';
+    const helperPath = '/exts/ext1/helper.mjs';
+
+    const setupChangedDetection = (ext?: Record<string, unknown>) => {
+      fsAccessMock.mockResolvedValue(undefined);
+      fsReaddirMock.mockResolvedValue([{ name: 'ext1', isDirectory: () => true, isFile: () => false }] as any);
+
+      const extension = ext ?? {
+        instance: {},
+        metadata: { name: 'ext1', version: '1.0.0' },
+        filePath: entryPath,
+        initialized: true,
+        id: 'ext1',
+      };
+      (mockRegistry as Record<string, unknown>).getExtensions = vi.fn().mockReturnValue([extension]);
+      (mockRegistry as Record<string, unknown>).getExtension = vi.fn().mockReturnValue(extension);
+      return extension;
+    };
+
+    it('reloads an extension when a helper file mtime changes', async () => {
+      const oldMap = new Map([
+        [entryPath, 111],
+        [helperPath, 111],
+      ]);
+      const newMap = new Map([
+        [entryPath, 111],
+        [helperPath, 222],
+      ]);
+      const extension = setupChangedDetection();
+      (manager as unknown as Record<string, unknown>).extensionFileMtimes = new Map([[entryPath, oldMap]]);
+
+      const mockLoaderLocal = mockLoader as Record<string, unknown>;
+      mockLoaderLocal.getFileMtimes = vi.fn().mockResolvedValueOnce(newMap).mockResolvedValueOnce(oldMap);
+      mockLoaderLocal.loadExtension = vi.fn().mockResolvedValue({ extension: extension.instance, metadata: extension.metadata });
+
+      await (manager as unknown as Record<string, (dir: string) => Promise<void>>).reloadChangedExtensions(dir);
+
+      expect(mockLoaderLocal.loadExtension).toHaveBeenCalledWith(entryPath);
+      expect(logger.info).toHaveBeenCalledWith(expect.stringContaining('helper.mjs (modified)'));
+    });
+
+    it('skips reload when helper mtimes are unchanged', async () => {
+      const sameMap = new Map([
+        [entryPath, 111],
+        [helperPath, 111],
+      ]);
+      setupChangedDetection();
+      (manager as unknown as Record<string, unknown>).extensionFileMtimes = new Map([[entryPath, sameMap]]);
+
+      const mockLoaderLocal = mockLoader as Record<string, unknown>;
+      mockLoaderLocal.getFileMtimes = vi.fn().mockResolvedValue(sameMap);
+      mockLoaderLocal.loadExtension = vi.fn();
+
+      await (manager as unknown as Record<string, (dir: string) => Promise<void>>).reloadChangedExtensions(dir);
+
+      expect(mockLoaderLocal.loadExtension).not.toHaveBeenCalled();
     });
   });
 

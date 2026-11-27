@@ -20,8 +20,9 @@ import { EXTENSION_ORIGIN, getExtensionRepositories, ProviderDefinition, Tool, U
 import { BUILT_IN_TASK_STATE_DEFINITIONS, compareTaskStates, isValidTaskStateDefinition } from '@common/task-states';
 import { DEFAULT_AGENT_PROFILE } from '@common/agent';
 
-import { ExtensionLoader } from './extension-loader';
+import { ExtensionLoader, MODULE_FILE_EXTENSIONS } from './extension-loader';
 import { ExtensionRegistry, LoadedExtension } from './extension-registry';
+import { deregisterExtensionResolveHooks, extensionScopeForEntry, unregisterExtensionScope } from './extension-module-hooks';
 import { ExtensionContextImpl } from './extension-context';
 import { DisposableStore } from './disposable-store';
 import { ExtensionFetcher } from './extension-fetcher';
@@ -215,6 +216,37 @@ const boundExtensionToolResult = async (result: unknown): Promise<unknown> => {
   return result;
 };
 
+const areMtimeSnapshotsEqual = (a: Map<string, number>, b: Map<string, number>): boolean => {
+  if (a.size !== b.size) {
+    return false;
+  }
+  for (const [filePath, mtime] of a) {
+    if (b.get(filePath) !== mtime) {
+      return false;
+    }
+  }
+  return true;
+};
+
+const describeChangedFiles = (oldMtimes: Map<string, number> | undefined, currentMtimes: Map<string, number>): string | null => {
+  if (!oldMtimes) {
+    return null;
+  }
+  const changes: string[] = [];
+  for (const [filePath, mtime] of currentMtimes) {
+    if (oldMtimes.get(filePath) !== mtime) {
+      const label = oldMtimes.has(filePath) ? `${path.basename(filePath)} (modified)` : `${path.basename(filePath)} (added)`;
+      changes.push(label);
+    }
+  }
+  for (const filePath of oldMtimes.keys()) {
+    if (!currentMtimes.has(filePath)) {
+      changes.push(`${path.basename(filePath)} (removed)`);
+    }
+  }
+  return changes.length > 0 ? changes.slice(0, 5).join(', ') : null;
+};
+
 export class ExtensionManager {
   private loader: ExtensionLoader;
   private fetcher: ExtensionFetcher;
@@ -223,7 +255,7 @@ export class ExtensionManager {
   private initialized = false;
   private disposed = false;
   private listeners: ExtensionsChangeListener[] = [];
-  private extensionMtimes: Map<string, number> = new Map();
+  private extensionFileMtimes: Map<string, Map<string, number>> = new Map();
   private readonly startedProjects = new Map<string, Project>();
 
   private libraryLoader: ExtensionLibraryLoader;
@@ -476,6 +508,11 @@ export class ExtensionManager {
    */
   private async loadAndInitializeExtension(filePath: string, project?: Project): Promise<{ success: boolean; hasUIComponents: boolean }> {
     try {
+      // Invalidate natively imported helper modules so edits are picked up on (re)load.
+      // Called here so every load path (initial load, reloadExtension, updateExtension,
+      // reloadChangedExtensions, reloadProjectExtensions) stays consistent.
+      this.loader.invalidateExtensionModules(filePath);
+
       const result = await this.loader.loadExtension(filePath);
       if (!result) {
         logger.error(`[Extensions] Failed to load extension from ${filePath}${project ? ` for project ${project.baseDir}` : ''}`);
@@ -501,10 +538,7 @@ export class ExtensionManager {
         return { success: false, hasUIComponents: false };
       }
 
-      const stat = await fs.stat(filePath).catch(() => null);
-      if (stat) {
-        this.extensionMtimes.set(filePath, stat.mtimeMs);
-      }
+      this.extensionFileMtimes.set(filePath, await this.loader.getFileMtimes(filePath));
 
       logger.info(`[Extensions] Loaded and initialized extension: ${metadata.name} v${metadata.version}${project ? ` for project ${project.baseDir}` : ''}`);
       return { success: true, hasUIComponents: loaded.instance.getUIComponents !== undefined };
@@ -606,18 +640,16 @@ export class ExtensionManager {
       }
     }
 
-    // Reload changed extensions (file exists before and after, but mtime differs)
+    // Reload changed extensions (file exists before and after, but module file mtimes differ)
     for (const filePath of after) {
       if (!before.has(filePath)) {
         continue;
       }
-      const oldMtime = this.extensionMtimes.get(filePath);
-      const stat = await fs.stat(filePath).catch(() => null);
-      if (!stat) {
-        continue;
-      }
-      if (oldMtime === undefined || stat.mtimeMs !== oldMtime) {
-        logger.debug(`[Extensions] Extension changed: ${filePath}`);
+      const oldMtimes = this.extensionFileMtimes.get(filePath);
+      const currentMtimes = await this.loader.getFileMtimes(filePath);
+      if (oldMtimes === undefined || !areMtimeSnapshotsEqual(oldMtimes, currentMtimes)) {
+        const changedFiles = describeChangedFiles(oldMtimes, currentMtimes);
+        logger.info(`[Extensions] Extension changed: ${filePath}${changedFiles ? ` (${changedFiles})` : ''}`);
         const ext = this.registry.getExtension(filePath);
         await this.unloadExtension(filePath);
         const { success, hasUIComponents } = await this.loadAndInitializeExtension(filePath, project);
@@ -747,7 +779,8 @@ export class ExtensionManager {
       }
     }
 
-    this.extensionMtimes.clear();
+    this.extensionFileMtimes.clear();
+    deregisterExtensionResolveHooks();
     this.initialized = false;
     logger.debug('[Extensions] Extension system disposed');
   }
@@ -774,7 +807,8 @@ export class ExtensionManager {
     }
 
     this.registry.unregister(filePath);
-    this.extensionMtimes.delete(filePath);
+    this.extensionFileMtimes.delete(filePath);
+    unregisterExtensionScope(extensionScopeForEntry(filePath));
     this.modelManager.unregisterExtensionProviders(extension.id);
     this.eventManager.sendExtensionUIRefresh({ projectDir: extension.projectDir, reloadTaskStates: true });
     logger.debug(`[Extensions] Unloaded extension: ${filePath}`);
@@ -923,7 +957,8 @@ export class ExtensionManager {
       const debouncedOnChange = debounce(onChange, 3000);
 
       const isRelevantFile = (filePath: string): boolean => {
-        return ['.ts', '.js', '.tsx', '.jsx'].includes(path.extname(filePath));
+        // Include natively imported helper types so edits to them trigger extension reloads
+        return MODULE_FILE_EXTENSIONS.has(path.extname(filePath));
       };
 
       const watcher = watch(dir, {

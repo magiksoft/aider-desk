@@ -11,6 +11,7 @@
 - added task identity to the agent system prompt: TaskId, ParentTaskId for subtasks, and TaskDataDir in the SystemInformation section
 - fixed grep results dropping matches in files with -<digits>- in their names by parsing ripgrep output with --null instead of a path-guessing regex
 - fixed global rule files missing from the system prompt on Windows by expanding home-relative rule paths built with the platform separator
+- fixed imported extension helper modules (.mjs, .cjs, plain .js) staying cached after an extension was edited and reloaded
 
 ## [0.93.0]
 

@@ -1,10 +1,24 @@
 import path from 'path';
+import fs from 'fs/promises';
 
 import { createJiti, type JitiOptions } from 'jiti';
 import { Extension, ExtensionMetadata } from '@common/extensions';
 
+import {
+  bumpExtensionLoadStamp,
+  extensionScopeForEntry,
+  isPathInExtensionScope,
+  registerExtensionResolveHooks,
+  registerExtensionScope,
+  type ExtensionModuleScope,
+} from './extension-module-hooks';
+
 import logger from '@/logger';
 import { AIDER_DESK_EXTENSION_JITI_CACHE_DIR } from '@/constants';
+
+// Module file extensions tracked for change detection and natively imported helper types
+export const MODULE_FILE_EXTENSIONS = new Set(['.ts', '.js', '.tsx', '.jsx', '.mjs', '.cjs', '.mts', '.cts']);
+const MAX_MTIME_WALK_DEPTH = 8;
 
 // Define the interface for the loaded module
 interface ExtensionModule {
@@ -26,6 +40,88 @@ const baseJitiOptions: JitiOptions = {
 
 export class ExtensionLoader {
   private jitiCache: Map<string, ReturnType<typeof createJiti>> = new Map();
+
+  constructor() {
+    registerExtensionResolveHooks();
+  }
+
+  /**
+   * Invalidates all module caches for an extension scope before (re)loading it.
+   *
+   * jiti re-evaluates TypeScript entry files on every load, but natively imported
+   * helper modules (.mjs, .cjs, plain .js) are cached by Node's module loaders for
+   * the lifetime of the process. Bumping the extension's load stamp (via module
+   * resolve hooks) and purging CJS cache entries makes such helpers re-execute on
+   * the next import.
+   */
+  invalidateExtensionModules(filePath: string): void {
+    const scope = extensionScopeForEntry(filePath);
+    registerExtensionScope(scope);
+    bumpExtensionLoadStamp(scope);
+    this.purgeCjsCache(scope);
+  }
+
+  private purgeCjsCache(scope: ExtensionModuleScope): void {
+    let purged = 0;
+    for (const cacheKey of Object.keys(require.cache)) {
+      // Native addons cannot be safely unloaded and reloaded
+      if (cacheKey.endsWith('.node')) {
+        continue;
+      }
+      if (isPathInExtensionScope(cacheKey, scope)) {
+        delete require.cache[cacheKey];
+        purged += 1;
+      }
+    }
+    if (purged > 0) {
+      logger.debug(`[Extensions] Purged ${purged} cached module(s) for ${scope.root}`);
+    }
+  }
+
+  /**
+   * Collects current mtimes of all module files belonging to an extension.
+   * Used to detect changes in helper files that don't touch the entry file itself.
+   * Ignores node_modules, dotfiles, and non-code files (e.g. config.json).
+   */
+  async getFileMtimes(entryFilePath: string): Promise<Map<string, number>> {
+    const scope = extensionScopeForEntry(entryFilePath);
+    const mtimes = new Map<string, number>();
+
+    if (scope.kind === 'file') {
+      const stat = await fs.stat(scope.root).catch(() => null);
+      if (stat && MODULE_FILE_EXTENSIONS.has(path.extname(scope.root))) {
+        mtimes.set(scope.root, stat.mtimeMs);
+      }
+      return mtimes;
+    }
+
+    const walk = async (dir: string, depth: number): Promise<void> => {
+      if (depth > MAX_MTIME_WALK_DEPTH) {
+        return;
+      }
+      const entries = await fs.readdir(dir, { withFileTypes: true }).catch(() => []);
+      for (const entry of entries) {
+        if (entry.name.startsWith('.')) {
+          continue;
+        }
+        const fullPath = path.join(dir, entry.name);
+        if (entry.isDirectory()) {
+          if (entry.name === 'node_modules') {
+            continue;
+          }
+          await walk(fullPath, depth + 1);
+        } else if (entry.isFile() && MODULE_FILE_EXTENSIONS.has(path.extname(entry.name))) {
+          const stat = await fs.stat(fullPath).catch(() => null);
+          if (stat) {
+            mtimes.set(fullPath, stat.mtimeMs);
+          }
+        }
+      }
+    };
+
+    await walk(scope.root, 0);
+    return mtimes;
+  }
 
   /**
    * Get or create a jiti instance for a specific extension directory.

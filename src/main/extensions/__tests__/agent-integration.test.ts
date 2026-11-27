@@ -29,6 +29,8 @@ vi.mock('@/logger', () => ({
 vi.mock('../extension-loader', () => ({
   ExtensionLoader: class {
     loadExtension = vi.fn();
+    invalidateExtensionModules = vi.fn();
+    getFileMtimes = vi.fn().mockResolvedValue(new Map());
   },
 }));
 
